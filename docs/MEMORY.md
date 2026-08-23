@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Finish the Scope v3 doc-set update** — done: `MEMORY.md` (corrected), `CLAUDE.md`, `CLIENT-CONTEXT.md` (23 Aug). Remaining, one file per reviewed diff: `SCHEMA.md` → `SECURITY.md` → `PHASE-ACCEPTANCE.md` → `TASKS.md` → `RUNBOOK.md` → `README.md` — these still describe the five-phase research plan. Then Stage 2 kickoff — unpause Supabase, land the foundations migrations, start the voice-training corpus |
+| Next task | **Stage 2 part 1 (FND-200) is built and awaiting review** — the Scope v3 doc-set is fully aligned (all eight files) and the repo foundation is in place (TypeScript strict, ESLint, Prettier, Vitest, `logger` / `errors` / `http` with 118 tests, gitleaks hook proven, CI). **Uncommitted, staged for review.** Then **part 2** — unpause Supabase, first migrations from `SCHEMA.md` §8 (memory tables with `user_id` + `scope`), RLS test |
 | Blocked on | Nothing structural. R9 (no Notion workspace token for n8n) and R21 (three GHL scopes still denied) remain open but do not block Stage 2 |
-| Last regression run | not yet run |
+| Last regression run | 23 Aug — `npm run test:regress` green on **Node 24.15** (the declared runtime, D35): typecheck 0 errors, lint 0, 118/118 tests, coverage 99.05% lines / 97.92% branches / 100% functions (floor 80/75) |
 | Known broken | Supabase project is paused — free-tier idle auto-pause, not a decision (R1 closed). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -57,16 +57,19 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D20** | Notion Intake offers **all eight** lead types, not three | Ross works from his phone and should never have to choose a database first. The pipeline routes business types to Organisations and consumer types to Consumer Leads, applying the D13 research guard itself | 10 Aug |
 | **D21** | `Opt Out` is **editable** in Notion on Contacts and Consumer Leads | Deliberate addition to the CLIENT-CONTEXT §8 editable list. An unsubscribe request is a Spam Act obligation and cannot wait on a review-queue round trip. Everything else in §8 is unchanged | 10 Aug |
 | **D22** | The editable/read-only split is enforced by the **sync whitelist**, not by Notion | Notion has no per-property permissions — any member can edit any property. Property descriptions label each field EDITABLE or READ-ONLY, and `notion_sync_map` accepts only the §8 list on a pull. Claiming Notion enforces this would be a silent failure | 10 Aug |
-| **D23** | **Scope v3 is the binding document. The B2B outbound lead-research engine is out of scope** and was never asked for by the client | The project is an AI assistant trained on the client's voice, with persistent cross-device memory, that reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, with GHL and Meta underneath. Organisation research, website discovery, decision-maker extraction, email verification and the two scoring rubrics are **parked, not deleted** — to be moved under "out of current scope" headings in `CLIENT-CONTEXT.md`, `SCHEMA.md` and `TASKS.md` (pending as of 23 Aug — see the 22 Aug session entry). **This parks D5, D6, D13, D14 and D15** | 22 Aug |
+| **D23** | **Scope v3 is the binding document. The B2B outbound lead-research engine is out of scope** and was never asked for by the client | The project is an AI assistant trained on the client's voice, with persistent cross-device memory, that reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, with GHL and Meta underneath. Organisation research, website discovery, decision-maker extraction, email verification and the two scoring rubrics are **parked, not deleted** — to be moved under "out of current scope" headings in `CLIENT-CONTEXT.md`, `SCHEMA.md` and `TASKS.md` (pending as of 23 Aug — see the 22 Aug session entry; **done later on 23 Aug, FND-200**). **This parks D5, D6, D13, D14 and D15** | 22 Aug |
 | **D24** | **Database is Supabase. Confirmed. The MongoDB question is closed** | Client confirmed. `docs/SCHEMA.md` stays relational Postgres with RLS; the provenance and audit design stands. Supersedes the R1 blocker, now closed. Memory tables get `user_id` and `scope` from the **first** migration — one user today, but retrofitting it later is a migration | 22 Aug |
 | **D25** | **The client is rebranding Encharge Capital → Fundd (`fundd.com.au`)** | Brand-facing copy, funnels and notification addresses move to Fundd. **GHL stays white-labelled at `app.enchargecapital.com`** — do not "fix" that to fundd.com.au. Notification address is now `rossb@fundd.com.au`, superseding `Ross@enchargecapital.com` in the 08 Aug spend-cap agreement | 22 Aug |
 | **D26** | **Six delivery stages replace the five phases**, everywhere: 1 GHL + Meta · 2 Foundations + AI trained on voice · 3 Memory + dashboard · 4 Website reading and storage · 5 Content, carousels, ad copy · 6 Monitoring, testing, docs, handover | Stage 1 is complete, signed off and paid. Phase numbering in older entries below refers to the superseded five-phase plan — read it as history, not as the current map | 22 Aug |
 | **D27** | **Commercials: 1320 total. 198 on sign-off of each of stages 1–4, 528 at the end** | Stage 1's 198 is **paid**. Supersedes the "5 phases, $100 upfront" line in the 07 Aug communication log | 22 Aug |
-| **D28** | **The live pipeline is "Finance Pipeline" with 10 stages**: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding | **This replaces the nine stages Ross gave on 08 Aug** (`lead_in`, `full_details`, `booked_calendar`, `docs_sent`, `ongoing_loan_app`, `no_show`, `retarget`, `disqualify`, `settled`) — those were never built and exist nowhere. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still carry the nine — correction pending as of 23 Aug. Closes R15 | 22 Aug |
+| **D28** | **The live pipeline is "Finance Pipeline" with 10 stages**: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding | **This replaces the nine stages Ross gave on 08 Aug** (`lead_in`, `full_details`, `booked_calendar`, `docs_sent`, `ongoing_loan_app`, `no_show`, `retarget`, `disqualify`, `settled`) — those were never built and exist nowhere. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still carry the nine — correction pending as of 23 Aug (**both corrected later on 23 Aug, FND-200**). Closes R15 | 22 Aug |
 | **D29** | **A dashboard is in scope, at Stage 3. This supersedes D12** (08 Aug, "Notion is the interface, not a custom web app") | The Scope v3 assistant sits on a dashboard. Notion remains useful as an internal working surface, but it is no longer the answer to "an app on my phone" | 22 Aug |
 | **D30** | **The real lead path is: Facebook ad video → FUNDD landing page → form → Discovery Session calendar booking** | Earlier assumptions about the entry path were wrong. The FUNDD funnel is the live landing page and **stays on its `sites.leadconnectorhq.com` address** — the client will not point a custom domain at it because `fundd.com.au` belongs to his aggregator group. Do not propose a domain swap. Closes R23 | 22 Aug |
 | **D31** | **Refi Pixel is the single Meta pixel in use.** Six pixels exist in the account, not three | Refi Pixel is installed on the FUNDD funnel with Conversions API sending the `Lead` event server-side, on a token **scoped to that pixel only**. Ad account and pixel access granted to the developer | 22 Aug |
 | **D32** | **Per-lead notifications reduced from six to one** (two if the lead also books) | Six notifications per lead trains the recipient to ignore all six. One alert that is always read beats six that are muted | 22 Aug |
+| **D33** | **Memory-table ownership: every memory table carries `user_id not null` and `scope in ('user','workspace')`, **default `workspace`**, from the first migration. No `scope_id`, no `conversation` scope.** Replaces the 09 Aug `scope (global\|user\|org) + scope_id` shape. *(The first draft the same day said default `user`; corrected on review — see the second 23 Aug entry)* | **The client was told in writing that memory is shared — one brain for the business, whatever anyone teaches it is there for everyone — so the resting state is `workspace`.** `user` is the opt-in private exception, kept so "shared by default" never has to mean "nothing can be private", and because adding that distinction once rows exist means guessing which old rows were meant to be private. "Follows him across devices" = keyed on the logged-in user, not the device (the prototype's localStorage failure) — hence `user_id` on every row as author/owner. `org` is gone with the research engine — website knowledge is the Stage 4 store, kept out of memory as a trust boundary. `workspace_id` is *not* added now because it can be backfilled later (one workspace); `user_id` *cannot* be backfilled after the fact — that asymmetry decides what goes in migration one. Full reasoning `SCHEMA.md` §4 | 23 Aug |
+| **D34** | **Stage 2 "done" is twelve evidence-based criteria** (`PHASE-ACCEPTANCE.md` Stage 2): CI green; schema from zero; RLS proven by test output; 401/403/allowlisted; every Claude call metered and the cap refuses *before* the request; no `sk-ant-` in client assets and no browser request to `api.anthropic.com`; voice traceable to CLIENT-CONTEXT §1/§9–§11; a ≥ 20-prompt code-checked voice-conformance suite at 100%; **the client reads five generated posts and confirms he would publish at least three** (was a 10-pair blind A/B — replaced the same day on review, see the second 23 Aug entry); phone demo at 375/768/1280; conversations follow the user across devices; regression green | "Trained on his voice" is otherwise a matter of taste. Every item is a test output, an HTTP response, a row, or a count; the single client judgement (item 9) is a count he can give in one sitting. Memory *recall* across conversations is deliberately Stage 3 — Stage 2 proves the conversation itself persists against the user | 23 Aug |
+| **D35** | **Runtime is Node 24 (LTS), not Node 20** — `.nvmrc`, `engines`, `@types/node`, CI | Node 20 is near end of life and the developer's machine is already on 24; keeping CI on 20 only creates a runtime nobody actually tests against. Typecheck, lint and the 118 tests pass on 24.15 | 23 Aug |
 
 ---
 
@@ -81,6 +84,82 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-23 — [FND-200 review] Three corrections before push: Node 24, shared memory by default, item 9 swapped
+**Did:** (1) **Node 20 → 24 everywhere** (D35): `.nvmrc`, `package.json` `engines` (`>=24`),
+`@types/node` → `^24`, CI step name (it reads `.nvmrc`), `CLAUDE.md` §2 stack table,
+`README.md`, `TASKS.md` 2.1.7. The frozen five-phase task 1.1 and the earlier 23 Aug entry
+below still say Node 20 — history, left as written. Re-ran typecheck, lint and tests on 24.15:
+all green, 118/118, coverage unchanged. (2) **`SCHEMA.md` §4: `scope` default flipped to
+`'workspace'`** — the client was told in writing that memory is shared, one brain for the
+business; a per-user default contradicted that. Column and check constraint unchanged; the
+reasoning, the scope table, the `conversations` column line, the RLS example (§7, now
+`scope = 'workspace' or user_id = auth.uid()`) and the verification sentence updated; D33 row
+corrected. (3) **`PHASE-ACCEPTANCE.md` Stage 2 item 9** — the 10-pair blind A/B is dropped;
+replaced by "the client reads five generated posts and confirms he would publish at least
+three". Items 1–8 and 10–12 untouched. `TASKS.md` 2.5.4 and D34 follow.
+**Decided:** D35. D33 and D34 amended in place with the reason (reviewer correction, same day).
+**Surprised by:** nothing. `@types/node@^24` installed cleanly; no type changes needed.
+**Next:** reviewer pushes; CI is the first run on Node 24 in a clean environment. Then part 2.
+
+---
+
+### 2026-08-23 — [FND-200 · Stage 2 part 1] Scope v3 doc alignment finished + repo foundation built — staged, NOT committed
+**Did:** Finished the doc-set: **`SCHEMA.md`** (ten-stage `pipeline_stage`, nine kept as a
+superseded note; `organizations` / `org_sources` / `rankings` / `rubric_versions` /
+`email_verifications` / `merge_log` + the social-insights tables parked verbatim under an OUT
+OF CURRENT SCOPE heading; `consumer_leads` with `consent_basis` / `opt_out` kept; memory layer
+rewritten with `user_id` + `scope` and the reasoning — D33; new §2a Stage 4 knowledge-store
+placeholder; RLS pattern now shows the memory policy; §8 lists the proposed part-2 migration
+set). **`SECURITY.md`** kept in full — T11 + the server-side-only Anthropic key rule citing R18,
+§12 scopes updated (`customFields`, `customValues`, `tags`), phase→stage mapping, R18 added to
+the handover checklist. **`PHASE-ACCEPTANCE.md`** restructured around six stages: Stage 1
+recorded as demonstrated, Stage 2 definition of done (D34), Stages 3–6 as starting points, the
+09 Aug five-phase criteria kept verbatim under SUPERSEDED. **`TASKS.md`** six stages, Stage 2
+as seven parts with old IDs in brackets, Stage 1 complete, Notion 1.37/1.38 carried as done,
+five-phase list frozen at the bottom. **`RUNBOOK.md`** Serper / MillionVerifier / Sheets /
+rubric / social-token procedures moved to a parked section, key rotation / backup / escalation
+kept, Anthropic-key rotation and R18 added. **`README.md`** docs map, six stages, blocker
+closed, rebrand. **`TESTING.md`** two notes (CI status, shipped modules).
+**Repo foundation:** `package.json` (Node ≥ 20, `.nvmrc` 20), TypeScript 5.9 strict +
+`exactOptionalPropertyTypes`/`noUncheckedIndexedAccess`, ESLint 10 flat config
+(typescript-eslint strict-type-checked, `no-console`, `only-throw-error`, no-floating-promises),
+Prettier, Vitest 4 with v8 coverage thresholds 80/75/80/80. **`src/lib/errors.ts`** (AppError +
+Config/Validation/Timeout/Network/HttpStatus/CircuitOpen, `ensureError`, `Result`),
+**`src/lib/logger.ts`** (JSON lines; redaction by key fragment *and* value pattern inside a
+single serialiser — nested, Maps, URLs, Errors, cycles, depth, truncation), **`src/lib/http.ts`**
+(timeout via AbortController, retry only for idempotent requests — GET/HEAD/OPTIONS by default,
+opt-in otherwise — equal-jitter exponential backoff, Retry-After, per-origin breaker
+closed→open→half-open with one trial). **118 unit tests**, coverage 99.05% lines / 97.92%
+branches. **gitleaks**: `.gitleaks.toml` extends defaults with GHL `pit-`, Notion, Supabase
+service-role rules; `.githooks/pre-commit` is **fail-closed** (no gitleaks → commit refused);
+`core.hooksPath` set locally and via `npm prepare`. **Proven:** a synthetic 108-char
+`sk-ant-api03-…AA` key staged in `src/lib/planted-secret.ts` → hook exit 1, rule
+`anthropic-api-key`; plant removed; hook exit 1 with no gitleaks on PATH; clean tree exit 0;
+git history scan clean. **CI** `.github/workflows/ci.yml`: Node 20, typecheck, lint, gitleaks
+(pinned 8.30.1 binary, history + working tree), unit tests with the coverage gate.
+**Decided:** D33 (memory `scope` shape) and D34 (Stage 2 done-definition) above. `contacts`
+left in the live SCHEMA section with a caveat because the instruction parked six tables by
+name and not that one — part 2 decides if it ships. Added `ghl_opportunity_id` to
+`consumer_leads` and `entity = 'stage'` to `ghl_field_map` because Stage 1 built a real
+pipeline and the stage lives on the opportunity — engineering consequence, flagged for review.
+`api_usage` gains cache-token columns and `user_id`/`conversation_id` (cost attaches to a
+conversation now). Prettier/ESLint/coverage packages counted as "part of" the four named tools.
+`@types/node` pinned to 20 to match the engine; TypeScript pinned to 5.9 (npm resolved 6.0.3,
+which typescript-eslint 8.67 is not declared against) — **flagged, not silently chosen.**
+**Surprised by:** (1) npm's `latest` for `typescript` is now 6.x and `@types/node` 26 — pinned
+both down. (2) Vitest 4's text reporter omits 100%-covered files (`errors.ts` is 100/100 — see
+`coverage-summary.json`). (3) `new Response(body, {status: 304})` throws (null-body status) — a
+test fixture, not a bug. (4) `git diff` warns LF→CRLF on every doc: `core.autocrlf=true`
+globally; added `.gitattributes` `* text=auto eol=lf` so the repo stays LF. (5) The local
+`gitleaks dir` scan finds four real keys in `.env` — expected, it is gitignored and untracked,
+but it is a reminder that the GHL token, Serper and MillionVerifier keys in that file are live.
+**Not verified:** CI green — nothing is pushed (by instruction). The workflow was checked by
+reading and by running each command locally on Node 24; `node-version-file: .nvmrc` → 20 in CI.
+**Next:** reviewer reads the FND-200 report, requests changes, then commits/pushes. Then
+**part 2** (database, migrations, RLS) from `SCHEMA.md` §8 — nothing from parked sections.
 
 ---
 
@@ -435,10 +514,10 @@ client's account without explanation. Not resolved — see R1.
 | ~~R1~~ | ~~Supabase project paused; MongoDB Atlas org appeared. Platform unconfirmed~~ | — | **CLOSED 22 Aug. The database is Supabase, confirmed by the client. The MongoDB question is closed** (D24). The pause was the free-tier 7-day idle auto-pause, not a decision — unpause at Stage 2 kickoff. `SCHEMA.md` stays relational Postgres with RLS |
 | R2 | GHL custom field mapping not yet confirmed | Phase 3 push built against wrong fields | Open — `ghl_field_map` table isolates the blast radius. **12 Aug: count corrected, cause unchanged.** Full 180-contact pagination finds **21 custom field IDs, not the 9 reported on 10 Aug** — that figure was a 100-record sampling artefact. `locations/customFields.readonly` was requested and **still denied** (see R21), so names and types remain unreadable. Value-shape profiling in `GHL-AUDIT.md` §3.5 infers likely types and concludes `encharge_org_id`/`ai_score`/`ai_tier` cannot exist (they are our own inventions and this system has never written here), but `lead_type`/`lead_source` are genuinely collision-prone. **Hard rule until the scope lands: create no custom field.** A duplicate name in a live CRM cannot be told apart by a workflow reading it. **22 Aug — largely resolved by construction.** Stage 1 created **ten** fields in **their own folder**, deliberately separated from the account's older fields, so a name collision cannot be ambiguous in practice: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate. The token now carries `customFields`. Residual: the 21 pre-existing field IDs are still unmapped and unread — leave them alone |
 | ~~R13~~ | ~~`GHL_LOCATION_ID` is empty in `.env`~~ | — | **CLOSED 10 Aug.** Supplied by the developer the same day. Contacts, opportunities and pipelines now return HTTP 200 |
-| ~~R15~~ | ~~Ross's nine pipeline stages do not exist in GoHighLevel~~ | — | **CLOSED 22 Aug — resolved as option (A), with a different stage list.** A new pipeline, **"Finance Pipeline"**, was created with **ten** stages: New Lead, Appointment Booked, Contacted, Qualified, Docs Requested, Docs Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding. **The nine stages in our notes were never built and exist nowhere** — they were a plan recorded as fact. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still need correcting (pending as of 23 Aug). See D28 |
+| ~~R15~~ | ~~Ross's nine pipeline stages do not exist in GoHighLevel~~ | — | **CLOSED 22 Aug — resolved as option (A), with a different stage list.** A new pipeline, **"Finance Pipeline"**, was created with **ten** stages: New Lead, Appointment Booked, Contacted, Qualified, Docs Requested, Docs Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding. **The nine stages in our notes were never built and exist nowhere** — they were a plan recorded as fact. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still need correcting (pending as of 23 Aug — **both done on 23 Aug, FND-200**). See D28 |
 | R16 | GHL lead sources are campaign-level free text (`Calendly`, `meta_vsl_lp`, `Facebook`) and do not match our seven `lead_source` categories. GHL has no equivalent of `outbound_research` | Two-way sync would corrupt whichever side is treated as authoritative | Open — needs a translation table in the same place as `ghl_field_map`. Low risk, but decide before the first push |
 | R17 | Nobody in the GHL account is marked `dnd` — no opt-out signal exists in the CRM at all | If opt-outs are being tracked outside GHL, our `opt_out` field is not the system of record and someone who unsubscribed could be contacted again. Spam Act and Do Not Call exposure | Open — **worsened 12 Aug.** Confirmed across **all 180** contacts, not a sample. And `GET /forms/submissions` returns `total: 0` across all 14 forms, so there is **no per-submission consent record for anyone already in the CRM** either. The only explicit consent artefact in the entire account is the calendar consent string (`GHL-AUDIT.md` §3.3), which covers only leads who booked. Asked Ross where opt-outs and consent live (§6 Q4). **22 Aug — still open, and explicitly carried into Scope v3.** No consent records exist for the ~180 existing contacts, and no contact is marked opted out. This is live Spam Act exposure on a real contact list. The `consent_basis` / `opt_out` design in `SCHEMA.md` **stays** — it is still correct, and it is the mitigation rather than the problem |
-| ~~R14~~ | ~~Unknown whether the GHL token can write~~ | — | **CLOSED 22 Aug.** Answered by delivery rather than by probe: Stage 1 created a pipeline, ten custom fields and five workflows in the live account. Writes work. The token now also carries `customFields`, `customValues` and `tags` — `SECURITY.md` §12 still lists the old scopes; update pending as of 23 Aug |
+| ~~R14~~ | ~~Unknown whether the GHL token can write~~ | — | **CLOSED 22 Aug.** Answered by delivery rather than by probe: Stage 1 created a pipeline, ten custom fields and five workflows in the live account. Writes work. The token now also carries `customFields`, `customValues` and `tags` — `SECURITY.md` §12 still lists the old scopes; update pending as of 23 Aug (**done later on 23 Aug, FND-200**) |
 | **R18** | **Live Anthropic API key published in plain text** at `enchargecontrol.netlify.app` (client's existing prototype). Sent from the browser as `x-api-key`; readable via `view-source:` with no tooling | **Active billing exposure on the client's Anthropic account.** Anthropic keys have no IP or origin restriction, so anyone holding it can spend against the account. The agreed $50/month cap is a control in *our* pipeline and cannot restrain a third party. Not undoable by taking the site down — it may persist in caches, Netlify deploy history and archives | **OPEN — URGENT, act before the scope conversation.** (1) Revoke the key in the Anthropic Console — correct whether or not it is still live, costs nothing if already dead. (2) Check usage/billing for unexplained spend. (3) Set an account-level spend limit. **The key was deliberately not validated** — testing it would spend the client's money using a compromised credential — so "still active" is unknown and does not change the action. Full detail in `docs/EXISTING-PROTOTYPE.md` §2. **22 Aug — rotation is still unconfirmed.** Ten days on, nobody has confirmed the key was revoked. Chase it as a standalone item; it is not blocked by anything and never was |
 | R19 | The prototype's business-context prompt says `Stack: HubSpot CRM` | If reused verbatim in Phase 4 it tells the model the wrong CRM, and D11 set it to GoHighLevel on 08 Aug | Open — trivial. Fix during the merge into `CLIENT-CONTEXT.md`. Logged so the stale line is not copied across unnoticed |
 | **R20** | **GoHighLevel's API does not expose workflow contents at any scope.** `GET /workflows/` returns seven metadata fields (`id, name, status, version, createdAt, updatedAt, locationId`). `/workflows/{id}`, `/steps`, `/actions`, `/versions` all return `404 "Cannot GET"` — route absent, not scope denied | Triggers and action steps for the 21 workflows — including the 5 drafts being quoted — are unobtainable programmatically. Any estimate is inference, and any tooling that hoped to read GHL automations is dead on arrival | **Open, and not fixable by us or by Ross.** Platform limitation, not permissions. Workaround is human: screen-share or screenshots of the 5 draft canvases (`GHL-AUDIT.md` §6 Q8). Until then the estimate is a range (21–44 h, ~27 h working number), not a fixed price. Do not quote fixed-price on GHL workflow work sight-unseen. **22 Aug — keep this risk permanently.** Any document that implies GHL workflows can be read via the API must say plainly that they cannot. The five Stage 1 workflows are documented from what we built, not from what the API returns |

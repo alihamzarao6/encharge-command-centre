@@ -47,7 +47,9 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
 | `memory/facts` | Supersede logic, current-facts query, scope isolation |
-| `logger/redact` | Every secret-shaped key redacted, including nested |
+| `logger/redact` | Every secret-shaped key redacted, including nested. **Shipped 23 Aug** — `tests/unit/logger.test.ts` |
+| `errors` | Every class sets code / retryable / context; `ensureError` wraps every non-Error thrown value; `Result` helpers. **Shipped 23 Aug** |
+| `http` | Retry counts exact (retries=3 → 4 requests); POST never retried unless declared idempotent; 4xx not retried and not counted by the breaker; backoff + jitter + Retry-After; timeout aborts; breaker opens **and** closes (half-open trial success closes, failure re-opens), keyed per origin. **Shipped 23 Aug** |
 
 Boundary cases are mandatory: empty input, null, unicode, extremely long strings, and the
 exact threshold value (39/40/41, not just 20 and 90).
@@ -157,6 +159,14 @@ On every push:
 8. `npm run n8n:validate`
 
 Red CI blocks merge. No exceptions, no "will fix after".
+
+*Status 23 Aug 2026 (Stage 2 part 1):* steps 1–5 and 7 are live in `.github/workflows/ci.yml`
+— gitleaks runs twice (full git history and the working tree) from a pinned binary. Step 6
+(`test:int` with Supabase in a service container) is enabled in Stage 2 part 2 with the first
+migration; step 8 (`n8n:validate`) in Stage 3 with the first workflow. Each arrives in the same
+commit as the thing it tests. The coverage gate is enforced by vitest's `thresholds` (80 lines /
+75 branches / 80 functions / 80 statements), so a drop below the floor is a non-zero exit, not
+a warning.
 
 ---
 

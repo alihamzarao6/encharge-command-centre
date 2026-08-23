@@ -1,0 +1,38 @@
+# gitleaks configuration — Encharge Command Centre
+# Extends the default ruleset (which already covers Anthropic `sk-ant-…`, JWTs, generic API
+# keys, private keys) with the credential shapes this project actually handles.
+# Run by .githooks/pre-commit (fail-closed) and by CI. See docs/SECURITY.md §2.
+
+title = "encharge-command-centre"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ghl-private-integration-token"
+description = "GoHighLevel Private Integration token (pit-<uuid>)"
+regex = '''\bpit-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'''
+keywords = ["pit-"]
+entropy = 3.0
+
+[[rules]]
+id = "notion-integration-token"
+description = "Notion internal integration token (secret_… / ntn_…)"
+regex = '''\b(?:secret|ntn)_[A-Za-z0-9]{40,}\b'''
+keywords = ["secret_", "ntn_"]
+entropy = 3.5
+
+[[rules]]
+id = "supabase-service-role-key-assignment"
+description = "Supabase service_role key assigned to a variable (JWT or sb_secret_)"
+regex = '''(?i)(?:service_role|sb_secret)[a-z0-9_-]*\s*[:=]\s*['"]?(eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,})'''
+secretGroup = 1
+keywords = ["service_role", "sb_secret"]
+
+[allowlist]
+description = "Generated or vendored content that is never hand-written"
+paths = [
+  '''^node_modules/''',
+  '''^coverage/''',
+  '''^package-lock\.json$''',
+]

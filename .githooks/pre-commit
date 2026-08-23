@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# Pre-commit secret scan. FAIL-CLOSED: if gitleaks is not available the commit is refused.
+# A secret scanner that silently passes when the tool is missing is the kind of silent
+# failure CLAUDE.md forbids — and the client's previous prototype shipped a live Anthropic
+# key in page source (docs/MEMORY.md R18). Install gitleaks; do not bypass with --no-verify.
+#
+# Enabled by:  git config core.hooksPath .githooks   (also run by `npm install` via "prepare")
+# Binary:      gitleaks on PATH, or GITLEAKS_BIN=/path/to/gitleaks
+set -u
+
+if [ -n "${GITLEAKS_BIN:-}" ] && [ -x "${GITLEAKS_BIN}" ]; then
+  GITLEAKS="${GITLEAKS_BIN}"
+elif command -v gitleaks >/dev/null 2>&1; then
+  GITLEAKS="gitleaks"
+else
+  echo "pre-commit: gitleaks is not installed — commit refused (fail-closed)." >&2
+  echo "  Install: winget install Gitleaks.Gitleaks   |   brew install gitleaks" >&2
+  echo "           https://github.com/gitleaks/gitleaks#installing" >&2
+  echo "  Or set GITLEAKS_BIN=/path/to/gitleaks for this shell." >&2
+  exit 1
+fi
+
+"${GITLEAKS}" git --pre-commit --staged --redact --no-banner --config .gitleaks.toml . 
+status=$?
+
+if [ "${status}" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-commit: gitleaks found a secret-shaped value in the STAGED changes. Commit blocked." >&2
+  echo "  1. Remove it from the change.  2. If it was a real key, rotate it now (docs/RUNBOOK.md §4)." >&2
+  echo "  3. If it is genuinely a fixture, build it by concatenation (see tests/unit/logger.test.ts)." >&2
+fi
+exit "${status}"

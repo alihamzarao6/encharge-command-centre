@@ -48,7 +48,7 @@ stop and ask.
 | UI | Dashboard (Stage 3). Notion stays as an internal working surface, not the primary interface (D29) |
 | CRM | **GoHighLevel** — Private Integration token; granted scopes recorded in `docs/SECURITY.md` §12. White-labelled at `app.enchargecapital.com` — stays that way through the rebrand (D25) |
 | Ads / pixel | Meta — **Refi Pixel** + Conversions API, token scoped to that pixel only (D31) |
-| Custom code | TypeScript (Node 20), Supabase Edge Functions (Deno) |
+| Custom code | TypeScript (Node 24 LTS — D35), Supabase Edge Functions (Deno) |
 | Tests | Vitest + Supabase local + msw for HTTP fixtures |
 
 **Parked with the research engine (out of current scope, D23):** Serper (search),

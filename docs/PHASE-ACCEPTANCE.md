@@ -1,14 +1,253 @@
 # PHASE-ACCEPTANCE.md — Sign-off Criteria
 
 Internally this defines "done". Externally it defines what the client approves when they
-release each payment. It matches the scope document sent to Ross on 09 Aug 2026.
+release each payment. **It matches Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32): six
+stages, 1320 total, 198 on sign-off of each of stages 1–4, 528 at the end (D27).** The
+five-phase criteria from the 09 Aug 2026 scope document are superseded and kept verbatim at
+the bottom of this file for the record.
 
-A phase is complete when all criteria are demonstrated live, the regression suite is green,
-and the client confirms in writing.
+A stage is complete when all criteria are demonstrated live, the regression suite is green,
+and the client confirms in writing. "Demonstrated" means evidence — a test output, an HTTP
+response, a row in a table, a screenshot of the phone — not a statement that it works.
+
+The file keeps its name (`PHASE-ACCEPTANCE.md`) because `CLAUDE.md`, `TASKS.md` and the
+MEMORY.md entries reference it by that name; "phase" in the filename means "stage".
 
 ---
 
-## Phase 1 — Foundation · Payment 1 of 5
+## Stage 1 — GoHighLevel + Meta · Payment 1 of 5 (198) · ✅ COMPLETE, signed off and paid 22 Aug 2026
+
+**Delivered, as actually built in the live account** (location `tgw5Q3BnoZoSsVOnRUxB`):
+- **Finance Pipeline** with ten stages, in order: New Lead · Appointment Booked · Contacted ·
+  Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled ·
+  Lost / Not Proceeding (D28). A new pipeline — nothing shared with the other business in the
+  location was touched (R22).
+- **Ten custom fields in their own folder**, deliberately separate from the account's 21
+  older fields: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type,
+  Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate.
+- **Five live workflows**: New Lead Intake, Instant Lead Reply, 24hr No Contact Alert,
+  Document Chase, Stage Notifications — all copy rewritten for refinance, not first home
+  buyer.
+- **Refi Pixel** installed on the FUNDD funnel with the **Conversions API sending the `Lead`
+  event server-side**, on a token scoped to that pixel only (D31). Six pixels exist in the
+  account; this is the one in use.
+- **Notifications reduced from six per lead to one** (two if the lead also books), to
+  `rossb@fundd.com.au` (D32, D25).
+
+**Demonstrated** (22 Aug): the pipeline and fields visible in GHL; the five workflows
+published; a `Lead` event arriving at Refi Pixel via the Conversions API; the notification
+path firing once per lead. Signed off and 198 paid the same day (MEMORY.md §4, 22 Aug).
+
+**Carried forward, not blocking:** R21 (three GHL scopes recorded as denied on 12 Aug — the
+token now carries `customFields`, `customValues` and `tags`; reconcile when next probed),
+R24 (`finance-option.com.au` sending to Refi Pixel since June, origin unknown — do not filter
+before it is known), R17 (no consent record for ~180 existing contacts).
+
+---
+
+## Stage 2 — Foundations + AI trained on the client's voice · Payment 2 of 5 (198)
+
+Stage 2 ends in **something the client can open on his phone and talk to**, in his voice, on a
+foundation the remaining stages build on without a rewrite. It is delivered in seven parts
+(`tasks/TASKS.md`): 1 docs + repo foundation · 2 database, migrations, RLS · 3 auth and user
+management · 4 Claude integration layer · 5 voice and brand prompt layer · 6 chat interface,
+responsive, deployed · 7 end-to-end test and acceptance.
+
+### What "done" means — and why each item is testable rather than subjective
+
+The risk in this stage is that "trained on his voice" is a matter of taste and "foundations"
+is invisible. So every criterion below is either a **test output**, an **HTTP response**, a
+**database row**, or a **count the client produces himself**. Exactly one item (item 9) asks for
+the client's judgement, and it is structured so the answer is a number.
+
+**Foundations (parts 1–4)**
+
+1. **CI is green on the demonstrated commit** — typecheck, lint, gitleaks, unit tests,
+   coverage ≥ 80% lines / 75% branches. *Evidence:* the GitHub Actions run. The gitleaks hook
+   is shown blocking a planted key pattern locally.
+2. **The schema rebuilds from zero** — `supabase db reset` replays every migration into a
+   working schema with **every** table RLS-enabled and forced, and the memory tables carry
+   `user_id` and `scope` (D24). *Evidence:* the reset output and `\d` of the memory tables.
+3. **RLS is proven, not claimed** — `tests/security/rls.test.ts` output shows: an anon client
+   receives zero rows from every table; an authenticated account not in `app_users` receives
+   zero rows from every table; user A cannot read user B's `user`-scoped memory rows and can
+   read `workspace`-scoped ones. *Evidence:* the test run, table by table.
+4. **Only allowlisted people get in** — an anonymous request to the chat endpoint returns
+   `401`; a real Supabase Auth account that is *not* in `app_users` returns `403` and sees an
+   empty UI; Ross's account gets through. *Evidence:* the three HTTP responses.
+5. **Every Claude call is metered and capped** — one chat turn produces one `api_usage` row
+   (model, input/output/cache tokens, cost); the daily cap is then set to a value already
+   spent and the next turn is **refused before the request reaches Anthropic**, with a clear
+   message in the UI. *Evidence:* the row, then the refusal and the absence of a new row.
+6. **The Anthropic key cannot be reached from the browser** (T11 — the prototype's failure,
+   R18) — a grep of the deployed client assets for `sk-ant-` returns zero hits, and the
+   browser's network panel for a complete chat turn shows no request to `api.anthropic.com`,
+   only to our endpoint. *Evidence:* the grep output and a screenshot of the network panel.
+
+**Voice (part 5)**
+
+7. **The voice is traceable** — the prompt layer is built from `CLIENT-CONTEXT.md` §1
+   (business, positioning, three pillars), §9 (copy frameworks), §10 (avatar) and §11
+   (operational rules), plus whatever samples Ross supplies, and **every rule in the prompt
+   cites its section**. A rule that cannot be traced is removed, not kept because it sounds
+   right. *Evidence:* the traceability table in the repo.
+8. **Voice conformance is a test suite, not an opinion** — a fixed set of **at least 20
+   prompts** (`tests/fixtures/voice/`) whose recorded responses are checked **by code** for
+   the rules that can be checked by code: never positions as a bank; states the three pillars
+   when asked for positioning; when asked for a Meta ad, produces Hook → Body → CTA with the
+   headline under 28 characters; one CTA per asset (Rule of One); no "HubSpot" or other stale
+   stack reference (R19); **no number, rate or claim that was not in the prompt** (R7 — an
+   invented figure under the client's name is the harm). **100% pass** on the recorded set in
+   CI; re-run live once in front of the client before sign-off. *Evidence:* the test output.
+9. **The client would publish it** — Ross reads **five generated posts** (in voice, from
+   briefs he has not seen the output of before) and confirms he **would publish at least
+   three** of them as they stand. This is the single subjective judgement in the stage, and it
+   is structured so the result is a count, taken once, in the acceptance session. *Evidence:*
+   the five posts and his three-or-more, recorded in `docs/MEMORY.md`. *(Replaced the 10-pair
+   blind A/B on 23 Aug — the client would not sit through it and it would block sign-off.)*
+
+**Chat on the phone (part 6)**
+
+10. **He can open it and talk to it on his phone** — the deployed URL opens on Ross's own
+    phone (not a resized browser window), he logs in, sends a message, and gets a reply in
+    voice. Verified at **375px, 768px and 1280px**: no horizontal scrolling, inputs at 16px or
+    larger so iOS Safari does not auto-zoom into a page it cannot zoom out of
+    (`EXISTING-PROTOTYPE.md`). *Evidence:* screenshots at the three widths and the live demo
+    on his phone.
+11. **Conversations follow him across devices** — a conversation started on the phone is
+    visible, with all its messages, on a laptop after logging in as the same user, and vice
+    versa. This proves the prototype's localStorage failure is gone: memory lives against the
+    user, not the device. *(Recall of facts across conversations is Stage 3; this item is the
+    conversation itself persisting.)* *Evidence:* the same conversation on two screens.
+
+**Acceptance (part 7)**
+
+12. `npm run test:regress` green, counts and coverage reported in numbers; items 1–11
+    recorded with their evidence in `docs/MEMORY.md`; client confirms in writing → **198**.
+
+**Not in Stage 2** (stated so it is not assumed): semantic memory and durable-fact recall
+across conversations (Stage 3); the dashboard beyond the chat screen (Stage 3); reading
+websites (Stage 4); structured content formats — carousels, ad-copy variants, post series
+(Stage 5); n8n workflows (Stage 3 onwards); any writes to GoHighLevel from the assistant.
+
+**Client responsibility before this stage:** the Supabase project unpaused (developer can do
+it — it is the free-tier idle auto-pause, D24); R18 — confirmation that the prototype's
+published Anthropic key has been revoked; voice samples if he has any he wants the assistant
+to sound like (optional — §1, §9–§11 are enough to start).
+
+---
+
+## Stage 3 — Memory + dashboard · Payment 3 of 5 (198)
+
+*Criteria to be tightened at Stage 3 kickoff in the same style as Stage 2. Starting points,
+from Scope v3 and the 09 Aug Phase 4 criteria that survive:*
+
+- Three-tier memory live: recent turns verbatim, semantic recall of past sessions
+  (`memory_chunks`, Voyage embeddings — R5), durable facts (`memory_facts`, append-only with
+  supersede). **Tell it a preference in one session on one device; start a fresh session on
+  another device; it recalls the preference.**
+- `user` vs `workspace` scope behaves as `SCHEMA.md` §4 says, proven by the RLS test.
+- Dashboard (D29) usable on a phone: conversations, cost, review queue, tasks. Verified at
+  375/768/1280.
+- Whitelisted tools, **two-turn confirmation on anything that writes** (D9); every tool
+  execution in `audit_log`; a declined write changes nothing.
+- n8n on Railway with Postgres backing, encrypted credentials, HMAC-verified webhooks.
+- Voyage AI account created (client responsibility, R5).
+
+---
+
+## Stage 4 — Website reading and storage · Payment 4 of 5 (198)
+
+*Criteria to be tightened at Stage 4 kickoff. Starting points:*
+
+- Point it at a URL → it reads the page and stores what it finds, **every field carrying
+  `source_url`, `fetched_at`, `extraction_method`, `confidence`** (CLAUDE.md rule 12,
+  `SCHEMA.md` §2a).
+- Open any stored fact and see the page it came from. A field that was not on the page is
+  `null`, never guessed (SECURITY.md §7).
+- Crawler safety: robots.txt honoured, SSRF cases in SECURITY.md §10 rejected by test, rate
+  limited per host, identified User-Agent.
+- **The adversarial-page suite passes** — pages containing hidden instructions do not alter
+  behaviour or trigger any tool (SECURITY.md §3).
+- Below-threshold facts go to the review queue, never to the store.
+- Re-read the same page twice → no duplicate rows.
+
+---
+
+## Stage 5 — Content, carousels, ad copy · (paid within the final 528)
+
+*Criteria to be tightened at Stage 5 kickoff. Starting points:*
+
+- From a brief or a stored page, it drafts social posts, carousel copy and ad copy in the
+  voice, following `CLIENT-CONTEXT.md` §9 (Green Brain hook, Red Brain body, Rule of One, Meta
+  headline under 28 characters, Google ad structure).
+- The Stage 2 voice-conformance suite extended to each format; 100% pass on the recorded set.
+- Nothing is published under the client's name from a draft that has not passed review
+  (CLAUDE.md rule 14, R7). Where a draft goes after approval is agreed at kickoff (GHL social
+  planner is connected — MEMORY.md 12 Aug — but nothing publishes without a decision).
+- Drafts, approvals and the check results are stored and visible on the dashboard.
+
+---
+
+## Stage 6 — Monitoring, testing, docs, handover · Payment 5 of 5 (528, covering Stages 5–6)
+
+- Monitoring workflow: daily health check, cost rollup, stale-data and token-expiry alerts —
+  verified by triggering a real failure and a real cap trip.
+- Full regression suite green; manual QA (`TESTING.md` §9) completed.
+- Runbook walked through end to end: rotate a key, restore a backup, re-run a failed
+  workflow, unpause a capped workflow.
+- Security checklist (`SECURITY.md` §13) — every box ticked, including R18 closed in writing.
+- All accounts and keys transferred to the client; developer access to the client's password
+  vault revoked in writing; all keys rotated so the developer's copies are dead.
+- Recorded walkthrough: daily use, the review queue, the chat, what to do when something
+  breaks.
+
+---
+
+## What is not in any stage
+
+Each is available as a separate, separately-priced engagement:
+
+- **The B2B outbound lead-research engine** — organisation research, website discovery,
+  decision-maker extraction, email verification, the two scoring rubrics and the Google Sheets
+  export. Never asked for by the client; parked, not deleted (D23)
+- Outbound email sending, sequencing or inbox warming
+- Scheduled social *insights* tracking (Instagram / Facebook / LinkedIn metrics) — parked, R3
+- Integration with the separate finance CRM Ross mentioned
+- CRMs beyond GoHighLevel
+- Authenticated scraping of any social platform
+- Phone or SMS integration
+- ~~A custom web frontend with its own login~~ — **superseded by D29 (22 Aug): a dashboard is
+  in scope at Stage 3**
+- Ongoing maintenance or support after handover
+
+---
+
+## Client responsibilities
+
+Delays here move the timeline, and that is worth agreeing now rather than discovering later:
+
+| Needed | By stage |
+|---|---|
+| ~~Database platform decision (Supabase or MongoDB)~~ | **Closed 22 Aug — Supabase (D24)** |
+| Confirmation the prototype's published Anthropic key is revoked (R18) | **Before Stage 2 sign-off** — it is also simply urgent |
+| Voice samples, if any (optional) | Stage 2 |
+| Voyage AI account | Before Stage 3 |
+| Answers on `finance-option.com.au` (R24), consent/opt-out location (R17), the shared GHL location (R22) | Before any stage that writes to GHL or publishes |
+| Review and sign-off within 3 business days of each demo | Every stage |
+
+---
+
+## SUPERSEDED — five-phase acceptance criteria from the 09 Aug 2026 scope document
+
+**Kept verbatim for the record. Not the current acceptance criteria.** These were written for
+the five-phase plan that Scope v3 replaced on 22 Aug 2026 (D23, D26). Phase 1's repo / schema /
+RLS items survive as Stage 2 parts 1–3; Phase 4's memory and tool items survive as Stage 3;
+Phase 2's crawler-safety and adversarial-page items survive as Stage 4. Everything about
+organisation research, contacts, verification, rubrics, CRM push of researched leads, Google
+Sheets and social insights is parked.
+
+### Phase 1 — Foundation · Payment 1 of 5
 
 **Delivered**
 - n8n running on Railway with Postgres backing, encrypted credentials, basic auth
@@ -30,7 +269,7 @@ from the outside and is the reason the next four phases work.
 
 ---
 
-## Phase 2 — Discovery and web data pulling · Payment 2 of 5
+### Phase 2 — Discovery and web data pulling · Payment 2 of 5
 
 **Delivered**
 - Intake from Notion and CSV with lead type classification
@@ -52,7 +291,7 @@ from the outside and is the reason the next four phases work.
 
 ---
 
-## Phase 3 — Contacts, verification, ranking, CRM · Payment 3 of 5
+### Phase 3 — Contacts, verification, ranking, CRM · Payment 3 of 5
 
 **Delivered**
 - Decision-maker extraction: name, title, email, phone, LinkedIn
@@ -82,7 +321,7 @@ receives leads and which custom fields to map to.
 
 ---
 
-## Phase 4 — Claude ops layer with memory · Payment 4 of 5
+### Phase 4 — Claude ops layer with memory · Payment 4 of 5
 
 **Delivered**
 - Conversational interface accepting operational commands
@@ -102,7 +341,7 @@ receives leads and which custom fields to map to.
 
 ---
 
-## Phase 5 — Social tracking, polish, handover · Payment 5 of 5
+### Phase 5 — Social tracking, polish, handover · Payment 5 of 5
 
 **Delivered**
 - Instagram, Facebook and LinkedIn insights pulled daily
@@ -128,7 +367,7 @@ phase sign-off.
 
 ---
 
-## What is not in any phase
+### What is not in any phase *(09 Aug list — superseded)*
 
 Each is available as a separate, separately-priced engagement:
 
@@ -144,7 +383,7 @@ Each is available as a separate, separately-priced engagement:
 
 ---
 
-## Client responsibilities
+### Client responsibilities *(09 Aug list — superseded)*
 
 Delays here move the timeline, and that is worth agreeing now rather than discovering later:
 

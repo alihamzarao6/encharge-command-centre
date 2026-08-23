@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+dist/
+package-lock.json
+docs/
+tasks/
+README.md
+CLAUDE.md
+.agents/
+.claude/
+n8n/workflows/
+supabase/
+tests/fixtures/
+*.md

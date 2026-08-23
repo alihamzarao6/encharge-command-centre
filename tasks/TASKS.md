@@ -4,13 +4,221 @@
 Work **one task at a time**, top to bottom. Do not skip ahead. Do not batch.
 Plan Mode before any task touching more than two files.
 After each task: tests pass → mark `[x]` → append to `docs/MEMORY.md` → `/clear`.
-Do not begin a phase until the previous is signed off in `docs/PHASE-ACCEPTANCE.md`.
+Do not begin a stage until the previous is signed off in `docs/PHASE-ACCEPTANCE.md` — stages
+map to client payments (D27).
 
-Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
+**Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32) is binding.** Six stages replace the five
+phases (D26). The original five-phase checklist is **frozen under the "PARKED / SUPERSEDED"
+heading at the bottom** — do not work from it. Where a live task is carried over from it, the
+old ID is given in brackets so the history stays traceable.
+
+Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline) · `[~]` in progress
 
 ---
 
-## PHASE 0 — Pre-build ✅ COMPLETE
+## STAGE 0 — Pre-build ✅ COMPLETE
+
+- [x] P0.1 Client access obtained: Supabase, Railway, Notion, GoHighLevel, Anthropic, LastPass, Google Sheets, MillionVerifier, MongoDB Atlas
+- [x] P0.2 CRM confirmed: **GoHighLevel** (Close and HubSpot dropped)
+- [x] P0.3 Lead types confirmed: eight *(research on three — superseded by D23: no research on any)*
+- [x] P0.4 Pipeline stages confirmed: ~~nine~~ **ten — the Finance Pipeline, built in Stage 1 (D28). The nine were never built (R15)**
+- [x] P0.5 Interface confirmed: ~~Notion (custom dashboard declined)~~ **superseded by D29 — a dashboard is in scope at Stage 3; Notion stays as an internal working surface**
+- [x] P0.6 API keys received: GoHighLevel Private Integration, Serper *(Serper parked with the research engine, D23)*
+- [x] P0.7 Spend cap ($50/mo) and alert address confirmed *(address now `rossb@fundd.com.au`, D25)*
+- [x] P0.8 Scope document approved by Saqib and sent to Ross *(superseded by Scope v3, 22 Aug)*
+- [x] P0.9 Docs revised to v2 (CLAUDE, PLAN, CLIENT-CONTEXT, SCHEMA, TASKS, MEMORY, PHASE-ACCEPTANCE)
+- [x] **P0.10 Resolve database platform: Supabase or MongoDB** — **CLOSED 22 Aug: Supabase, confirmed by the client (D24).** The pause was free-tier idle auto-pause
+- [ ] P0.11 Voyage AI account + key — **Stage 3** (memory layer), not before (R5)
+- [x] P0.12 Confirm GoHighLevel custom fields: map to existing or create new — **resolved by construction 22 Aug: Stage 1 created ten fields in their own folder; the 21 pre-existing fields stay untouched (R2)**
+
+---
+
+## STAGE 1 — GoHighLevel + Meta ✅ COMPLETE · signed off and paid 22 Aug 2026 (198)
+
+Built directly in the client's live accounts. Recorded here as delivered, not as a checklist
+to re-run. Detail: `docs/PHASE-ACCEPTANCE.md` Stage 1, `docs/MEMORY.md` 22 Aug.
+
+- [x] S1.1 **Finance Pipeline** created with ten stages: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding (D28). New pipeline; nothing account-wide touched (R22)
+- [x] S1.2 **Ten custom fields in their own folder**: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate
+- [x] S1.3 **Five live workflows**: New Lead Intake, Instant Lead Reply, 24hr No Contact Alert, Document Chase, Stage Notifications — copy rewritten for refinance
+- [x] S1.4 **Refi Pixel** on the FUNDD funnel, **Conversions API** sending `Lead` server-side on a pixel-scoped token (D31)
+- [x] S1.5 Notifications cut from six per lead to one (two if the lead books), to `rossb@fundd.com.au` (D32)
+- [x] S1.6 Client demo + sign-off → **PAYMENT 1 (198) — received**
+
+Carried forward from Stage 1, not blocking: R21 (GHL scope reconciliation), R24
+(`finance-option.com.au` → Refi Pixel), R17 (no consent record for ~180 contacts).
+
+---
+
+## STAGE 2 — Foundations + AI trained on the client's voice ← ACTIVE
+
+Ends in something the client can open on his phone and talk to. Definition of done:
+`docs/PHASE-ACCEPTANCE.md` Stage 2, items 1–12. Seven parts, in order; **do not start part
+N+1 until part N is reviewed.**
+
+### Part 1 — Scope v3 doc alignment + repo foundation (FND-200)
+
+*Docs first: parts 2–7 are built by reading these files.*
+
+- [x] 2.1.1 `docs/SCHEMA.md` — `pipeline_stage` → ten Finance Pipeline values (nine kept as superseded note); `organizations`, `org_sources`, `rankings`, `rubric_versions`, `email_verifications`, `merge_log` parked; `consumer_leads` with `consent_basis` / `opt_out` kept; memory tables carry `user_id` + `scope` (`user | workspace`) from the first migration, with the reasoning; RLS pattern and migration discipline kept in full
+- [x] 2.1.2 `docs/SECURITY.md` — kept in full incl. §3 prompt injection; §12 token scopes now include `customFields`, `customValues`, `tags`; Anthropic-key-server-side-only rule added with R18 as the reason (T11)
+- [x] 2.1.3 `docs/PHASE-ACCEPTANCE.md` — six stages; Stage 1 recorded as demonstrated; Stage 2 definition of done, testable; five-phase criteria kept verbatim under SUPERSEDED
+- [x] 2.1.4 `tasks/TASKS.md` — this file: six stages, Stage 2 in seven parts, Stage 1 complete, Notion done-items kept, five-phase list frozen below
+- [x] 2.1.5 `docs/RUNBOOK.md` — Serper, MillionVerifier, Voyage-for-research and rubric procedures moved out of the live sections and parked; key rotation, backup/restore, escalation kept
+- [x] 2.1.6 `README.md` — docs map, six stages, stale database blocker removed, rebrand noted
+- [x] 2.1.7 *(was 1.1)* Node 24 (was Node 20 — D35), TypeScript strict, ESLint, Prettier, Vitest
+- [x] 2.1.8 *(was 1.2)* `.gitignore` verified for `.env`; `gitleaks` pre-commit hook installed (fail-closed) and **shown blocking a planted key pattern**
+- [x] 2.1.9 *(was 1.3)* `src/lib/logger.ts` — structured logger, key-based secret redaction (`password`, `key`, `token`, `secret`, `authorization` …) at the serialiser level, nested objects included
+- [x] 2.1.10 *(was 1.4)* `src/lib/errors.ts` — typed error classes, `Result` type; never throw a string
+- [x] 2.1.11 *(was 1.5)* `src/lib/http.ts` — fetch wrapper: timeout, retry with exponential backoff + jitter (idempotent requests only), circuit breaker per origin
+- [x] 2.1.12 *(was 1.6)* Unit tests for 2.1.9–2.1.11: nested redaction, retry counts, breaker opens **and** closes. Coverage ≥ 80% lines / 75% branches
+- [x] 2.1.13 *(was 1.7)* GitHub Actions CI: typecheck, lint, gitleaks, tests with coverage gate
+- [ ] 2.1.14 Part 1 report reviewed; changes requested applied; working tree committed and pushed **by the reviewer's instruction only**
+
+### Part 2 — Database, migrations, RLS
+
+- [ ] 2.2.1 *(was 1.8)* **Unpause the Supabase project** (free-tier idle auto-pause, D24) and *(was 1.9)* confirm region `ap-southeast-2` (D8)
+- [ ] 2.2.2 Supabase CLI linked; `supabase start` works locally; `supabase/config.toml` committed
+- [ ] 2.2.3 *(was 1.10)* Migration: extensions (`pgcrypto`, `pg_trgm`, `vector`)
+- [ ] 2.2.4 *(was 1.18, moved first)* Migration: `app_users` (`user_id references auth.users`, `email`, `role`, `is_active`)
+- [ ] 2.2.5 *(was 1.15)* Migration: memory layer — `conversations`, `messages`, `memory_chunks`, `memory_facts`, **every one with `user_id not null` and `scope check (scope in ('user','workspace'))`** (D24, SCHEMA §4); trigger keeping `messages.user_id/scope` equal to the parent conversation
+- [ ] 2.2.6 *(was 1.14)* Migration: `api_usage` (with `user_id`, `conversation_id`, cache token columns), `audit_log`, `workflow_runs`
+- [ ] 2.2.7 *(was 1.11–1.13, reduced)* Migration: `pipeline_stage` / `lead_type` / `lead_source` check constraints (ten stages, D28) · `consumer_leads` with `consent_basis` + `opt_out not null default false` · `field_overrides` · `review_queue` · `crm_sync_log` · `ghl_field_map` (incl. `entity = 'stage'`) · `tasks` · `notion_sync_map`. **Decide and record whether `contacts` ships** (SCHEMA §2). Nothing from the parked section
+- [ ] 2.2.8 *(was 1.18)* Migration: RLS enable + force + deny-by-default on **every** table; staff-allowlist select policies; `own_or_workspace` policies on the four memory tables
+- [ ] 2.2.9 *(was 1.19)* Migration: `updated_at` triggers; audit triggers on `consumer_leads`, `contacts` (if shipped), `review_queue`, `memory_facts`, `app_users`
+- [ ] 2.2.10 *(was 1.20, reduced)* `supabase/seed.sql` — `app_users` rows (developer, Ross), ten `ghl_field_map` stage rows (IDs read from GHL, matched on ID not name)
+- [ ] 2.2.11 *(was 1.21)* **`tests/security/rls.test.ts`** — iterates `information_schema`: every table `rowsecurity` + `forcerowsecurity`; anon → 0 rows; non-allowlisted authenticated → 0 rows; user A cannot read user B's `user`-scope memory rows, can read `workspace` rows; no authenticated insert/update/delete policy on core tables
+- [ ] 2.2.12 *(was 1.22)* `supabase db reset` replays cleanly from zero — output recorded
+- [ ] 2.2.13 *(was 1.23)* Daily backups enabled; one real restore performed and documented in RUNBOOK §6
+- [ ] 2.2.14 `npm run test:int` wired (Supabase local in CI service container); CI step enabled; `docs/SCHEMA.md`, `docs/TESTING.md`, `docs/MEMORY.md` updated
+
+### Part 3 — Auth and user management
+
+- [ ] 2.3.1 Supabase Auth configured (email + password or magic link — decide and record); site URL and redirect URLs set for the deployed chat
+- [ ] 2.3.2 `src/lib/auth/` — verify a Supabase JWT server-side, look up `app_users`, deny if missing or `is_active = false`; typed result, no `any`
+- [ ] 2.3.3 Chat endpoint returns `401` (no token) and `403` (valid token, not allowlisted); unit tests for both plus expired token and tampered token
+- [ ] 2.3.4 Minimal user management: add / deactivate an `app_users` row through a migration-backed script or Edge Function (service role), audited. Ross and the developer added
+- [ ] 2.3.5 `docs/SECURITY.md` §5–§6 and `docs/MEMORY.md` updated; acceptance item 4 evidence captured
+
+### Part 4 — Claude integration layer
+
+- [ ] 2.4.1 *(was 2.12)* `src/lib/llm/client.ts` — Claude wrapper over `src/lib/http.ts`: model routing (`claude-sonnet-5` default, `claude-haiku-4-5-20251001` high-volume), prompt caching on the stable prefix, timeout, retry only on idempotent failures, **daily and monthly cap enforced in code before the call**, every call written to `api_usage` (model, input/output/cache tokens, cost)
+- [ ] 2.4.2 *(was 2.13–2.14)* `src/lib/llm/schemas.ts` + `parse.ts` — Zod schemas, tolerant parse, one retry with the validation error, then review queue (CLAUDE.md rule 13)
+- [ ] 2.4.3 **The Anthropic key is read from server environment only**; a test asserts no module importable by the client bundle references `ANTHROPIC_API_KEY`, and the CI build greps built client assets for `sk-ant-` (T11, R18)
+- [ ] 2.4.4 Contract tests against recorded Anthropic fixtures (msw); cap-trip test: cap already spent → call refused, no HTTP request made, no `api_usage` row
+- [ ] 2.4.5 `docs/SECURITY.md` §8, `docs/MEMORY.md` updated; acceptance items 5–6 evidence captured
+
+### Part 5 — Voice and brand prompt layer
+
+- [ ] 2.5.1 Voice corpus assembled **only** from `CLIENT-CONTEXT.md` §1, §9, §10, §11 and any samples Ross supplies; every rule in the system prompt cites its section (traceability table committed). Brand name in generated copy: **Fundd** (D25) — confirm with Ross before the first demo
+- [ ] 2.5.2 `src/lib/voice/` — system-prompt builder (pure function) + unit tests; stable prefix structured for prompt caching
+- [ ] 2.5.3 `tests/fixtures/voice/` — ≥ 20 fixed prompts with recorded responses; **code-checked conformance**: never positions as a bank; three pillars on positioning questions; Meta ad = Hook → Body → CTA, headline < 28 chars; one CTA per asset; no stale stack reference (R19); no number / rate / claim not present in the prompt (R7). 100% pass in CI
+- [ ] 2.5.4 Five generated posts prepared for acceptance item 9 (Ross confirms he would publish at least three as they stand) — *was a 10-pair blind A/B; replaced 23 Aug*
+- [ ] 2.5.5 `docs/CLIENT-CONTEXT.md` §9–§11 **untouched**; `docs/MEMORY.md` updated
+
+### Part 6 — Chat interface, responsive, deployed
+
+- [ ] 2.6.1 Chat UI: login, conversation list, message thread, composer. **Mobile-first**, verified at 375 / 768 / 1280 — no horizontal scroll, inputs ≥ 16px (iOS zoom trap, `EXISTING-PROTOTYPE.md`)
+- [ ] 2.6.2 Conversations and messages persisted server-side against `user_id` (SCHEMA §4) — the same conversation visible on phone and laptop after login
+- [ ] 2.6.3 Deployed at a stable URL over HTTPS; the browser calls **only our endpoint**, never `api.anthropic.com`; no secret in the bundle (build-time grep in CI)
+- [ ] 2.6.4 Error states visible, not silent: cap reached, auth failure, upstream timeout each show a message
+- [ ] 2.6.5 Screenshots at the three widths committed under `docs/assets/stage-2/`; `docs/RUNBOOK.md` §1 system map updated with the deployed URL and owner
+
+### Part 7 — End-to-end test and Stage 2 acceptance
+
+- [ ] 2.7.1 End-to-end test: login → send message → reply in voice → `api_usage` row → reload on a second device shows the conversation
+- [ ] 2.7.2 `npm run typecheck && npm run lint && npm run test:regress` green — counts and coverage recorded in numbers
+- [ ] 2.7.3 Acceptance items 1–12 walked through with evidence captured in `docs/MEMORY.md`
+- [ ] 2.7.4 Client demo on **his phone** + sign-off in writing → **PAYMENT 2 (198)**
+
+---
+
+## STAGE 3 — Memory + dashboard
+
+*Outline — detailed at Stage 3 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 3.*
+
+- [ ] 3.1 *(P0.11)* Voyage AI account + key (R5)
+- [ ] 3.2 *(was 4.1–4.4)* `src/lib/memory/` — facts (append-only, supersede, `user` / `workspace` scope isolation), chunks (summarise + embed via Voyage), retrieve (last N verbatim + vector top-k + current facts, token-budgeted); Voyage adapter + contract tests
+- [ ] 3.3 *(was 4.14–4.15)* Memory continuity test across sessions **and devices**; token-budget test
+- [ ] 3.4 *(was 4.5–4.9)* Tool registry: whitelisted, typed, read/write flag; **two-turn confirmation on writes** (D9); every execution → `audit_log`; confirmation-flow test. Tools revised for Scope v3 — no `run_research_batch`
+- [ ] 3.5 Dashboard (D29): conversations, cost rollup, review queue, tasks — mobile-first, 375 / 768 / 1280
+- [ ] 3.6 *(was 1.24–1.31)* n8n on Railway with **Postgres backing**, `N8N_ENCRYPTION_KEY` backed up, basic auth, timezone `Australia/Perth`; `src/lib/webhookAuth.ts` HMAC + timestamp with tests; global error workflow → `workflow_runs` + alert to `rossb@fundd.com.au`; `npm run n8n:export` / `n8n:validate`
+- [ ] 3.7 *(was 1.32, 1.36)* `src/lib/crm/ghl/client.ts` — read-only to start; contract tests on fixtures; every object matched on **ID, never name**; nothing account-wide (R22, R25)
+- [x] 3.8 *(was 1.37)* Via Notion MCP: parent page "Encharge Command Centre" + eight databases — **done 10 Aug** (parent page by hand; MCP has no teamspace-root parent). Notion is an internal working surface under D29
+- [x] 3.9 *(was 1.38)* Properties and relations per `PLAN.md` §7; editable vs read-only per CLIENT-CONTEXT §8 — **done 10 Aug**; enforced by the sync whitelist (D22), not by Notion
+- [ ] 3.10 *(was 1.39–1.42)* Notion client, views via `create_view`, phone pass, contract tests — **only if Stage 3 decides Notion is still worth wiring at runtime** (R9 — no workspace token for n8n yet)
+- [ ] 3.11 *(was 4.16)* Pipeline metrics reconcile against GoHighLevel, not our own count (CLIENT-CONTEXT §11)
+- [ ] 3.12 `npm run test:regress` green · client demo + sign-off → **PAYMENT 3 (198)**
+
+---
+
+## STAGE 4 — Website reading and storage
+
+*Outline — detailed at Stage 4 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 4.*
+
+- [ ] 4.1 Migrations for the knowledge store (`web_sources`, `web_facts` — SCHEMA §2a), every field with `source_url · fetched_at · extraction_method · confidence` NOT NULL
+- [ ] 4.2 *(was 2.7–2.11)* `src/lib/crawler/` — `urlSafety` (every SSRF case in SECURITY §10), `robots`, `fetch` (rate limit, size cap, timeout, redirect limit, re-check IP after redirect), `sanitize`, `extract` — all with tests
+- [ ] 4.3 *(was 2.15)* Reading prompt with the untrusted-content wrapper (SECURITY §3), **zero tools**; null-not-guess rule stated explicitly
+- [ ] 4.4 *(was 2.16–2.17)* Storage: raw HTML → Storage bucket, cleaned text → `web_sources`; `content_hash` skip; raw purged after 90 days (SECURITY §11)
+- [ ] 4.5 *(was 2.20)* `tests/security/injection.test.ts` — ≥ 10 adversarial pages, zero violations
+- [ ] 4.6 Below-threshold facts → `review_queue` (`entity_type = 'web_fact'`); approve writes through with an audited override
+- [ ] 4.7 Idempotency test: read the same page twice → identical row counts
+- [ ] 4.8 `npm run test:regress` green · client demo + sign-off → **PAYMENT 4 (198)**
+
+---
+
+## STAGE 5 — Content, carousels, ad copy
+
+*Outline — detailed at Stage 5 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 5.*
+
+- [ ] 5.1 *(was 4.10)* Generation grounded in CLIENT-CONTEXT §9 frameworks: social post, carousel (slide-by-slide copy), Meta ad, Google ad — each a typed schema
+- [ ] 5.2 Voice-conformance suite (Stage 2 part 5) extended per format; 100% pass on recorded fixtures
+- [ ] 5.3 Drafts stored with check results and approval state; nothing published unreviewed (`review_queue`, `entity_type = 'content_draft'`)
+- [ ] 5.4 Decide and record where approved drafts go (GHL social planner is connected — MEMORY 12 Aug; Meta ads account access granted 22 Aug) — **no publishing without a dated decision**
+- [ ] 5.5 Dashboard surfaces for drafts and approvals, mobile-first
+- [ ] 5.6 `npm run test:regress` green · client demo
+
+---
+
+## STAGE 6 — Monitoring, testing, docs, handover
+
+*Criteria: `PHASE-ACCEPTANCE.md` Stage 6. Paid with Stage 5 in the final 528.*
+
+- [ ] 6.1 *(was 5.10)* Monitoring workflow — daily health check, cost rollup, stale-data and token-expiry alerts; verified by a real failure and a real cap trip
+- [ ] 6.2 *(was 5.11)* `docs/RUNBOOK.md` completed and walked through end to end
+- [ ] 6.3 *(was 5.12)* Security checklist SECURITY.md §13 — every box ticked, **R18 closed in writing**
+- [ ] 6.4 *(was 5.13)* Rotate all keys; transfer ownership of every account to the client; LastPass access revoked in writing
+- [ ] 6.5 *(was 5.14)* Recorded walkthrough: daily use, review queue, chat, what to do when something breaks
+- [ ] 6.6 *(was 5.15)* Final `npm run test:regress` + full manual QA (TESTING.md §9)
+- [ ] 6.7 Client sign-off → **FINAL PAYMENT (528)**
+
+---
+
+## Blocked / parked
+
+| Item | Reason | Since | Unblocked by |
+|---|---|---|---|
+| ~~P0.10 database platform~~ | ~~Supabase paused, MongoDB org appeared, intent unconfirmed~~ | 09 Aug | **Closed 22 Aug — Supabase (D24)** |
+| R9 Notion workspace token for n8n | Developer is a member, not admin | 09 Aug | Ross — only needed if n8n writes to Notion at runtime (Stage 3, optional) |
+| R18 prototype's published Anthropic key | Rotation unconfirmed | 11 Aug | Ross — **urgent, independent of every task** |
+| R21 three GHL scopes | Recorded denied 12 Aug; token now carries the write scopes — reconcile | 12 Aug | Next GHL probe, or Ross |
+| R24 `finance-option.com.au` → Refi Pixel | Origin unknown | 22 Aug | Ross |
+
+*Anything sitting here more than 3 days goes into a client message, not silence.*
+
+---
+
+## PARKED / SUPERSEDED — the original five-phase checklist (09 Aug 2026)
+
+**Frozen. Do not work from this list.** Kept verbatim because it is the record of what was
+planned and because the research-engine tasks (Phase 2 discovery, Phase 3 contacts /
+verification / rubrics / Sheets, Phase 5 social insights) are **parked, not deleted** (D23,
+R3) — the designs remain correct if that work ever returns. Live tasks that were carried
+forward are listed above with their old ID in brackets; the checkboxes below are not
+maintained. `[x]` items below (P0.*, 1.37, 1.38) are genuinely done and are also recorded
+above.
+
+### PHASE 0 — Pre-build ✅ COMPLETE *(frozen)*
 
 - [x] P0.1 Client access obtained: Supabase, Railway, Notion, GoHighLevel, Anthropic, LastPass, Google Sheets, MillionVerifier, MongoDB Atlas
 - [x] P0.2 CRM confirmed: **GoHighLevel** (Close and HubSpot dropped)
@@ -27,9 +235,9 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## PHASE 1 — Foundation
+### PHASE 1 — Foundation *(frozen)*
 
-### 1A. Repository and tooling
+#### 1A. Repository and tooling
 - [ ] 1.1 Init repo, Node 20, TypeScript strict, ESLint, Prettier, Vitest
 - [ ] 1.2 `.gitignore`, verify `.env` is ignored, `gitleaks` pre-commit hook
 - [ ] 1.3 `src/lib/logger.ts` — structured logger with key-based secret redaction
@@ -38,7 +246,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 - [ ] 1.6 Unit tests for 1.3–1.5 (redaction incl. nested, retry counts, breaker opens/closes)
 - [ ] 1.7 GitHub Actions CI per `docs/TESTING.md` §8
 
-### 1B. Database
+#### 1B. Database
 - [ ] 1.8 **Restore the Supabase project from paused** (or execute the MongoDB decision from P0.10)
 - [ ] 1.9 Confirm region is Sydney (ap-southeast-2)
 - [ ] 1.10 Migration: extensions (`pgcrypto`, `pg_trgm`, `vector`)
@@ -56,7 +264,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 - [ ] 1.22 Verify `supabase db reset` replays cleanly from zero
 - [ ] 1.23 Enable daily backups; perform and document one real restore
 
-### 1C. n8n on Railway
+#### 1C. n8n on Railway
 - [ ] 1.24 Deploy n8n on Railway with **Postgres backing** (not SQLite)
 - [ ] 1.25 Set `N8N_ENCRYPTION_KEY`, basic auth, webhook URL, timezone `Australia/Perth`
 - [ ] 1.26 Back up the encryption key somewhere the client controls
@@ -66,14 +274,14 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 - [ ] 1.30 Global error workflow → writes `workflow_runs` + alerts Ross@enchargecapital.com
 - [ ] 1.31 `npm run n8n:export` / `npm run n8n:validate` scripts
 
-### 1D. GoHighLevel
+#### 1D. GoHighLevel
 - [ ] 1.32 `src/lib/crm/ghl/client.ts` — auth with Private Integration token, rate-limit handling
 - [ ] 1.33 Read the account's existing custom fields via API; populate `ghl_field_map`
 - [ ] 1.34 Create any missing custom fields (`encharge_org_id`, `lead_type`, `ai_score`, `ai_tier`, `ai_reasoning`, `email_status`, `email_is_inferred`, `source_url`)
 - [ ] 1.35 Confirm with Ross which pipeline receives leads, and map the nine stages to GHL stages
 - [ ] 1.36 Contract tests against recorded GHL fixtures
 
-### 1E. Notion
+#### 1E. Notion
 - [x] 1.37 Via Notion MCP: create parent page "Encharge Command Centre", then databases — Intake, Organisations, Contacts, Consumer Leads, Review Queue, Tasks, Social Dashboard, Ops Chat Log
       *Parent page created by hand in the UI — the MCP has no teamspace-root parent type. All eight databases created via MCP. See MEMORY.md 2026-08-10.*
 - [x] 1.38 Properties and relations per `docs/PLAN.md` §7; editable vs read-only per CLIENT-CONTEXT §8
@@ -83,7 +291,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 - [ ] 1.41 Open every view on a phone and fix anything that scrolls sideways
 - [ ] 1.42 Unit + contract tests against recorded Notion fixtures
 
-### 1F. Phase 1 gate
+#### 1F. Phase 1 gate
 - [ ] 1.43 **W0 health check:** Notion button → n8n webhook (HMAC verified) → DB write → Notion update, round trip
 - [ ] 1.44 Cost tracking wired: a test Claude call lands in `api_usage`
 - [ ] 1.45 Spend cap enforced **before** the call, not just monitored — test by tripping it
@@ -93,7 +301,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## PHASE 2 — Discovery and web data pulling
+### PHASE 2 — Discovery and web data pulling *(frozen)*
 
 - [ ] 2.1 `src/lib/normalize/` — orgName, domain, phone + full unit tests
 - [ ] 2.2 `src/lib/dedupe/hash.ts` — domain_hash + tests (all URL form variants)
@@ -123,7 +331,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## PHASE 3 — Contacts, verification, ranking, CRM push
+### PHASE 3 — Contacts, verification, ranking, CRM push *(frozen)*
 
 - [ ] 3.1 `src/lib/llm/prompts/extractContacts.ts` — strict schema, null-not-guess rule stated explicitly
 - [ ] 3.2 Seniority classifier + tests
@@ -157,7 +365,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## PHASE 4 — Claude ops layer with memory
+### PHASE 4 — Claude ops layer with memory *(frozen)*
 
 - [ ] 4.1 `src/lib/memory/facts.ts` — append-only, supersede logic, scope isolation + tests
 - [ ] 4.2 `src/lib/memory/chunks.ts` — summarise old turns, embed via Voyage, store + tests
@@ -180,7 +388,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## PHASE 5 — Social tracking, polish, handover
+### PHASE 5 — Social tracking, polish, handover *(frozen)*
 
 - [ ] 5.1 **Confirm API access exists** — Meta Business linked, LinkedIn app approved. Blocked? Log `[!]` and agree the fallback in writing before proceeding
 - [ ] 5.2 `src/lib/social/instagram.ts` + contract tests
@@ -201,7 +409,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline)
 
 ---
 
-## Blocked / parked
+### Blocked / parked *(frozen)*
 
 | Item | Reason | Since | Unblocked by |
 |---|---|---|---|

@@ -1,24 +1,32 @@
 # SECURITY.md — Security Requirements
 
 A checklist with teeth. Nothing here is optional and nothing is deferred to "after launch".
-Every item has an owning phase and a verifying test.
+Every item has an owning stage and a verifying test.
+
+**Scope v3 note (23 Aug 2026).** This file is kept **in full**. The stage column below maps
+the six Scope v3 stages (D26) onto threats that were first written against the five-phase
+plan; where a section talks about the research crawler or extracted contacts, read it as
+applying to **Stage 4 (website reading and storage)** and **Stage 5 (generated copy published
+under the client's name)** — the same class of harm, per R7. §3 in particular is *more*
+relevant under Scope v3, not less: Stage 4 reads live websites.
 
 ---
 
 ## 1. Threat model — what actually goes wrong here
 
-| # | Threat | Impact | Mitigation | Phase |
+| # | Threat | Impact | Mitigation | Stage |
 |---|---|---|---|---|
-| T1 | Prompt injection via scraped page content | Model exfiltrates data or triggers unintended tools | §3 | 2–4 |
-| T2 | `service_role` key leaked to client or logs | Total database compromise | §4 | 1 |
-| T3 | Unauthenticated n8n webhook triggered by anyone | Arbitrary pipeline execution, cost burn | §5 | 1 |
-| T4 | RLS missing or misconfigured on a table | PII exposure via the public anon key | §6 | 1 |
-| T5 | Hallucinated contact data reaching GoHighLevel | Client phones a person who doesn't exist. Reputational + Spam Act risk | §7 | 3 |
-| T6 | Runaway LLM or API spend | Unbudgeted bill against a $50/mo agreement | §8 | 1 |
-| T7 | Social API tokens stored in plaintext | Account takeover | §9 | 5 |
-| T8 | SSRF via crawler following attacker-controlled URLs | Internal network access | §10 | 2 |
-| T9 | PII retained beyond purpose, no deletion path | Privacy Act 1988 breach | §11 | 3 |
-| T10 | GoHighLevel token over-scoped or leaked | Access to the client's whole CRM | §12 | 1 |
+| T1 | Prompt injection via scraped page content | Model exfiltrates data or triggers unintended tools | §3 | 4–5 (defences built from 2) |
+| T2 | `service_role` key leaked to client or logs | Total database compromise | §4 | 2 |
+| T3 | Unauthenticated n8n webhook triggered by anyone | Arbitrary pipeline execution, cost burn | §5 | 3 (n8n) |
+| T4 | RLS missing or misconfigured on a table | PII exposure via the public anon key | §6 | 2 |
+| T5 | Hallucinated data reaching GoHighLevel, the knowledge store or published copy | Client acts on a fact that was never on the page, or publishes an invented claim. Reputational + Spam Act risk | §7 | 4–5 |
+| T6 | Runaway LLM or API spend | Unbudgeted bill against a $50/mo agreement | §8 | 2 |
+| T7 | Social / Meta tokens stored in plaintext | Account takeover | §9 | 1 (Meta, done) · 5 |
+| T8 | SSRF via crawler following attacker-controlled URLs | Internal network access | §10 | 4 |
+| T9 | PII retained beyond purpose, no deletion path | Privacy Act 1988 breach | §11 | 2 (columns) · 3 |
+| T10 | GoHighLevel token over-scoped or leaked | Access to the client's whole CRM | §12 | 1 (done) · ongoing |
+| **T11** | **Anthropic API key reachable from a browser** — the failure mode of the client's previous prototype (R18) | Anyone with `view-source:` spends against the client's Anthropic account; no IP/origin restriction exists on Anthropic keys | §2 | **2** |
 
 ---
 
@@ -26,6 +34,18 @@ Every item has an owning phase and a verifying test.
 
 - `.env` is gitignored. `.env.example` documents every variable with a dummy value.
 - Production secrets live in Railway environment variables and Supabase Vault only.
+- **The Anthropic API key is server-side only and is never reachable from a browser.** It
+  lives in the environment of the Edge Function / server that calls `api.anthropic.com`, and
+  nowhere else — not in a client bundle, not in an HTML file, not behind
+  `anthropic-dangerous-direct-browser-access`, not in a Notion page, not in a log line. The
+  browser talks to *our* authenticated endpoint; only that endpoint talks to Anthropic.
+  **Why this is written down:** the client's previous Command Centre prototype published a
+  live `sk-ant-api03-` key in plain text in its page source (R18, `EXISTING-PROTOTYPE.md` §2) —
+  with no backend there was nowhere else for it to live. That is the failure mode every UI
+  stage here is designed against. **Verified, not asserted:** Stage 2 acceptance includes a
+  test that greps the built client assets for `sk-ant-` and asserts zero hits, and a browser
+  check that no request from the page goes to `api.anthropic.com`
+  (`PHASE-ACCEPTANCE.md`, Stage 2).
 - n8n credentials use n8n's encrypted credential store — **never** hardcoded in node
   parameters, because node parameters are exported to `n8n/workflows/*.json` and committed.
 - `N8N_ENCRYPTION_KEY` set explicitly and backed up. Losing it means losing every credential.
@@ -60,8 +80,10 @@ return an empty array.
 
 **Layer 2 — No tools on extraction calls.** Extraction, ranking and website-resolution calls
 run with **zero tools available**. A fully successful injection has nothing to call. Tool
-access exists only on the Phase 4 conversational endpoint, where input comes from an
-authenticated staff member.
+access exists only on the conversational endpoint (the Stage 2 chat, tools added from Stage
+3), where input comes from an authenticated staff member. Under Scope v3 "extraction calls"
+means the Stage 4 website-reading calls and any Stage 5 call that summarises a page — same
+rule, same test.
 
 **Layer 3 — Strict output schema.** Zod-validated. Extra keys, prose, wrong types or missing
 required fields fail the parse. One retry with the validation error appended, then the record
@@ -92,7 +114,7 @@ out-of-allowlist URL, or a tool invocation.
 - `anon` key: zero table access by policy.
 - Connection strings never logged. The logger redacts by key name (`password`, `key`,
   `token`, `secret`, `authorization`) at the serialiser level, not per call site.
-- Daily backups enabled. Restore procedure tested once, in Phase 1, and documented.
+- Daily backups enabled. Restore procedure tested once, in Stage 2 (part 2), and documented.
 
 **MCP note.** The Supabase MCP is connected in the developer's environment. It reads freely;
 it never applies schema changes. Every schema change is a migration file. This is not a
@@ -195,16 +217,32 @@ Client agreed a $50/month ceiling. Treat it as a hard constraint, not a target.
   Storage purged after 90 days; cleaned text retained.
 - Deletion path: documented, tested procedure to fully remove an individual on request
   (`scripts/gdpr-delete.ts`), covering GoHighLevel, Google Sheets and Notion.
-- `opt_out` and `consent_basis` exist from Phase 3, before any outbound capability.
+- `opt_out` and `consent_basis` exist from the **first migration (Stage 2, part 2)**, before
+  any outbound capability. R17: the client's CRM already holds ~180 contacts with no consent
+  record, so these columns are the mitigation and are not deferred.
 - Personal data never sent to any provider outside the documented stack.
 
 ---
 
 ## 12. GoHighLevel token discipline
 
-- The Private Integration token is scoped to **contacts and opportunities only**. Ross asked
-  whether to tick every scope; the answer was no, and that answer stands. Additional scopes
-  are requested individually if a feature genuinely needs them.
+- The Private Integration token was issued 08 Aug scoped to **contacts and opportunities
+  only**. Ross asked whether to tick every scope; the answer was no, and that answer stands.
+  Additional scopes are requested individually if a feature genuinely needs them.
+- **Scopes as of 22 Aug 2026 (R14 closed, Stage 1 delivered):** `contacts`, `opportunities`,
+  `workflows`, `calendars`, `funnels`, and — granted for the Stage 1 build — **`customFields`,
+  `customValues` and `tags`** (the `locations/*` family that R21 recorded as denied on 12 Aug;
+  whether the three `.readonly` variants are still denied or were superseded by the write
+  grants is not re-probed — R21 stays open until it is). Four scopes landed on 12 Aug that
+  were never asked for: `forms`, `conversations`, `socialplanner/account`,
+  `locations/templates` (MEMORY.md 12 Aug). **Writes are confirmed to work** — Stage 1 created
+  a pipeline, ten custom fields and five workflows in the live account. The token therefore
+  carries more than the minimum for Stages 2–6, which mostly *read* GHL; re-scope down at
+  handover, and never widen it again without a dated entry.
+- **Account-wide is forbidden (R22, R25).** An unrelated business shares the GHL location.
+  Every write is scoped by pipeline, tag or custom field — the ten Stage 1 fields sit in
+  their own folder for exactly this reason. A `tags` or `customValues` scope is not a licence
+  to sweep the account.
 - The token lives in `.env` and in the n8n credential store. It was sent over WhatsApp and
   the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.
@@ -216,7 +254,8 @@ Client agreed a $50/month ceiling. Treat it as a hard constraint, not a target.
 ## 13. Pre-handover security checklist
 
 - [ ] All keys rotated; developer copies invalidated
-- [ ] Client owns every account: Supabase, Railway, Anthropic, Notion, GoHighLevel, Serper, MillionVerifier, Voyage, Meta, LinkedIn
+- [ ] Client owns every account: Supabase, Railway, Anthropic, Notion, GoHighLevel, Voyage, Meta. *(Serper, MillionVerifier and LinkedIn were on this list for the research engine and social insights — parked, D23 / R3; if the accounts still exist, hand them over or close them, but they are not Scope v3 deliverables)*
+- [ ] **R18 closed in writing** — the prototype's published Anthropic key confirmed revoked, and no `sk-ant-` string present in any deployed asset of this system (the Stage 2 check re-run at handover)
 - [ ] Developer removed from the client's LastPass vault, confirmed in writing
 - [ ] RLS test suite green across every table
 - [ ] Injection test corpus green

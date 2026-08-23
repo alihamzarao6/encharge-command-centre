@@ -3,8 +3,19 @@
 Supabase Postgres 15 + pgvector. Every table has RLS enabled and deny-by-default policies.
 Migrations in `supabase/migrations/`, replayable from an empty database.
 
-**Platform note:** if Ross confirms MongoDB, this file is rewritten before any code changes.
-Do not partially migrate. See `CLAUDE.md` §3.
+**Platform: Supabase, confirmed by the client 22 Aug 2026 (D24). The MongoDB question is
+closed.** The earlier platform note ("if Ross confirms MongoDB, this file is rewritten") is
+superseded; nothing in this file is conditional on the platform any more. See `CLAUDE.md` §3.
+
+**Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32) is binding.** The live model is: the
+consumer-lead record with its consent columns (§2), integration and observability (§3), the
+Claude memory layer with `user_id` and `scope` on every memory table (§4), Notion sync (§6), the
+RLS pattern (§7) and migration discipline (§8). The B2B lead-research tables — `organizations`,
+`org_sources`, `rankings`, `rubric_versions`, `email_verifications`, `merge_log` — and the
+social-insights tables are **parked under the "OUT OF CURRENT SCOPE" heading below §6**, not
+deleted: the provenance design they carry remains correct and Stage 4's website knowledge store
+(§2a) is built on the same pattern. **Part 2 of Stage 2 writes the first migrations from this
+file.** Nothing under a parked heading ships in a migration.
 
 Conventions:
 - `id uuid primary key default gen_random_uuid()`
@@ -18,28 +29,334 @@ Conventions:
 ## 1. Shared enums
 
 ```sql
--- lead_type: which pipeline a record belongs to
---   researched:    'commercial' | 'asset_finance' | 'referral_partner'
---   tracking only: 'first_home_owner' | 'refinance' | 'investor'
---                  | 'referral' | 'building'
+-- lead_type: the eight categories Ross confirmed (CLIENT-CONTEXT.md §2). Kept as a
+-- taxonomy; under Scope v3 NO type is researched, so there is no researched / tracking split.
+--   'commercial' | 'asset_finance' | 'referral_partner'
+--   | 'first_home_owner' | 'refinance' | 'investor' | 'referral' | 'building'
 
--- pipeline_stage (nine, shared across all lead types):
---   'lead_in' | 'full_details' | 'booked_calendar' | 'docs_sent'
---   | 'ongoing_loan_app' | 'no_show' | 'retarget' | 'disqualify' | 'settled'
+-- pipeline_stage: the ten live Finance Pipeline stages, built in GoHighLevel in Stage 1
+-- (D28). Stored as snake_case of the GHL stage name; matched to GHL on STAGE ID, never name.
+--   'new_lead' | 'appointment_booked' | 'contacted' | 'qualified' | 'docs_requested'
+--   | 'docs_received' | 'submitted_to_lender' | 'approved' | 'settled'
+--   | 'lost_not_proceeding'
 
 -- lead_source:
 --   'social_media' | 'ads' | 'referrals' | 'networking'
 --   | 'previous_client' | 'outbound_research' | 'other'
+--   ('outbound_research' is retained in the constraint so historical intent is readable,
+--    but nothing sets it — it belonged to the parked research engine, D23.)
 ```
 
-A helper `is_researched_type(lead_type)` returns true only for the three business types. The
-pipeline uses it as a routing guard so a consumer record can never enter the crawler.
+The `pipeline_stage` check constraint is the **ten values above and nothing else**. The
+mapping from each value to its GHL stage ID lives in `ghl_field_map` (§3), so a renamed
+stage in GHL is a data change, not a migration.
+
+**Superseded — never built (R15, D28).** The nine stages this file carried from 08 to 22 Aug
+(`'lead_in' | 'full_details' | 'booked_calendar' | 'docs_sent' | 'ongoing_loan_app' |
+'no_show' | 'retarget' | 'disqualify' | 'settled'`) were a plan recorded as fact. They exist
+nowhere in GHL and must not appear in any constraint, seed or fixture. Kept here for the
+record only.
+
+**Parked (D23).** The helper `is_researched_type(lead_type)`, which returned true only for
+the three business types and guarded the crawler, belonged to the research engine. It is not
+created. Under Scope v3 there is no crawler for it to guard.
 
 ---
 
 ## 2. Core entities
 
-### organizations — business records (lead types 1–3)
+*Live under Scope v3. The research-engine tables that used to open this section
+(`organizations`, `org_sources`, `email_verifications`, `rankings`, `rubric_versions`,
+`merge_log`) are parked verbatim under the "OUT OF CURRENT SCOPE" heading after §6.*
+
+### consumer_leads — individual lead records
+Originally "lead types 4–8, deliberately separate from `organizations`". With the research
+engine parked (D23) there is no `organizations` table to be separate from, but the table
+stays: it is the consent and opt-out record for the people who receive marketing, and the
+local mirror of a GoHighLevel contact in the Finance Pipeline. **Keep it. R17 is unresolved —
+the client's CRM holds ~180 contacts with no consent record and nobody marked opted out — and
+this design is the mitigation, not the problem.**
+
+`id · full_name · email · phone · lead_type (check: any of the eight types in §1) ·
+pipeline_stage (check: the ten Finance Pipeline values) · lead_source · ghl_contact_id ·
+ghl_opportunity_id · owner · notes · enquiry_detail jsonb ·
+consent_basis text · opt_out boolean not null default false ·
+created_at · updated_at · deleted_at`
+
+`ghl_contact_id` is the idempotency key for anything that writes to GHL (CLAUDE.md rule 9);
+unique where not null. `ghl_opportunity_id` is new since Stage 1 built a real pipeline — an
+opportunity is the object that carries the stage, so it needs its own ID.
+
+**`consent_basis` and `opt_out` are mandatory, not optional.** Consumer leads are precisely the
+people who receive marketing email — they arrive from ads and forms and are the audience for
+every outbound campaign. Under the **Spam Act 2003 (Cth)** each of those messages needs a
+recorded consent basis and a working unsubscribe, so both columns exist from day one, before any
+outbound is built. `consent_basis` takes the same values as `contacts`: `inferred · express ·
+none`. `opt_out` is `not null default false` so an unset value can never be read as "no
+objection" — the check is `where opt_out = false`, never `where opt_out is not true`.
+
+`opt_out` is one of the few system-adjacent fields that is **human-editable from Notion**
+(see `CLIENT-CONTEXT.md` §8). An unsubscribe request is a legal obligation with a deadline; it
+cannot wait for a review-queue round trip.
+
+### contacts
+*Retained, with a caveat.* The 23 Aug instruction parks six research tables by name and
+`contacts` is not one of them, so it stays in the live section. But most of its columns
+(`seniority`, `email_status`, `email_is_inferred`, `linkedin_url`, `extraction_method`) were
+populated by decision-maker extraction and email verification, both parked. Its `org_id` FK
+points at a parked table and **must become nullable** (or be dropped) before it can ship.
+**Part 2 decides whether `contacts` is in the first migration set** — the likely answer is
+*no* until a stage needs a person record that is not a consumer lead. Its consent columns are
+the same as `consumer_leads` and are kept for the same Spam Act reason.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | |
+| full_name / first_name / last_name | text | |
+| title | text | |
+| seniority | text | `owner · c_suite · director · manager · other` |
+| department | text | |
+| email | text | |
+| email_status | text | `valid · risky · invalid · unknown · catch_all · not_found` |
+| email_is_inferred | boolean not null default false | surfaced in Notion and GHL |
+| phone | text | E.164 |
+| linkedin_url | text | |
+| source_url | text **not null** | provenance — required |
+| extraction_method | text **not null** | `llm · regex · structured_data · manual` |
+| confidence | numeric(3,2) **not null** | |
+| is_flagged | boolean default false | |
+| flag_reason | text | |
+| consent_basis | text | `inferred · express · none` — Spam Act |
+| opt_out | boolean default false | |
+| created_at / updated_at / deleted_at | | |
+
+Unique on `(org_id, lower(email)) where email is not null and deleted_at is null`.
+
+### field_overrides — human corrections without destroying provenance
+`id · entity_type · entity_id · field_name · original_value · override_value · reason ·
+overridden_by · created_at`
+
+When Ross corrects a system-derived field, the original is preserved and the override sits
+beside it. Reads use the override; audits can see both.
+
+### review_queue
+`id · entity_type · entity_id · reason · payload jsonb ·
+status (pending|approved|rejected) · notion_page_id · reviewed_by · reviewed_at · created_at`
+
+`entity_type` was `(org|contact)`. Under Scope v3 the things that can fall below the
+confidence threshold are a stored website fact (Stage 4), a generated piece of content
+(Stage 5) or a lead record, so the check constraint is set in Part 2 from what those stages
+actually produce — at minimum `consumer_lead | web_fact | content_draft`. The rule it
+enforces is unchanged: CLAUDE.md rule 14 — below threshold goes here, never straight to the
+CRM, the knowledge store or published copy.
+
+---
+
+## 2a. Stage 4 — website knowledge store (design placeholder)
+
+Stage 4 "reads websites and stores what it finds, with a full source trail on every field"
+(Scope v3). The tables are specified at Stage 4, not here, but two things are fixed now so
+that Part 2 does not lay a foundation that fights them:
+
+1. **Every stored field carries `source_url`, `fetched_at`, `extraction_method`, `confidence`**
+   (CLAUDE.md rule 12), enforced by `NOT NULL`. The parked `org_sources` + `contacts`
+   provenance pattern below is the template — one row per page fetched, one row per fact,
+   the fact pointing at the page. That pattern is why the parked tables are kept verbatim.
+2. **The page store is separate from the memory layer (§4).** What the assistant *remembers
+   about the user* and what it *knows from a website* are different data with different
+   trust levels; scraped text is untrusted input (SECURITY.md §3) and must never be able to
+   masquerade as a user preference.
+
+Working names, to be confirmed at Stage 4: `web_sources` (page-level provenance) and
+`web_facts` (field-level facts, append-only with supersede, as `memory_facts` in §4).
+
+---
+
+## 3. Integration and observability
+
+### crm_sync_log
+`id · entity_type · entity_id · provider ('ghl'|'meta') · external_id ·
+operation (create|update) · status (success|failed|skipped) · attempt int ·
+request_payload jsonb · response_payload jsonb · error · synced_at`
+
+`external_id` enforces idempotency. Checked before any push. `provider` was `('ghl'|'sheets')`
+— Google Sheets was the research-export target and is parked with the engine (D23); `meta`
+is added because the Refi Pixel Conversions API (D31) is a server-side write to an external
+system and falls under the same idempotency rule (CLAUDE.md rule 9 — the `event_id` dedupe
+key Meta expects is the `external_id` here).
+
+### ghl_field_map — configuration, not code
+`id · internal_field · ghl_custom_field_id · ghl_field_key · entity (contact|opportunity|stage) ·
+created_at`
+
+GoHighLevel custom field IDs are account-specific. Keeping the mapping in a table means
+pointing at a different sub-account is a data change, not a redeploy. Since Stage 1 the map
+has two real jobs: the **ten custom fields** Stage 1 created in their own folder (Loan Type,
+Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns,
+Lead Source, Preferred Contact Time, Current Interest Rate) and the **ten Finance Pipeline
+stage IDs** (`entity = 'stage'`, `internal_field` = the `pipeline_stage` value). GHL objects
+are matched on ID, never on name — this account has produced three name traps already
+(`MEMORY.md` 12 Aug). The 21 pre-existing custom fields stay unmapped and untouched (R2).
+
+### workflow_runs
+`id · workflow_name · n8n_execution_id · status (running|success|failed|partial) ·
+started_at · finished_at · input jsonb · output jsonb · error · items_in · items_out ·
+items_failed`
+
+### api_usage
+`id · provider (anthropic|voyage|ghl|meta) · operation · model · input_tokens · output_tokens ·
+cache_read_tokens · cache_write_tokens · units · cost_usd numeric(10,6) · workflow_run_id ·
+user_id · conversation_id · created_at`
+
+Powers the $50/month cap (SECURITY.md §8) and the per-conversation cost view on the Stage 3
+dashboard. `serper`, `millionverifier` and `linkedin` were in the provider list for the
+research engine and social insights — parked (D23, R3); `org_id` is replaced by
+`user_id · conversation_id` because cost now attaches to a conversation, not an organisation.
+`cache_read_tokens` / `cache_write_tokens` are added because prompt caching on the voice and
+brand prefix (Stage 2 part 5) is the main cost lever, and a cap that cannot see cache hits
+cannot be tuned. **Ships in Stage 2** — the first Claude call in part 4 must land a row here.
+
+### audit_log
+`id · actor · action · entity_type · entity_id · before jsonb · after jsonb · ip · created_at`
+
+Written by trigger on every mutation to `consumer_leads`, `contacts`, `review_queue`,
+`memory_facts` and `app_users`, and by application code on every Claude tool execution. (Was
+also `organizations` — parked.)
+
+---
+
+## 4. Claude memory layer
+
+*Scope v3 deliverable 1: "trained on the client's voice, with persistent memory that follows
+him across devices." Conversations and messages ship in Stage 2 (the chat the client talks
+to); semantic recall and durable facts ship in Stage 3. **All four tables are created in
+the first migration set with `user_id` and `scope` (D24)**, even the two Stage 3 does not
+populate yet — one user today, but adding an ownership column to a table with rows in it is
+a migration against live data that has to guess who owns what.*
+
+### Why `user_id`, and what `scope` holds
+
+**`user_id uuid not null references auth.users(id)`** on every memory table. "Follows him
+across devices" means memory is keyed on *who is logged in*, not on the device — the
+prototype's failure (`EXISTING-PROTOTYPE.md`: localStorage "memory", invisible from a second
+browser) is exactly what this column prevents. On a `workspace`-scoped row `user_id` is the
+author: who the fact was learned from, who started the conversation. It is never null.
+
+**`scope text not null default 'workspace' check (scope in ('user','workspace'))`.** Two
+values, chosen over the earlier `(global|user|org) + scope_id`. **The default is `workspace`**
+(changed 23 Aug from `user`, D33): the client was told in writing that memory is shared — one
+brain for the business, whatever anyone teaches it is there for everyone — so a row that does
+not say otherwise belongs to the business. `user` is the opt-in exception for something a
+person explicitly marks as private (a draft conversation, a personal preference), not the
+resting state.
+
+| Value | Meaning | Readable by | Example |
+|---|---|---|---|
+| `workspace` (**default**) | Belongs to the business — "one brain" | Every active `app_users` row | "We are rebranding to Fundd", the brand voice facts, a preference Ross teaches it, any conversation not marked private |
+| `user` (opt-in) | Explicitly private to one person | That `user_id` only | A draft conversation Ross marks private; a personal note he does not want the team to see |
+
+Why these two and not more: (1) **the thing the client was promised** is one shared memory
+for the business that survives a device change and a change of who is typing — that is
+`workspace`, and that is why it is the default. (2) **`user` exists so that "shared by
+default" does not mean "nothing can ever be private"** — a column that can only say
+`workspace` cannot express a private draft, and adding the distinction later, once rows exist,
+would mean guessing which old rows were meant to be private. It costs one value in a check
+constraint now and nothing else. (3) `org` is gone with the research engine; knowledge
+*from websites* is the Stage 4 store (§2a), not memory, and keeping it out of this table is a
+trust boundary (SECURITY.md §3), not tidiness. (4) `scope_id` is dropped: for `user` it
+would duplicate `user_id`, for `workspace` there is exactly one workspace and no table for it.
+If a second workspace is ever needed, `workspace_id` is **added** (a nullable column,
+backfilled with the one value — trivial), whereas `user_id` **cannot** be backfilled after
+the fact because nobody recorded who said what. That asymmetry is the whole reason these two
+columns are in the first migration and `workspace_id` is not. (5) No `conversation` scope
+for facts — a fact that should not outlive its conversation is not a fact, it is a message,
+and `messages` already holds it.
+
+**RLS consequence** (§7): `select` on memory tables is
+`scope = 'workspace' or user_id = auth.uid()`, and-ed with the `app_users` allowlist check —
+the common case (shared) is the first clause; the private case is the exception. Writes go
+through the service role as everywhere else. `tests/security/rls.test.ts` asserts that every
+allowlisted user reads every `workspace` row regardless of author, and that user A cannot read
+user B's `user`-scoped rows.
+
+### conversations
+`id · user_id not null · scope not null default 'workspace' · title · created_at ·
+last_active_at · deleted_at`
+
+### messages
+`id · conversation_id FK · user_id not null · scope not null · role (user|assistant|tool) ·
+content · tool_calls jsonb · tool_results jsonb · model · input_tokens · output_tokens ·
+created_at`
+
+`user_id` and `scope` are denormalised from the conversation so the RLS policy is a column
+check, not a join. A trigger keeps them equal to the parent's.
+
+### memory_chunks — semantic memory (populated from Stage 3)
+`id · conversation_id FK · user_id not null · scope not null · summary not null ·
+embedding vector(1024) · turn_range int4range · created_at`
+Index: `ivfflat (embedding vector_cosine_ops)`. Embeddings are Voyage `voyage-3`, 1024
+dimensions (R5 — account still to be created, needed before Stage 3, not before Stage 2).
+
+### memory_facts — structured memory (populated from Stage 3)
+`id · user_id not null · scope not null · key · value · confidence · source_message_id ·
+superseded_by · embedding vector(1024) · created_at`
+
+Append-only. Updating inserts a new row and sets `superseded_by` on the old one. Current
+facts = `where superseded_by is null`. Unique on `(user_id, scope, key) where superseded_by
+is null` so two live values for one key cannot coexist.
+
+*Superseded column shape, kept for the record:* `scope (global|user|org) · scope_id`. Replaced
+23 Aug by the two-value `scope` + `user_id` above; see the reasoning at the top of §4. *The
+first draft of 23 Aug had `default 'user'`; corrected the same day to `default 'workspace'`
+because the client was told memory is shared.*
+
+### tasks
+`id · title · description · assignee · due_date · status (open|in_progress|done|cancelled) ·
+priority · source (claude|notion|manual) · notion_page_id · created_by · created_at · updated_at`
+
+---
+
+## 5. Social and content (Stage 5)
+
+Stage 5 **generates** social posts, carousels and ad copy in the client's voice; it does not
+pull platform insights (R3 parked — scheduled social *insights* are not in Scope v3). The
+insights tables this section used to hold (`social_accounts`, `social_metrics`,
+`social_posts`) are parked verbatim below §6. What Stage 5 stores — drafts, their voice-check
+results, approval state, and where a draft was published if anywhere — is specified at Stage
+5. The one fixed rule: a draft below the voice / review threshold sits in `review_queue`
+(`entity_type = 'content_draft'`) and is never published under the client's name unreviewed
+(CLAUDE.md rule 14, R7).
+
+---
+
+## 6. Notion sync
+
+*Retained. Under D29 the dashboard (Stage 3) is the primary surface and Notion is an internal
+working surface, but the eight Notion databases exist (MEMORY.md 10 Aug) and anything that
+mirrors into them still needs this map.*
+
+### notion_sync_map
+`id · entity_type · entity_id · notion_database_id · notion_page_id · last_pushed_at ·
+last_pulled_at · content_hash`
+
+Prevents duplicate Notion pages and lets the writeback know which fields changed. Only the
+editable fields listed in `CLIENT-CONTEXT.md` §8 are ever accepted from a Notion pull.
+
+---
+
+## OUT OF CURRENT SCOPE — parked research-engine and social-insights tables (D23, R3)
+
+**Nothing in this section ships in a migration.** These tables belonged to the B2B outbound
+lead-research engine, which Scope v3 (22 Aug 2026, D23) puts out of scope — it was never
+asked for by the client — and to scheduled social-insights tracking, parked under R3. They
+are kept **verbatim**, not deleted: the provenance design (`org_sources` → `contacts` with
+`source_url · fetched_at · extraction_method · confidence` NOT NULL) is the template for the
+Stage 4 knowledge store (§2a), and the append-only `rankings` / `rubric_versions` pattern is
+how any future scored output should be stored. Column notes that refer to "the nine stages"
+or "the three researched types" are as written on 09 Aug and are superseded by §1.
+
+### organizations — business records (lead types 1–3) — *PARKED*
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -70,184 +387,54 @@ pipeline uses it as a routing guard so a consumer record can never enter the cra
 Indexes: `domain_hash` unique · `normalized_name` gin_trgm · `lead_type` · `pipeline_stage`
 · `status` · `created_at`.
 
-### consumer_leads — individual records (lead types 4–8)
-Deliberately a separate table. These have no website, no crawl, no ranking, and mixing them
-into `organizations` would make every research query carry a filter it could forget.
+*(`consumer_leads` was described as "deliberately a separate table — these have no website,
+no crawl, no ranking, and mixing them into `organizations` would make every research query
+carry a filter it could forget." That reasoning is D15, parked with this table; the
+`consumer_leads` table itself is live, §2.)*
 
-`id · full_name · email · phone · lead_type (check: one of the five consumer types) ·
-pipeline_stage · lead_source · ghl_contact_id · owner · notes · enquiry_detail jsonb ·
-consent_basis text · opt_out boolean not null default false ·
-created_at · updated_at · deleted_at`
-
-**`consent_basis` and `opt_out` are mandatory, not optional.** Consumer leads are precisely the
-people who receive marketing email — they arrive from ads and forms and are the audience for
-every outbound campaign. Under the **Spam Act 2003 (Cth)** each of those messages needs a
-recorded consent basis and a working unsubscribe, so both columns exist from day one, before any
-outbound is built. `consent_basis` takes the same values as `contacts`: `inferred · express ·
-none`. `opt_out` is `not null default false` so an unset value can never be read as "no
-objection" — the check is `where opt_out = false`, never `where opt_out is not true`.
-
-`opt_out` is one of the few system-adjacent fields that is **human-editable from Notion**
-(see `CLIENT-CONTEXT.md` §8). An unsubscribe request is a legal obligation with a deadline; it
-cannot wait for a review-queue round trip.
-
-### org_sources — provenance for every page touched
+### org_sources — provenance for every page touched — *PARKED (template for §2a)*
 `id · org_id FK · source_type (homepage|about|team|contact|agents|finance|search_result) ·
 source_url not null · http_status · fetched_at not null · content_hash · storage_path ·
 clean_text · robots_allowed not null`
 
 Unique on `(org_id, source_url)`.
 
-### contacts
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid PK | |
-| org_id | uuid FK | |
-| full_name / first_name / last_name | text | |
-| title | text | |
-| seniority | text | `owner · c_suite · director · manager · other` |
-| department | text | |
-| email | text | |
-| email_status | text | `valid · risky · invalid · unknown · catch_all · not_found` |
-| email_is_inferred | boolean not null default false | surfaced in Notion and GHL |
-| phone | text | E.164 |
-| linkedin_url | text | |
-| source_url | text **not null** | provenance — required |
-| extraction_method | text **not null** | `llm · regex · structured_data · manual` |
-| confidence | numeric(3,2) **not null** | |
-| is_flagged | boolean default false | |
-| flag_reason | text | |
-| consent_basis | text | `inferred · express · none` — Spam Act |
-| opt_out | boolean default false | |
-| created_at / updated_at / deleted_at | | |
-
-Unique on `(org_id, lower(email)) where email is not null and deleted_at is null`.
-
-### email_verifications
+### email_verifications — *PARKED*
 `id · contact_id FK · email · syntax_ok · mx_ok · is_disposable · is_role_account ·
 provider_name · provider_result jsonb · final_status · cost_usd · verified_at`
 
 One row per attempt. History retained — re-verification never overwrites.
 
-### rankings
+### rankings — *PARKED*
 `id · org_id FK · rubric_key text ('business_finance'|'referral_partner') · score int ·
 tier char(1) · reasoning text · confidence numeric(3,2) · flags text[] · rubric_version int
 FK · model text · input_tokens · output_tokens · cost_usd · created_at`
 
 Never updated. A re-rank inserts a new row; latest by `created_at` is current.
 
-### rubric_versions
+### rubric_versions — *PARKED*
 `id · rubric_key text · version int · rubric jsonb not null · notes · is_active bool ·
 created_at`
 
 Unique on `(rubric_key, version)`. Partial unique index enforces exactly one active version
 per `rubric_key`. Seeded with Rubric A and Rubric B from `CLIENT-CONTEXT.md` §5–6.
 
-### field_overrides — human corrections without destroying provenance
-`id · entity_type · entity_id · field_name · original_value · override_value · reason ·
-overridden_by · created_at`
-
-When Ross corrects a system-derived field, the original is preserved and the override sits
-beside it. Reads use the override; audits can see both.
-
-### review_queue
-`id · entity_type (org|contact) · entity_id · reason · payload jsonb ·
-status (pending|approved|rejected) · notion_page_id · reviewed_by · reviewed_at · created_at`
-
-### merge_log
+### merge_log — *PARKED*
 `id · surviving_id · merged_id · entity_type · similarity · decided_by (auto|human) · created_at`
 
----
-
-## 3. Integration and observability
-
-### crm_sync_log
-`id · entity_type · entity_id · provider ('ghl'|'sheets') · external_id ·
-operation (create|update) · status (success|failed|skipped) · attempt int ·
-request_payload jsonb · response_payload jsonb · error · synced_at`
-
-`external_id` enforces idempotency. Checked before any push.
-
-### ghl_field_map — configuration, not code
-`id · internal_field · ghl_custom_field_id · ghl_field_key · entity (contact|opportunity) ·
-created_at`
-
-GoHighLevel custom field IDs are account-specific. Keeping the mapping in a table means
-pointing at a different sub-account is a data change, not a redeploy.
-
-### workflow_runs
-`id · workflow_name · n8n_execution_id · status (running|success|failed|partial) ·
-started_at · finished_at · input jsonb · output jsonb · error · items_in · items_out ·
-items_failed`
-
-### api_usage
-`id · provider (anthropic|voyage|serper|millionverifier|ghl|meta|linkedin) · operation ·
-input_tokens · output_tokens · units · cost_usd numeric(10,6) · workflow_run_id · org_id ·
-created_at`
-
-Powers the per-lead cost NFR and the $50/month cap. A daily rollup view feeds Notion.
-
-### audit_log
-`id · actor · action · entity_type · entity_id · before jsonb · after jsonb · ip · created_at`
-
-Written by trigger on every mutation to `organizations`, `consumer_leads`, `contacts`,
-`review_queue`, and by application code on every Claude tool execution.
-
----
-
-## 4. Claude memory layer
-
-### conversations
-`id · user_id · title · created_at · last_active_at`
-
-### messages
-`id · conversation_id FK · role (user|assistant|tool) · content · tool_calls jsonb ·
-tool_results jsonb · input_tokens · output_tokens · created_at`
-
-### memory_chunks — semantic memory
-`id · conversation_id FK · summary not null · embedding vector(1024) · turn_range int4range ·
-created_at`
-Index: `ivfflat (embedding vector_cosine_ops)`.
-
-### memory_facts — structured memory
-`id · scope (global|user|org) · scope_id · key · value · confidence · source_message_id ·
-superseded_by · embedding vector(1024) · created_at`
-
-Append-only. Updating inserts a new row and sets `superseded_by` on the old one. Current
-facts = `where superseded_by is null`.
-
-### tasks
-`id · title · description · assignee · due_date · status (open|in_progress|done|cancelled) ·
-priority · source (claude|notion|manual) · notion_page_id · created_by · created_at · updated_at`
-
----
-
-## 5. Social
-
-### social_accounts
+### social_accounts — *PARKED (R3)*
 `id · platform (instagram|facebook|linkedin) · handle · external_id · token_ref (vault
 reference, NEVER the token) · token_expires_at · status · created_at`
 
-### social_metrics
+### social_metrics — *PARKED (R3)*
 `id · account_id FK · metric_date · followers · reach · impressions · engagement ·
 profile_views · raw jsonb · pulled_at`
 Unique on `(account_id, metric_date)` — idempotent daily pull.
 
-### social_posts
+### social_posts — *PARKED (R3)*
 `id · account_id FK · external_post_id · posted_at · permalink · caption · likes · comments ·
 shares · saves · reach · raw jsonb · pulled_at`
 Unique on `(account_id, external_post_id)`.
-
----
-
-## 6. Notion sync
-
-### notion_sync_map
-`id · entity_type · entity_id · notion_database_id · notion_page_id · last_pushed_at ·
-last_pulled_at · content_hash`
-
-Prevents duplicate Notion pages and lets the writeback know which fields changed. Only the
-editable fields listed in `CLIENT-CONTEXT.md` §8 are ever accepted from a Notion pull.
 
 ---
 
@@ -256,13 +443,13 @@ editable fields listed in `CLIENT-CONTEXT.md` §8 are ever accepted from a Notio
 Every table follows this shape. No exceptions.
 
 ```sql
-alter table public.organizations enable row level security;
-alter table public.organizations force row level security;
+alter table public.consumer_leads enable row level security;
+alter table public.consumer_leads force row level security;
 
 -- deny by default: no permissive policy for anon or authenticated
 -- service_role bypasses RLS and is used only by n8n / Edge Functions
 
-create policy "staff_read_orgs" on public.organizations
+create policy "staff_read_consumer_leads" on public.consumer_leads
   for select to authenticated
   using (
     exists (
@@ -276,11 +463,31 @@ create policy "staff_read_orgs" on public.organizations
 -- which validate input and write the audit log.
 ```
 
-`app_users` holds the staff allowlist (`user_id`, `email`, `role`, `is_active`).
+Memory tables (§4) add the ownership clause on top of the allowlist:
+
+```sql
+create policy "workspace_or_own_memory" on public.memory_facts
+  for select to authenticated
+  using (
+    (scope = 'workspace' or user_id = auth.uid())   -- shared by default; 'user' is the private exception
+    and exists (
+      select 1 from public.app_users u
+      where u.user_id = auth.uid() and u.is_active
+    )
+  );
+```
+
+`app_users` holds the staff allowlist (`user_id references auth.users`, `email`, `role`,
+`is_active`, `created_at`). It is the table Stage 2 part 3 (auth and user management) builds
+on: a Supabase Auth account that is not in `app_users` with `is_active = true` sees nothing
+and cannot reach the chat endpoint.
 
 **Verification requirement:** `tests/security/rls.test.ts` asserts an anon client and a
-non-allowlisted authenticated client receive zero rows from every table. Runs in the
-regression suite; a phase-1 acceptance criterion.
+non-allowlisted authenticated client receive zero rows from every table, and that on memory
+tables an allowlisted user sees every `workspace` row (the default) plus only their own
+`user`-scoped rows. Runs
+in the regression suite; a **Stage 2 (part 2) acceptance criterion** — the claim "RLS is
+enabled" is not accepted, the test output is.
 
 ---
 
@@ -289,7 +496,16 @@ regression suite; a phase-1 acceptance criterion.
 - One logical change per timestamped migration file.
 - Every migration reversible, or documents why not.
 - `supabase db reset` must produce a working schema from zero, every time.
-- Seed (`supabase/seed.sql`): Rubric A v1, Rubric B v1, app_users, disposable-domain list,
-  discovery blocklist, one test org per lead type.
+- Seed (`supabase/seed.sql`): `app_users` (the developer and Ross), the ten Finance Pipeline
+  rows in `ghl_field_map` (`entity = 'stage'`) and the ten custom-field rows once their IDs
+  are read from GHL. *(Was: Rubric A v1, Rubric B v1, disposable-domain list, discovery
+  blocklist, one test org per lead type — all parked with the research engine, D23.)*
 - **No manual changes in the Supabase dashboard, and none through the Supabase MCP.** If it
   isn't in a migration, it doesn't exist.
+- **Stage 2 part 2 migration set, proposed** (Part 2 confirms before writing): extensions
+  (`pgcrypto`, `pg_trgm`, `vector`) → `app_users` → `conversations`, `messages`,
+  `memory_chunks`, `memory_facts` (with `user_id` + `scope`) → `api_usage`, `audit_log`,
+  `workflow_runs` → `consumer_leads`, `field_overrides`, `review_queue`, `crm_sync_log`,
+  `ghl_field_map`, `tasks`, `notion_sync_map` → RLS enable/force + policies on **every** table
+  → `updated_at` and audit triggers. `contacts` only if Part 2 decides it ships (§2). Nothing
+  under the parked heading.

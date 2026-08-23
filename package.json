@@ -1,0 +1,33 @@
+{
+  "name": "encharge-command-centre",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI assistant for Encharge Capital / Fundd — voice-trained, persistent memory, website reading, content generation, dashboard over GoHighLevel and Meta",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run --coverage",
+    "test:unit": "vitest run --coverage tests/unit",
+    "test:int": "vitest run --passWithNoTests tests/integration",
+    "test:security": "vitest run --passWithNoTests tests/security",
+    "test:regress": "npm run typecheck && npm run lint && vitest run --coverage && vitest run --passWithNoTests tests/integration tests/security",
+    "secrets:scan": "gitleaks detect --source . --redact --no-banner"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.11"
+  }
+}
