@@ -21,7 +21,7 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Finish the Scope v3 doc-set update** (CLAUDE.md → CLIENT-CONTEXT → SCHEMA → SECURITY → PHASE-ACCEPTANCE → TASKS → RUNBOOK → README, one file per diff). As of 23 Aug only `MEMORY.md` reflects Scope v3; every other doc still describes the five-phase research plan. Then Stage 2 kickoff — unpause Supabase, land the foundations migrations, start the voice-training corpus |
+| Next task | **Finish the Scope v3 doc-set update** — done: `MEMORY.md` (corrected), `CLAUDE.md`, `CLIENT-CONTEXT.md` (23 Aug). Remaining, one file per reviewed diff: `SCHEMA.md` → `SECURITY.md` → `PHASE-ACCEPTANCE.md` → `TASKS.md` → `RUNBOOK.md` → `README.md` — these still describe the five-phase research plan. Then Stage 2 kickoff — unpause Supabase, land the foundations migrations, start the voice-training corpus |
 | Blocked on | Nothing structural. R9 (no Notion workspace token for n8n) and R21 (three GHL scopes still denied) remain open but do not block Stage 2 |
 | Last regression run | not yet run |
 | Known broken | Supabase project is paused — free-tier idle auto-pause, not a decision (R1 closed). Notion databases exist but hold no rows and have no views |
@@ -81,6 +81,33 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-23 — [docs] Scope v3 doc-set update, part 1: MEMORY.md corrected, CLAUDE.md and CLIENT-CONTEXT.md done
+**Did:** Corrected the 22 Aug entry and the D23 / D28 / R14 / R15 rows, which claimed eight
+docs had been updated when only `MEMORY.md` had been written. Then, one file per reviewed
+diff: **`CLAUDE.md`** — §1 rewritten for Scope v3 (six stages, research engine "do not
+build"), §3 Mongo decision replaced with "Supabase, decided (D24)", Serper / MillionVerifier /
+Google Sheets moved to a parked line, UI → dashboard (D29), Meta / Refi Pixel row added, rule
+15 replaced with the D23 guard, rule 14 extended to the knowledge store and generated copy,
+phase → stage throughout. **`CLIENT-CONTEXT.md`** — §3 is now the ten-stage Finance Pipeline
+(nine never-built stages kept as a superseded note), §5–§7 sit under an **"OUT OF CURRENT
+SCOPE — parked research-engine material"** heading, §2's research column and §4's
+`outbound_research` marked parked, §12 / §13 updated by strikethrough + supersession (nothing
+deleted; questions 9–13 and G–I added). **§1, §9, §10, §11 untouched** — confirmed by hunk
+positions in the diff. Committed and pushed.
+**Decided:** section numbers in `CLIENT-CONTEXT.md` are preserved — §8–§11 are referenced by
+number from MEMORY.md (D21, D22), SCHEMA.md and the Notion property descriptions, so the
+parked material gets a banner heading before §5 rather than being physically moved to an
+appendix. Google Sheets parked with the research engine on the reasoning that it was only
+ever the research-export target; the user was told and did not object.
+**Surprised by:** nothing new. The §1 business table still reads Encharge Capital /
+enchargecapital.com.au — the rebrand is recorded in the file's preamble instead, because §1
+was explicitly to be left alone.
+**Next:** `SCHEMA.md` (nine stages → ten, `pipeline_stage` check constraint, research tables
+under a parked heading, keep `consent_basis` / `opt_out`), then SECURITY → PHASE-ACCEPTANCE
+→ TASKS → RUNBOOK → README, one diff each.
 
 ---
 
