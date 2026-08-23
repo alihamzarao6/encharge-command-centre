@@ -21,7 +21,7 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | Stage 2 kickoff — unpause Supabase, land the foundations migrations, start the voice-training corpus |
+| Next task | **Finish the Scope v3 doc-set update** (CLAUDE.md → CLIENT-CONTEXT → SCHEMA → SECURITY → PHASE-ACCEPTANCE → TASKS → RUNBOOK → README, one file per diff). As of 23 Aug only `MEMORY.md` reflects Scope v3; every other doc still describes the five-phase research plan. Then Stage 2 kickoff — unpause Supabase, land the foundations migrations, start the voice-training corpus |
 | Blocked on | Nothing structural. R9 (no Notion workspace token for n8n) and R21 (three GHL scopes still denied) remain open but do not block Stage 2 |
 | Last regression run | not yet run |
 | Known broken | Supabase project is paused — free-tier idle auto-pause, not a decision (R1 closed). Notion databases exist but hold no rows and have no views |
@@ -57,12 +57,12 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D20** | Notion Intake offers **all eight** lead types, not three | Ross works from his phone and should never have to choose a database first. The pipeline routes business types to Organisations and consumer types to Consumer Leads, applying the D13 research guard itself | 10 Aug |
 | **D21** | `Opt Out` is **editable** in Notion on Contacts and Consumer Leads | Deliberate addition to the CLIENT-CONTEXT §8 editable list. An unsubscribe request is a Spam Act obligation and cannot wait on a review-queue round trip. Everything else in §8 is unchanged | 10 Aug |
 | **D22** | The editable/read-only split is enforced by the **sync whitelist**, not by Notion | Notion has no per-property permissions — any member can edit any property. Property descriptions label each field EDITABLE or READ-ONLY, and `notion_sync_map` accepts only the §8 list on a pull. Claiming Notion enforces this would be a silent failure | 10 Aug |
-| **D23** | **Scope v3 is the binding document. The B2B outbound lead-research engine is out of scope** and was never asked for by the client | The project is an AI assistant trained on the client's voice, with persistent cross-device memory, that reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, with GHL and Meta underneath. Organisation research, website discovery, decision-maker extraction, email verification and the two scoring rubrics are **parked, not deleted** — recorded under "out of current scope" headings in `CLIENT-CONTEXT.md`, `SCHEMA.md` and `TASKS.md`. **This parks D5, D6, D13, D14 and D15** | 22 Aug |
+| **D23** | **Scope v3 is the binding document. The B2B outbound lead-research engine is out of scope** and was never asked for by the client | The project is an AI assistant trained on the client's voice, with persistent cross-device memory, that reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, with GHL and Meta underneath. Organisation research, website discovery, decision-maker extraction, email verification and the two scoring rubrics are **parked, not deleted** — to be moved under "out of current scope" headings in `CLIENT-CONTEXT.md`, `SCHEMA.md` and `TASKS.md` (pending as of 23 Aug — see the 22 Aug session entry). **This parks D5, D6, D13, D14 and D15** | 22 Aug |
 | **D24** | **Database is Supabase. Confirmed. The MongoDB question is closed** | Client confirmed. `docs/SCHEMA.md` stays relational Postgres with RLS; the provenance and audit design stands. Supersedes the R1 blocker, now closed. Memory tables get `user_id` and `scope` from the **first** migration — one user today, but retrofitting it later is a migration | 22 Aug |
 | **D25** | **The client is rebranding Encharge Capital → Fundd (`fundd.com.au`)** | Brand-facing copy, funnels and notification addresses move to Fundd. **GHL stays white-labelled at `app.enchargecapital.com`** — do not "fix" that to fundd.com.au. Notification address is now `rossb@fundd.com.au`, superseding `Ross@enchargecapital.com` in the 08 Aug spend-cap agreement | 22 Aug |
 | **D26** | **Six delivery stages replace the five phases**, everywhere: 1 GHL + Meta · 2 Foundations + AI trained on voice · 3 Memory + dashboard · 4 Website reading and storage · 5 Content, carousels, ad copy · 6 Monitoring, testing, docs, handover | Stage 1 is complete, signed off and paid. Phase numbering in older entries below refers to the superseded five-phase plan — read it as history, not as the current map | 22 Aug |
 | **D27** | **Commercials: 1320 total. 198 on sign-off of each of stages 1–4, 528 at the end** | Stage 1's 198 is **paid**. Supersedes the "5 phases, $100 upfront" line in the 07 Aug communication log | 22 Aug |
-| **D28** | **The live pipeline is "Finance Pipeline" with 10 stages**: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding | **This replaces the nine stages Ross gave on 08 Aug** (`lead_in`, `full_details`, `booked_calendar`, `docs_sent`, `ongoing_loan_app`, `no_show`, `retarget`, `disqualify`, `settled`) — those were never built and exist nowhere. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` updated. Closes R15 | 22 Aug |
+| **D28** | **The live pipeline is "Finance Pipeline" with 10 stages**: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding | **This replaces the nine stages Ross gave on 08 Aug** (`lead_in`, `full_details`, `booked_calendar`, `docs_sent`, `ongoing_loan_app`, `no_show`, `retarget`, `disqualify`, `settled`) — those were never built and exist nowhere. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still carry the nine — correction pending as of 23 Aug. Closes R15 | 22 Aug |
 | **D29** | **A dashboard is in scope, at Stage 3. This supersedes D12** (08 Aug, "Notion is the interface, not a custom web app") | The Scope v3 assistant sits on a dashboard. Notion remains useful as an internal working surface, but it is no longer the answer to "an app on my phone" | 22 Aug |
 | **D30** | **The real lead path is: Facebook ad video → FUNDD landing page → form → Discovery Session calendar booking** | Earlier assumptions about the entry path were wrong. The FUNDD funnel is the live landing page and **stays on its `sites.leadconnectorhq.com` address** — the client will not point a custom domain at it because `fundd.com.au` belongs to his aggregator group. Do not propose a domain swap. Closes R23 | 22 Aug |
 | **D31** | **Refi Pixel is the single Meta pixel in use.** Six pixels exist in the account, not three | Refi Pixel is installed on the FUNDD funnel with Conversions API sending the `Lead` event server-side, on a token **scoped to that pixel only**. Ad account and pixel access granted to the developer | 22 Aug |
@@ -85,10 +85,16 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ---
 
 ### 2026-08-22 — [scope] Scope v3 — research engine parked, six stages, Supabase confirmed, Stage 1 signed off
-**Did:** Brought the documentation set in line with **Scope v3**. `CLAUDE.md`,
+**Did:** Recorded **Scope v3** in **this file only** — §1 current state, D23–D32 in §2, the
+22 Aug rows in §4, and the §5 risk register (R1, R4, R14, R15, R23 closed; R2, R3, R6, R7, R9,
+R17, R20, R21, R22 updated; R24, R25 added). **No other file was changed.** `CLAUDE.md`,
 `CLIENT-CONTEXT.md`, `SCHEMA.md`, `SECURITY.md`, `PHASE-ACCEPTANCE.md`, `TASKS.md`,
-`RUNBOOK.md` and `README.md` updated **in place** — nothing regenerated, and no findings, audit
-results or dated history deleted.
+`RUNBOOK.md` and `README.md` still describe the five-phase research-engine plan and still
+carry the open Supabase/MongoDB question.
+*Correction, 23 Aug: the original version of this entry claimed all eight of those files had
+been updated in place. They had not — only `MEMORY.md` was written. Entry rewritten to
+describe what actually changed; the intended per-file changes are listed under "Still to do"
+below so the instruction is not lost.*
 **The scope changed substantially.** The **B2B outbound lead-research engine is not part of this
 project and was never asked for by the client.** Organisation research, website discovery,
 decision-maker extraction, email verification and both scoring rubrics are **parked under
@@ -115,8 +121,8 @@ copy rewritten for refinance, not first home buyer.** Notifications cut from six
 (1) **The nine pipeline stages in our notes were never built and exist nowhere.** `lead_in`,
 `full_details`, `booked_calendar`, `docs_sent`, `ongoing_loan_app`, `no_show`, `retarget`,
 `disqualify`, `settled` were a plan, not a state of the world. `CLIENT-CONTEXT.md` §3 and
-`SCHEMA.md` carried them as fact for two weeks. **Closes R15**, and is a reminder that a
-requirement written down twice still is not a built thing.
+`SCHEMA.md` carried them as fact for two weeks **and still do** — see "Still to do". **Closes
+R15**, and is a reminder that a requirement written down twice still is not a built thing.
 (2) **Six Meta pixels exist, not three.** **Refi Pixel** is the one in use, on the FUNDD funnel,
 with Conversions API sending `Lead` server-side on a token scoped to that pixel alone. Same
 sampling-versus-exhaustion lesson as the 12 Aug custom-field count.
@@ -128,17 +134,28 @@ group. Closes R23 — the funnel was mid-rebrand, and this is where it landed.
 Pixel since June.** Origin unconfirmed. Recorded as **R24** — it is either a stale install, an
 aggregator page, or someone else's tag firing into the client's pixel, and the three have very
 different implications for attribution and for privacy.
-**Kept deliberately:** the whole of `SECURITY.md`, including the prompt-injection section in
+**Still to do — the doc-set update, one file at a time, each diff reviewed before the next:**
+`CLAUDE.md` → `CLIENT-CONTEXT.md` → `SCHEMA.md` → `SECURITY.md` → `PHASE-ACCEPTANCE.md` →
+`TASKS.md` → `RUNBOOK.md` → `README.md`. Rules for every file: edit **in place**, regenerate
+nothing, delete no findings, audit results or dated history. Research-engine material
+(organisation research, website discovery, decision-maker extraction, email verification, both
+rubrics) moves under clearly marked **"out of current scope"** headings — parked, not deleted,
+because the rubrics and the provenance design were expensive to work out and remain correct if
+that work ever returns.
+*To remove:* the `CLAUDE.md` §3 open database decision, the same blocker in `README.md` and
+task P0.10, and the hard rule restricting research to business lead types (there is no
+research). Serper, MillionVerifier, Voyage-for-research and the rubric procedures come out of
+the live sections of `RUNBOOK.md`; key rotation, backup/restore and escalation stay.
+*To correct:* the nine never-built pipeline stages in `CLIENT-CONTEXT.md` §3 and `SCHEMA.md`
+(→ Finance Pipeline, ten stages, D28); the token scope list in `SECURITY.md` §12 (R14).
+*To keep deliberately:* the whole of `SECURITY.md`, including the prompt-injection section in
 full — Stage 4 reads live websites, so it is *more* relevant now, not less. The
-`consent_basis` / `opt_out` design in `SCHEMA.md` stays; R17 is unresolved and the design is
-still the right one. `CLIENT-CONTEXT.md` §1, §9 (copy frameworks), §10 (avatar) and §11
-(operational rules) are the most valuable content in the repo and are untouched.
-**Removed:** the CLAUDE.md §3 open database decision, the same blocker in `README.md` and task
-P0.10, and the hard rule restricting research to business lead types (there is no research).
-Serper, MillionVerifier, Voyage-for-research and the rubric procedures came out of the live
-sections of `RUNBOOK.md`; key rotation, backup/restore and escalation stayed.
-**Next:** Stage 2 — unpause Supabase, land the foundations migrations (with `user_id` and
-`scope` on the memory tables from the first migration, per D24), and start the voice corpus.
+`consent_basis` / `opt_out` design in `SCHEMA.md`; R17 is unresolved and the design is still
+the right one. `CLIENT-CONTEXT.md` §1, §9 (copy frameworks), §10 (avatar) and §11
+(operational rules) are the most valuable content in the repo and must not be touched.
+**Next:** finish the doc-set update above, then Stage 2 — unpause Supabase, land the
+foundations migrations (with `user_id` and `scope` on the memory tables from the first
+migration, per D24), and start the voice corpus.
 
 ---
 
@@ -391,10 +408,10 @@ client's account without explanation. Not resolved — see R1.
 | ~~R1~~ | ~~Supabase project paused; MongoDB Atlas org appeared. Platform unconfirmed~~ | — | **CLOSED 22 Aug. The database is Supabase, confirmed by the client. The MongoDB question is closed** (D24). The pause was the free-tier 7-day idle auto-pause, not a decision — unpause at Stage 2 kickoff. `SCHEMA.md` stays relational Postgres with RLS |
 | R2 | GHL custom field mapping not yet confirmed | Phase 3 push built against wrong fields | Open — `ghl_field_map` table isolates the blast radius. **12 Aug: count corrected, cause unchanged.** Full 180-contact pagination finds **21 custom field IDs, not the 9 reported on 10 Aug** — that figure was a 100-record sampling artefact. `locations/customFields.readonly` was requested and **still denied** (see R21), so names and types remain unreadable. Value-shape profiling in `GHL-AUDIT.md` §3.5 infers likely types and concludes `encharge_org_id`/`ai_score`/`ai_tier` cannot exist (they are our own inventions and this system has never written here), but `lead_type`/`lead_source` are genuinely collision-prone. **Hard rule until the scope lands: create no custom field.** A duplicate name in a live CRM cannot be told apart by a workflow reading it. **22 Aug — largely resolved by construction.** Stage 1 created **ten** fields in **their own folder**, deliberately separated from the account's older fields, so a name collision cannot be ambiguous in practice: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate. The token now carries `customFields`. Residual: the 21 pre-existing field IDs are still unmapped and unread — leave them alone |
 | ~~R13~~ | ~~`GHL_LOCATION_ID` is empty in `.env`~~ | — | **CLOSED 10 Aug.** Supplied by the developer the same day. Contacts, opportunities and pipelines now return HTTP 200 |
-| ~~R15~~ | ~~Ross's nine pipeline stages do not exist in GoHighLevel~~ | — | **CLOSED 22 Aug — resolved as option (A), with a different stage list.** A new pipeline, **"Finance Pipeline"**, was created with **ten** stages: New Lead, Appointment Booked, Contacted, Qualified, Docs Requested, Docs Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding. **The nine stages in our notes were never built and exist nowhere** — they were a plan recorded as fact. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` corrected. See D28 |
+| ~~R15~~ | ~~Ross's nine pipeline stages do not exist in GoHighLevel~~ | — | **CLOSED 22 Aug — resolved as option (A), with a different stage list.** A new pipeline, **"Finance Pipeline"**, was created with **ten** stages: New Lead, Appointment Booked, Contacted, Qualified, Docs Requested, Docs Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding. **The nine stages in our notes were never built and exist nowhere** — they were a plan recorded as fact. `CLIENT-CONTEXT.md` §3 and `SCHEMA.md` still need correcting (pending as of 23 Aug). See D28 |
 | R16 | GHL lead sources are campaign-level free text (`Calendly`, `meta_vsl_lp`, `Facebook`) and do not match our seven `lead_source` categories. GHL has no equivalent of `outbound_research` | Two-way sync would corrupt whichever side is treated as authoritative | Open — needs a translation table in the same place as `ghl_field_map`. Low risk, but decide before the first push |
 | R17 | Nobody in the GHL account is marked `dnd` — no opt-out signal exists in the CRM at all | If opt-outs are being tracked outside GHL, our `opt_out` field is not the system of record and someone who unsubscribed could be contacted again. Spam Act and Do Not Call exposure | Open — **worsened 12 Aug.** Confirmed across **all 180** contacts, not a sample. And `GET /forms/submissions` returns `total: 0` across all 14 forms, so there is **no per-submission consent record for anyone already in the CRM** either. The only explicit consent artefact in the entire account is the calendar consent string (`GHL-AUDIT.md` §3.3), which covers only leads who booked. Asked Ross where opt-outs and consent live (§6 Q4). **22 Aug — still open, and explicitly carried into Scope v3.** No consent records exist for the ~180 existing contacts, and no contact is marked opted out. This is live Spam Act exposure on a real contact list. The `consent_basis` / `opt_out` design in `SCHEMA.md` **stays** — it is still correct, and it is the mitigation rather than the problem |
-| ~~R14~~ | ~~Unknown whether the GHL token can write~~ | — | **CLOSED 22 Aug.** Answered by delivery rather than by probe: Stage 1 created a pipeline, ten custom fields and five workflows in the live account. Writes work. The token now also carries `customFields`, `customValues` and `tags` — `SECURITY.md` §12 updated |
+| ~~R14~~ | ~~Unknown whether the GHL token can write~~ | — | **CLOSED 22 Aug.** Answered by delivery rather than by probe: Stage 1 created a pipeline, ten custom fields and five workflows in the live account. Writes work. The token now also carries `customFields`, `customValues` and `tags` — `SECURITY.md` §12 still lists the old scopes; update pending as of 23 Aug |
 | **R18** | **Live Anthropic API key published in plain text** at `enchargecontrol.netlify.app` (client's existing prototype). Sent from the browser as `x-api-key`; readable via `view-source:` with no tooling | **Active billing exposure on the client's Anthropic account.** Anthropic keys have no IP or origin restriction, so anyone holding it can spend against the account. The agreed $50/month cap is a control in *our* pipeline and cannot restrain a third party. Not undoable by taking the site down — it may persist in caches, Netlify deploy history and archives | **OPEN — URGENT, act before the scope conversation.** (1) Revoke the key in the Anthropic Console — correct whether or not it is still live, costs nothing if already dead. (2) Check usage/billing for unexplained spend. (3) Set an account-level spend limit. **The key was deliberately not validated** — testing it would spend the client's money using a compromised credential — so "still active" is unknown and does not change the action. Full detail in `docs/EXISTING-PROTOTYPE.md` §2. **22 Aug — rotation is still unconfirmed.** Ten days on, nobody has confirmed the key was revoked. Chase it as a standalone item; it is not blocked by anything and never was |
 | R19 | The prototype's business-context prompt says `Stack: HubSpot CRM` | If reused verbatim in Phase 4 it tells the model the wrong CRM, and D11 set it to GoHighLevel on 08 Aug | Open — trivial. Fix during the merge into `CLIENT-CONTEXT.md`. Logged so the stale line is not copied across unnoticed |
 | **R20** | **GoHighLevel's API does not expose workflow contents at any scope.** `GET /workflows/` returns seven metadata fields (`id, name, status, version, createdAt, updatedAt, locationId`). `/workflows/{id}`, `/steps`, `/actions`, `/versions` all return `404 "Cannot GET"` — route absent, not scope denied | Triggers and action steps for the 21 workflows — including the 5 drafts being quoted — are unobtainable programmatically. Any estimate is inference, and any tooling that hoped to read GHL automations is dead on arrival | **Open, and not fixable by us or by Ross.** Platform limitation, not permissions. Workaround is human: screen-share or screenshots of the 5 draft canvases (`GHL-AUDIT.md` §6 Q8). Until then the estimate is a range (21–44 h, ~27 h working number), not a fixed price. Do not quote fixed-price on GHL workflow work sight-unseen. **22 Aug — keep this risk permanently.** Any document that implies GHL workflows can be read via the API must say plainly that they cannot. The five Stage 1 workflows are documented from what we built, not from what the API returns |
