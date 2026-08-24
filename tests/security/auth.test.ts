@@ -116,7 +116,19 @@ describe.skipIf(env === null)(
     }, 60_000);
 
     it('0. bootstrap attaches credentials to the seeded UUID without creating a second user', async () => {
-      const before = await db.query<{ n: string }>(`select count(*) as n from auth.users`);
+      // Scoped to the seeded identities, not the whole table: the security files run in
+      // parallel and rls.test.ts creates its own users mid-run (CI #6 read 3 for that
+      // reason). "No second identity for THIS person" is the property that matters.
+      const seededCount = `select count(*) as n from auth.users
+        where id in ($1, $2) or email in ($3, $4)`;
+      const seededArgs = [
+        SEEDED_STAFF.ross.userId,
+        SEEDED_STAFF.developer.userId,
+        SEEDED_STAFF.ross.email,
+        SEEDED_STAFF.developer.email,
+      ];
+      const before = await db.query<{ n: string }>(seededCount, seededArgs);
+      expect(before.rows[0]?.n).toBe('2');
       const seededBefore = await db.query<{ id: string; email: string }>(
         `select id, email from auth.users where id in ($1, $2) order by email`,
         [SEEDED_STAFF.ross.userId, SEEDED_STAFF.developer.userId],
@@ -129,10 +141,10 @@ describe.skipIf(env === null)(
       generatedPasswords.push(attached.value.generatedPassword);
       expect(attached.value.userId).toBe(SEEDED_STAFF.developer.userId);
 
-      // The measured no-duplicate-identity claim: same total, same ids, still exactly one
-      // row per seeded email.
-      const after = await db.query<{ n: string }>(`select count(*) as n from auth.users`);
-      expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+      // The measured no-duplicate-identity claim: still two seeded identities, same ids,
+      // exactly one row per seeded email.
+      const after = await db.query<{ n: string }>(seededCount, seededArgs);
+      expect(after.rows[0]?.n).toBe('2');
       const perEmail = await db.query<{ email: string; n: string; ids: string[] }>(
         `select email, count(*) as n, array_agg(id::text) as ids
        from auth.users where email in ($1, $2) group by email order by email`,

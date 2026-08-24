@@ -225,8 +225,11 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# Off for the same reason as auth.enable_signup above: admin-created accounts only.
-enable_signup = false
+# MUST stay true. Despite the name this is the EMAIL PROVIDER switch
+# (GOTRUE_EXTERNAL_EMAIL_ENABLED): false disables email SIGN-IN as well — CI #6 failed
+# every sign-in with "Email logins are disabled". Signup is blocked by auth.enable_signup
+# above (GOTRUE_DISABLE_SIGNUP), which is the switch that only refuses new accounts.
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true

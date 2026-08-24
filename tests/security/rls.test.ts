@@ -61,6 +61,9 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
   let userA: TestUser; // allowlisted
   let userB: TestUser; // allowlisted
   let outsider: TestUser; // authenticated, NOT in app_users
+  // Only users that were actually created get cleaned up — if beforeAll throws midway,
+  // afterAll must report nothing but the setup error, not a TypeError on top of it.
+  const createdUsers: TestUser[] = [];
   const fixtureIds = {
     convWorkspaceA: '',
     convPrivateA: '',
@@ -96,7 +99,9 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       global: { headers: { Authorization: `Bearer ${signIn.data.session.access_token}` } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    return { id, email, client };
+    const user: TestUser = { id, email, client };
+    createdUsers.push(user);
+    return user;
   }
 
   beforeAll(async () => {
@@ -142,7 +147,7 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       [fixtureIds.convWorkspaceA, fixtureIds.convPrivateA].filter((s) => s !== ''),
     ]);
     await db.query(`delete from public.conversations where title like $1`, [`rls-%-${RUN}`]);
-    for (const user of [userA, userB, outsider]) {
+    for (const user of createdUsers) {
       await db.query(`delete from public.app_users where user_id = $1`, [user.id]);
       await admin.auth.admin.deleteUser(user.id);
     }
