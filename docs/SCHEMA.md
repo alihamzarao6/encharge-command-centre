@@ -479,6 +479,10 @@ alter table public.consumer_leads force row level security;
 revoke all on public.consumer_leads from anon;
 revoke all on public.consumer_leads from authenticated;
 grant select on public.consumer_leads to authenticated;
+-- service_role gets its grant explicitly too (part 3, 20260824020100): BYPASSRLS skips
+-- row policies, not table privileges, and the local stack grants nothing — without this
+-- an Edge Function using the service key through PostgREST is refused with 42501.
+grant all on public.consumer_leads to service_role;
 
 -- deny by default: no permissive policy for anon or authenticated
 -- service_role bypasses RLS and is used only by n8n / Edge Functions
@@ -512,9 +516,16 @@ create policy "workspace_or_own_memory" on public.memory_facts
 ```
 
 `app_users` holds the staff allowlist (`user_id references auth.users`, `email`, `role`,
-`is_active`, `created_at`). It is the table Stage 2 part 3 (auth and user management) builds
-on: a Supabase Auth account that is not in `app_users` with `is_active = true` sees nothing
-and cannot reach the chat endpoint.
+`is_active`, `is_admin`, `created_at`). It is the table Stage 2 part 3 (auth and user
+management) builds on: a Supabase Auth account that is not in `app_users` with
+`is_active = true` sees nothing and cannot reach the chat endpoint.
+
+*(Part 3, 24 Aug: `is_admin boolean not null default false` is the second — and last —
+authorization fact. It gates exactly two server-side operations: creating a staff user and
+deactivating one (`src/lib/auth/admin.ts`). `role` stays a descriptive label with no
+permission semantics; deriving permissions from labels would be a roles system, which part
+3 explicitly does not build. Deactivation is `is_active = false` plus an auth-level ban —
+never a delete, so a person leaving cannot take the workspace's memory with them (D33).)*
 
 **Verification requirement:** `tests/security/rls.test.ts` asserts an anon client and a
 non-allowlisted authenticated client receive zero rows from every table, and that on memory
@@ -546,3 +557,9 @@ enabled" is not accepted, the test output is.
   `review_queue`, `crm_sync_log`, `ghl_field_map`, `tasks`, `notion_sync_map`) →
   `..._rls.sql` (enable/force + policies on **every** table) → `..._triggers.sql`
   (`updated_at` + audit triggers). Nothing under the parked heading.
+- **Stage 2 part 3 additions — written 24 Aug:** `20260824020000_app_users_is_admin.sql`
+  (the admin flag, §7) and `20260824020100_service_role_grants.sql` (explicit
+  `grant all … to service_role` — BYPASSRLS skips row policies, not table privileges, and
+  the local stack inherits nothing; same environment-divergence class as the CI 42501).
+  Any later migration that adds a table must carry its own service_role grant —
+  `tests/security/rls.test.ts` asserts full DML per table and fails CI if one is missing.

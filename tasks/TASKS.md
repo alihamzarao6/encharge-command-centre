@@ -102,11 +102,11 @@ their first real run (CI on push, or credentials).*
 
 ### Part 3 — Auth and user management
 
-- [ ] 2.3.1 Supabase Auth configured (email + password or magic link — decide and record); site URL and redirect URLs set for the deployed chat
-- [ ] 2.3.2 `src/lib/auth/` — verify a Supabase JWT server-side, look up `app_users`, deny if missing or `is_active = false`; typed result, no `any`
-- [ ] 2.3.3 Chat endpoint returns `401` (no token) and `403` (valid token, not allowlisted); unit tests for both plus expired token and tampered token
-- [ ] 2.3.4 Minimal user management: add / deactivate an `app_users` row through a migration-backed script or Edge Function (service role), audited. Ross and the developer added
-- [ ] 2.3.5 `docs/SECURITY.md` §5–§6 and `docs/MEMORY.md` updated; acceptance item 4 evidence captured
+- [x] 2.3.1 **Email + password, decided and recorded** (MEMORY.md 24 Aug [FND-220] — it is what the client was told in writing; a magic link needs a production email sender that does not exist). Public signup **disabled** in `config.toml` (admin-created accounts only), minimum password length 12; the hosted project's signup toggle and the deployed site/redirect URLs are deploy-time settings (part 6) — flagged in the manual checklist
+- [x] 2.3.2 `src/lib/auth/verify.ts` — token → typed decision (`401` missing/invalid vs `403` not-allowlisted/deactivated vs authorized with `is_admin`); infrastructure failure is the error channel, never a 403. supabase-js adapters in `src/lib/auth/clients.ts` (fetch timeout, no blind retries of non-idempotent auth writes). Strict, no `any`
+- [~] 2.3.3 The 401/403 decision layer plus unit tests for missing / expired / tampered token, non-allowlisted and deactivated (`tests/unit/auth/verify.test.ts`, `clients.test.ts` — GoTrue-shaped fixtures). **The chat endpoint itself does not exist until parts 4/6**; wiring the decision onto HTTP responses lands with the endpoint, which is when acceptance item 4's three HTTP responses can be captured
+- [x] 2.3.4 `src/lib/auth/admin.ts` + `npm run staff` CLI: add-user (auth user + `app_users` row + one-time generated password), deactivate (**never delete** — `is_active = false` + auth ban; memory survives), reset-password, and bootstrap that attaches credentials to the two **seeded fixed UUIDs** without minting new identities. Every operation verifies the CALLER is an active admin (`is_admin`, migration `20260824020000`); explicit audit rows with the human actor. Plus `20260824020100` — explicit `service_role` grants (found: part 2 granted nothing to service_role, so PostgREST-as-service-role fails 42501 on local/CI). Proven by `tests/security/auth.test.ts` + `secrets.test.ts` (in CI; no Docker locally — SQL validated rolled-back on the live project, MEMORY.md 24 Aug)
+- [x] 2.3.5 `docs/SECURITY.md` §4–§6, `docs/SCHEMA.md` §7–§8, `docs/MEMORY.md` updated; acceptance item 4 evidence: the DB-level half (zero rows for deactivated/non-allowlisted) captured by the security suite, the HTTP half deferred to the endpoint (see 2.3.3)
 
 ### Part 4 — Claude integration layer
 

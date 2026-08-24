@@ -110,6 +110,7 @@ npm run test:regress   # REQUIRED before stage sign-off
 supabase start
 supabase db reset
 supabase migration new <name>
+npm run staff -- help   # admin user management (add-user / deactivate / reset-password / bootstrap)
 npm run n8n:export
 npm run n8n:validate
 ```

@@ -16,7 +16,12 @@ export type ErrorCode =
   | 'HTTP_STATUS'
   | 'CIRCUIT_OPEN'
   | 'UNKNOWN_THROWN'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  // Added in Stage 2 part 3 (auth): authorization refusals and duplicate-identity
+  // conflicts are first-class outcomes, not validation failures. Never retryable.
+  | 'UNAUTHENTICATED'
+  | 'FORBIDDEN'
+  | 'CONFLICT';
 
 export type ErrorContext = Readonly<Record<string, unknown>>;
 

@@ -199,6 +199,30 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     expect(authBeyondSelect, 'authenticated must hold nothing beyond SELECT').toStrictEqual([]);
   });
 
+  it('privilege layer: service_role holds full DML on every table — explicit, never inherited', async () => {
+    // Part 3 (FND-220): the sanctioned write path is service_role through PostgREST (Edge
+    // Functions, the staff CLI). Hosted pre-grants it via default privileges; the local/CI
+    // stack grants nothing — the same divergence that produced the 42501 on the first
+    // part-2 push, so the grant is stated in a migration and asserted here. A later
+    // migration that adds a table without its service_role grant fails this test.
+    const grants = await db.query<{ table_name: string; privilege_type: string }>(
+      `select table_name, privilege_type
+       from information_schema.role_table_grants
+       where table_schema = 'public' and grantee = 'service_role'`,
+    );
+    const byTable = new Map<string, Set<string>>();
+    for (const g of grants.rows) {
+      const set = byTable.get(g.table_name) ?? new Set<string>();
+      set.add(g.privilege_type);
+      byTable.set(g.table_name, set);
+    }
+    const missing = tables.filter((t) => {
+      const held = byTable.get(t) ?? new Set<string>();
+      return !['SELECT', 'INSERT', 'UPDATE', 'DELETE'].every((p) => held.has(p));
+    });
+    expect(missing, 'tables where service_role lacks full DML').toStrictEqual([]);
+  });
+
   it('2. anon client: zero rows from every table', async () => {
     for (const table of tables) {
       const res = await anon.from(table).select('*', { count: 'exact', head: true });

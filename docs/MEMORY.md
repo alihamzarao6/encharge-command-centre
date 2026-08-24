@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Stage 2 parts 1 and 2 (FND-200 + FND-210) are built and awaiting review** — doc-set aligned, repo foundation (118 unit tests), and now the full database: 7 migrations, seed, RLS + schema suites, CI integration job. All 22 validation checks green against the live Sydney project in a rolled-back transaction. **Uncommitted, staged for review.** The ten GHL stage IDs are now real (24 Aug read + approved write — "Appointment Booked" had been missed in Stage 1 and was created via API). Then **part 3** — auth and user management (real accounts over the seeded fixed UUIDs) |
+| Next task | **Parts 1–2 (FND-200 + FND-210) are pushed and green** (CI run 32686391063). **Part 3 (FND-220, auth and user management) is built and staged for review — uncommitted**: email+password decided and recorded, `is_admin` + `service_role`-grants migrations, `src/lib/auth/` (verify/admin/clients/cli/password), `npm run staff` CLI, auth security suite + secrets scan. SQL validated rolled-back on the live project; GoTrue flows prove on the CI push. Then **part 4** — Claude integration layer |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | 24 Aug — local: typecheck 0, lint 0, 118 passed + 24 skipped, coverage 99.05% lines / 97.92% branches (floor 80/75) on Node 24.15. **CI run 32686391063 (`2843901`) fully green** including the integration job: `supabase db reset --local` from zero, schema suite, and the RLS suite against a real stack — the first run had failed on a missing GRANT (see 24 Aug [CI fix] entry), fixed and re-proven |
+| Last regression run | 24 Aug (part 3, local): typecheck 0, lint 0, **174 passed + 34 skipped**, coverage **93.84% lines / 92.1% branches** (floor 80/75) on Node 24.15 — the stack suites skip locally (no Docker) and run in CI. Previous full-CI green: run 32686391063 (`2843901`), including `db reset --local` from zero + schema + RLS suites |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -86,6 +86,59 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-24 — [FND-220 · Stage 2 part 3] Auth and user management — staged, NOT committed
+**Did:** Two migrations (`20260824020000_app_users_is_admin.sql`,
+`20260824020100_service_role_grants.sql`), seed updated (both staff rows `is_admin = true`),
+`config.toml` (public signup **off** — admin-created accounts only; min password length 12).
+`src/lib/auth/`: `verify.ts` (token → typed 401/403/authorized decision; infra failure is the
+error channel, never a 403), `admin.ts` (create / deactivate / reset-password / bootstrap —
+every operation verifies the CALLER's JWT is an active admin before the service role acts;
+deactivate = `is_active=false` + auth ban, **never delete**; explicit audit rows carry the
+human actor because the app_users trigger can only record 'service_role'), `clients.ts`
+(supabase-js adapters, fetch timeout, hand-written minimal `Database` type), `password.ts`
+(CSPRNG, 24 chars, look-alikes removed), `cli.ts` + `scripts/staff.ts` (`npm run staff`, via
+tsx). Tests: 53 unit (fakes + capturing log sink; expired/tampered tokens via GoTrue-shaped
+fixtures), `tests/security/auth.test.ts` (Part C against a real stack through the production
+code path), `tests/security/secrets.test.ts` (client-shippable files scanned for embedded
+JWTs / `sk-ant-`), rls suite + schema suite extended (`service_role` full-DML assertion;
+`is_admin` column + seeded flags). Docs: SECURITY §4–§6, SCHEMA §7–§8, TASKS 2.3.x, CLAUDE §5.
+**Decided — the three Part A decisions:**
+(1) **Email + password, not magic link.** "Password gets generated" is what the client was
+told in writing, and a magic link needs a configured production email sender that does not
+exist — adopting one would be a silent scope change and a new external dependency. If
+passwords ever annoy Ross on his phone, a magic link is a surfaced decision for later, and
+what it changes for him is: no password to keep, but every login needs his inbox.
+(2) **The generated password is shown exactly once** on the admin's terminal (stdout,
+deliberately not the logger), then exists only in the recipient's hands: never stored,
+never logged, never in any table — measured, not promised (unit sink scan + full-table scan
+in the security suite).
+(3) **Admin is `is_admin boolean not null default false`** — the second and last
+authorization fact. `role` stays a descriptive label; mapping labels to permissions would be
+the roles system part 3 forbids. Both seeded accounts are admins; new users never are by
+default. Self-deactivation is refused, so the workspace can never reach zero active admins.
+Also: three additive `ErrorCode`s (`UNAUTHENTICATED`/`FORBIDDEN`/`CONFLICT`) in errors.ts —
+authz refusals are first-class outcomes, not validation failures. `tsx` devDep because Node
+24's native type-stripping cannot resolve the repo's NodeNext `.js` specifiers.
+**Surprised by:** (1) **Part 2 granted `service_role` nothing** — BYPASSRLS skips row
+policies, not table privileges, so on the local/CI stack any PostgREST call as service_role
+(every Edge Function) would 42501, the exact class of hosted-vs-local divergence the CI fix
+already documented. Now granted explicitly and asserted per table. (2) supabase-js resolves
+the `Database` generic structurally against `Record<string, unknown>` — **interfaces
+(no implicit index signature) silently collapse every `Insert` to `never[]`**; type aliases
+required. (3) undici refuses `new Response('', {status: 204})` — a 204 must have a null body
+(test fixture, not a bug).
+**Not verified (no Docker, no CLI credentials on this machine):** the GoTrue-level flows —
+bootstrap against the crafted seed rows, sign-in, ban — run only in CI on push; the SQL
+layer (both new migrations + seed + privilege measurements) was validated on the live
+project inside one `BEGIN…ROLLBACK` via the MCP (disclosed; measured all-green; DB verified
+empty afterwards: 0 tables, 0 policies, 0 auth users). The hosted project's signup-disable
+toggle and site/redirect URLs are dashboard settings applied at part-6 deploy.
+**Next:** reviewer reads the FND-220 report → push → CI proves the auth suite → part 4
+(Claude integration layer). At Stage 2 deploy: apply migrations via CLI, run
+`npm run staff -- bootstrap ross` / `bootstrap developer`, hand passwords over out of band.
 
 ---
 

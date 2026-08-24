@@ -109,9 +109,25 @@ out-of-allowlist URL, or a tool invocation.
 
 ## 4. Database access
 
-- `service_role` key: n8n and Edge Functions only. Never in a browser, a Notion page, a
-  Google Sheet formula, or a log line.
+- `service_role` key: n8n, Edge Functions and the server-side staff CLI (`npm run staff`)
+  only. Never in a browser, a Notion page, a Google Sheet formula, or a log line.
+  `tests/security/secrets.test.ts` scans every client-shippable file for embedded JWTs and
+  key prefixes, and `tests/security/auth.test.ts` asserts the key appears in no log line
+  from a full user-management run.
+- `service_role` table privileges are **granted explicitly** (`20260824020100`, part 3):
+  BYPASSRLS skips row policies, not table privileges, and the local/CI stack inherits no
+  grants — the same environment divergence that produced the 42501 on the first part-2
+  push. Asserted per table by `tests/security/rls.test.ts`.
 - `anon` key: zero table access by policy.
+- **Auth accounts are created only by an admin** — public signup is disabled in
+  `config.toml` (`enable_signup = false`, mirrored on the hosted project as a dashboard
+  setting at deploy time). The two authorization facts on `app_users` are `is_active`
+  (allowlist) and `is_admin` (may manage users); every privileged operation verifies the
+  CALLER's JWT resolves to an active admin before the service role acts
+  (`src/lib/auth/admin.ts`), so holding the endpoint is not holding the keys. Leaving is
+  **deactivation, never deletion**: `is_active = false` (RLS returns zero rows to a
+  still-valid JWT) plus an auth-level ban (no new sign-in). Generated passwords are shown
+  once to the admin and exist in no log line and no table — proven by test, not asserted.
 - Connection strings never logged. The logger redacts by key name (`password`, `key`,
   `token`, `secret`, `authorization`) at the serialiser level, not per call site.
 - Backups: **the free plan has no automated backups** (found in Stage 2 part 2 — RUNBOOK §6
@@ -152,6 +168,13 @@ provably roll back, disclosed in the report. Anything that commits goes through 
 - HTTPS only. HSTS on.
 - No stack traces or internal identifiers in error responses. Log detail server-side, return
   a correlation ID.
+- **Authenticated endpoint contract (part 3):** every request is resolved by
+  `src/lib/auth/verify.ts` to exactly one of `401` (no token, or a token GoTrue refuses —
+  expired, tampered, banned), `403` (real auth user who is not an active `app_users` row)
+  or authorized-with-identity. Infrastructure failure is a `5xx`, never a `403` — "could
+  not check" must not read as "checked and refused". The chat endpoint (parts 4/6) maps
+  this decision directly onto its responses; RLS enforces the same refusal at the database
+  even if an endpoint forgets.
 
 ---
 
@@ -170,7 +193,17 @@ Not "we enabled RLS" — proven by test. `tests/security/rls.test.ts` iterates e
 5. No `authenticated` role has insert/update/delete policies on core tables
 
 A new table added without RLS — or without its grant, or with too broad a grant — fails
-CI. That is the point.
+CI. That is the point. The same suite asserts `service_role` holds full DML on every table
+(part 3 — its grant is explicit, see §4).
+
+`tests/security/auth.test.ts` (part 3) extends the proof to the auth lifecycle, through
+the production code path against a real stack: attaching credentials to the seeded fixed
+UUIDs creates no second identity (auth-user count identical before/after); a newly created
+user signs in and reads `workspace` memory; a deactivated user's **still-valid JWT**
+receives zero rows from every table (the refusal is RLS, not UI) and a fresh sign-in is
+refused by the ban; an auth account with no `app_users` row reads nothing; a non-admin
+caller cannot create users and the attempt mints no identity; and no generated password
+appears in any captured log line or in any row of any table.
 
 ---
 

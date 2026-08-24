@@ -104,14 +104,26 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
     expect(res.rows.map((r) => r.extname)).toStrictEqual(['pg_trgm', 'pgcrypto', 'vector']);
   });
 
-  it('seeded the two staff allowlist rows and nothing else', async () => {
-    const res = await db.query<{ user_id: string; email: string; is_active: boolean }>(
-      `select user_id, email, is_active from public.app_users order by email`,
-    );
+  it('seeded the two staff allowlist rows — both admins (part 3) — and nothing else', async () => {
+    const res = await db.query<{
+      user_id: string;
+      email: string;
+      is_active: boolean;
+      is_admin: boolean;
+    }>(`select user_id, email, is_active, is_admin from public.app_users order by email`);
     expect(res.rows).toStrictEqual([
-      { user_id: DEV, email: 'alihamzarao14@gmail.com', is_active: true },
-      { user_id: ROSS, email: 'rossb@fundd.com.au', is_active: true },
+      { user_id: DEV, email: 'alihamzarao14@gmail.com', is_active: true, is_admin: true },
+      { user_id: ROSS, email: 'rossb@fundd.com.au', is_active: true, is_admin: true },
     ]);
+  });
+
+  it('app_users.is_admin is not null and defaults to false — a new user is never born admin', async () => {
+    const res = await db.query<{ is_nullable: string; column_default: string | null }>(
+      `select is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public' and table_name = 'app_users' and column_name = 'is_admin'`,
+    );
+    expect(res.rows).toStrictEqual([{ is_nullable: 'NO', column_default: 'false' }]);
   });
 
   it('seeded the ten Finance Pipeline stage rows with their real GHL stage IDs', async () => {

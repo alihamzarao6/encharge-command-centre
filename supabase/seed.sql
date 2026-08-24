@@ -43,10 +43,13 @@ values
   )
 on conflict (id) do nothing;
 
-insert into public.app_users (user_id, email, role, is_active)
+-- Both seeded accounts are admins (is_admin, part 3): Ross owns the workspace and the
+-- developer administers it during the build. Every later account defaults to false and is
+-- promoted only by a deliberate admin action. `role` is a label, not a permission.
+insert into public.app_users (user_id, email, role, is_active, is_admin)
 values
-  ('a0000000-0000-4000-8000-000000000001', 'rossb@fundd.com.au', 'owner', true),
-  ('a0000000-0000-4000-8000-000000000002', 'alihamzarao14@gmail.com', 'developer', true)
+  ('a0000000-0000-4000-8000-000000000001', 'rossb@fundd.com.au', 'owner', true, true),
+  ('a0000000-0000-4000-8000-000000000002', 'alihamzarao14@gmail.com', 'developer', true, true)
 on conflict (user_id) do nothing;
 
 -- ---------------------------------------------------------------------------------------
