@@ -423,3 +423,12 @@ enabled = true
 # declarative_schema_path = "./schemas"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Stage 2 part 4 (FND-230): the chat Edge Function is checked in but NOT bundled by the
+# local stack yet. `supabase start` pre-bundles every enabled function with Deno, which
+# cannot resolve the library's NodeNext `.js` import specifiers ("open src/lib/logger.js:
+# no such file") — CI run 32790078875. Part 6 settles the strategy (esbuild bundle or
+# Deno sloppy-imports) and flips this to true as part of the deploy work (TASKS 2.6.3).
+[functions.chat]
+enabled = false
+verify_jwt = false

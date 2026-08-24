@@ -139,6 +139,7 @@ have blinded the cap past 1,000 rows/month — `spentSince` paginates and the st
 inserts 1,001 rows to prove it. (4) `.env` has `CLAUDE_MAX_TOKENS=4096`: the worst-case
 reservation per call is then ≈ $0.06, which is what the cap check refuses against near
 the limit — the example default is now 1024.
+**CI fix after push (run 32790078875):** `supabase start` pre-bundles every enabled Edge Function and Deno could not resolve the library's `.js` specifiers — the exact part-6 risk named above, surfaced early. `[functions.chat] enabled = false` in `config.toml` until part 6 settles bundling (TASKS 2.6.3); the function file is unchanged.
 **Not verified (no Docker, no Supabase credentials on this machine):** the stack suite
 (`llm.test.ts`) and `supabase db reset` from zero — both run on the CI push; the Edge
 Function under `supabase functions serve`; a real `api_usage` ROW in Postgres (the row
