@@ -209,6 +209,12 @@ research engine and social insights — parked (D23, R3); `org_id` is replaced b
 `cache_read_tokens` / `cache_write_tokens` are added because prompt caching on the voice and
 brand prefix (Stage 2 part 5) is the main cost lever, and a cap that cannot see cache hits
 cannot be tuned. **Ships in Stage 2** — the first Claude call in part 4 must land a row here.
+*(Part 4, 25 Aug: it does. `operation` is `chat.turn` for a confirmed call and
+`chat.turn:unconfirmed` for a call that may have been billed but whose usage could not be
+read — timeout after send, transport failure, unparseable 200 — recorded as the worst-case
+reservation so the cap counts it. `units` stays null for Anthropic rows. The cap reads
+`sum(cost_usd)` over `created_at >= <UTC day / month start>` by paginating `select`, not a
+single page — PostgREST's `max_rows` would otherwise blind the cap past 1,000 rows.)*
 
 ### audit_log
 `id · actor · action · entity_type · entity_id · before jsonb · after jsonb · ip · created_at`

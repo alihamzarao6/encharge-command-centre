@@ -12,8 +12,8 @@
  * at the transport level and rule 8 forbids blindly retrying non-idempotent writes; a
  * circuit breaker guards high-volume pipelines, not one-shot interactive admin commands.
  *
- * The Database type below is hand-written and minimal — only the two tables this module
- * touches. When generated types arrive (part 4+), they replace it.
+ * The Database type below is hand-written and minimal — the two tables this module touches
+ * plus the three the Claude layer writes (part 4). Generated types would replace it.
  */
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -43,6 +43,43 @@ type AppUsersRow = {
   created_at: string;
 };
 
+// Stage 2 part 4: the three tables the Claude layer writes (src/lib/llm/store.ts).
+type ApiUsageInsert = {
+  provider: 'anthropic' | 'voyage' | 'ghl' | 'meta';
+  operation: string | null;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  cost_usd: number | null;
+  user_id: string | null;
+  conversation_id: string | null;
+};
+
+type ConversationsRow = {
+  id: string;
+  user_id: string;
+  scope: string;
+  title: string | null;
+  created_at: string;
+  last_active_at: string;
+  deleted_at: string | null;
+};
+
+type MessagesRow = {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  scope: string;
+  role: string;
+  content: string | null;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  created_at: string;
+};
+
 type AuditLogInsert = {
   actor: string;
   action: string;
@@ -63,6 +100,25 @@ export type Database = {
         Row: AuditLogInsert & { id: string; created_at: string };
         Insert: AuditLogInsert;
         Update: Partial<AuditLogInsert>;
+        Relationships: [];
+      };
+      api_usage: {
+        Row: ApiUsageInsert & { id: string; created_at: string; units: number | null };
+        Insert: Partial<ApiUsageInsert> & { provider: ApiUsageInsert['provider'] };
+        Update: Partial<ApiUsageInsert>;
+        Relationships: [];
+      };
+      conversations: {
+        Row: ConversationsRow;
+        Insert: Pick<ConversationsRow, 'user_id'> & Partial<Omit<ConversationsRow, 'user_id'>>;
+        Update: Partial<ConversationsRow>;
+        Relationships: [];
+      };
+      messages: {
+        Row: MessagesRow;
+        Insert: Pick<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'> &
+          Partial<Omit<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'>>;
+        Update: Partial<MessagesRow>;
         Relationships: [];
       };
     };

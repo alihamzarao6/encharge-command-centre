@@ -21,7 +21,13 @@ export type ErrorCode =
   // conflicts are first-class outcomes, not validation failures. Never retryable.
   | 'UNAUTHENTICATED'
   | 'FORBIDDEN'
-  | 'CONFLICT';
+  | 'CONFLICT'
+  // Added in Stage 2 part 4 (Claude integration): the operator must be able to tell a cap
+  // refusal from a rate limit from a model refusal from a timeout (CLAUDE.md §5 guardrail).
+  // Classes live in src/lib/llm/errors.ts.
+  | 'SPEND_CAP'
+  | 'RATE_LIMITED'
+  | 'MODEL_REFUSAL';
 
 export type ErrorContext = Readonly<Record<string, unknown>>;
 

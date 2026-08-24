@@ -111,6 +111,7 @@ supabase start
 supabase db reset
 supabase migration new <name>
 npm run staff -- help   # admin user management (add-user / deactivate / reset-password / bootstrap)
+npm run chat -- "hi"    # one real chat turn through the server-side path (needs a stack + key in env)
 npm run n8n:export
 npm run n8n:validate
 ```

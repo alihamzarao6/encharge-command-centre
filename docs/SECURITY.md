@@ -231,18 +231,56 @@ failure mode — worse than missing data.
 
 ## 8. Cost controls
 
-Client agreed a $50/month ceiling. Treat it as a hard constraint, not a target.
+Client agreed a $50/month ceiling (told "50 to 80 a month with a hard cap"). Treat it as a
+hard constraint, not a target. **Built in Stage 2 part 4** — `src/lib/llm/client.ts`;
+measured by `tests/unit/llm/client.test.ts` and `tests/integration/llm.test.ts`.
 
-- Hard daily spend cap per provider, enforced **in code before the call**, not just monitored.
-  Cap reached → workflow pauses and alerts; it does not silently continue or silently stop.
-- Per-org cost ceiling ($0.12). Exceeded → record flagged, pipeline halts for that org.
-- Model routing: `claude-haiku-4-5-20251001` for high-volume classification, `claude-sonnet-5`
-  for extraction and ranking. Never default everything to the largest model.
-- Prompt caching on the stable rubric and system-prompt prefix.
-- Batch API for non-urgent bulk ranking where latency allows.
-- `api_usage` records every call. Daily cost rollup is a first-class dashboard metric.
-- Retry storms are the classic cause of surprise bills: max 3 retries, exponential backoff
-  with jitter, circuit breaker after 5 consecutive failures.
+**Shape of the cap (decided 25 Aug 2026, MEMORY.md):**
+- **Monthly hard cap** (`ANTHROPIC_MONTHLY_SPEND_CAP_USD`) — the promise made to the client.
+- **Daily hard cap** (`ANTHROPIC_DAILY_SPEND_CAP_USD`) — the retry-storm brake: one bad day
+  cannot spend the month.
+- Both are **provider-wide** (all users, all conversations): one card pays. Per-user and
+  per-conversation limits were not promised and are not built.
+- Windows are **UTC** calendar day / month, because the cap protects the Anthropic invoice,
+  which is cut in UTC.
+- The check is `spent so far + worst case of THIS call` (every input token uncached, every
+  `max_tokens` output token used). Checking `spent ≥ cap` alone lets the last call overshoot.
+- A cap that cannot be read (database down) **fails closed** — the call is refused. An unset
+  cap is a configuration error, never "unlimited".
+- Warning at 80% of either cap (`ANTHROPIC_SPEND_WARN_FRACTION`), refusal above 100%. Both
+  go to the alerter (log-only in Stage 2; webhook/email is a Stage 6 monitoring deliverable).
+
+**Enforced in code before the call.** The refusal is a typed `SPEND_CAP` error that the
+endpoint renders as `402` with a plain message. No HTTP request leaves the process — the
+tests assert on the fetch count, not on the error.
+
+**Every billed or possibly-billed call lands in `api_usage`** — success, model refusal, and
+unconfirmed failures (timeout or transport failure after the request was sent, or a 200
+with an unreadable body) which are recorded as the worst-case reservation under
+`operation = '<op>:unconfirmed'`, so money we cannot see is still counted against the cap.
+Error envelopes (4xx, 429, 5xx, 529) are not billed by Anthropic and are logged, not recorded.
+
+**Retry discipline.** The Messages call is not idempotent — a retried call that half-succeeded
+bills twice. `http.ts` is told `idempotent: false` and never retries it. `client.ts` retries
+**only** responses that provably billed nothing: 429 and 5xx/529 error envelopes, at most
+`CLAUDE_RETRIES` (default 2) times, exponential backoff with jitter, honouring `Retry-After`.
+Timeouts and transport failures are never retried. The per-origin circuit breaker opens after
+5 consecutive failures.
+
+**Model routing** is configuration: `CLAUDE_MODEL_DEFAULT` (`claude-sonnet-5`) and
+`CLAUDE_MODEL_FAST` (`claude-haiku-4-5-20251001`), read on every invocation, changed with
+`supabase secrets set` and no redeploy. A model with no price in the table
+(`CLAUDE_PRICING_JSON` overrides the checked-in defaults) is **refused**: what cannot be
+priced cannot be capped.
+
+**Prompt caching** on the stable system-prompt prefix (`cache_control: ephemeral` on the last
+stable block). Cache reads and writes are recorded separately so the part-5 prefix can be
+tuned. Batch API for non-urgent bulk work is a later-stage option.
+
+**What one turn costs (measured 24 Aug 2026, placeholder prompt, Sonnet 5):** 168 input +
+118 output tokens = 168 × $3/M + 118 × $15/M = **$0.002274**. At that shape, $50 buys roughly
+22,000 turns a month. The voice prefix (part 5) will raise input tokens sharply; caching
+brings the cached portion to 10% of list — the reason `cache_read_tokens` is measured.
 
 ---
 

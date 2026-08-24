@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Parts 1–2 (FND-200 + FND-210) are pushed and green** (CI run 32686391063). **Part 3 (FND-220, auth and user management) is built and staged for review — uncommitted**: email+password decided and recorded, `is_admin` + `service_role`-grants migrations, `src/lib/auth/` (verify/admin/clients/cli/password), `npm run staff` CLI, auth security suite + secrets scan. SQL validated rolled-back on the live project; GoTrue flows prove on the CI push. Then **part 4** — Claude integration layer |
+| Next task | **Parts 1–3 are pushed and green** (CI run 32779504738). **Part 4 (FND-230, Claude integration layer) is built and staged for review — uncommitted**: `src/lib/llm/` (config / pricing / spend / client / response / prompt / chat / store / wiring), `supabase/functions/chat` Deno adapter, `npm run chat` runner, `zod` dependency, three `ErrorCode`s. One live Sonnet 5 call made and recorded as the fixture ($0.002274). Then **part 5** — voice and brand prompt layer |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** The part-3 auth suite ran for real (bootstrap on the seeded UUID, sign-in, DB-level deactivation, signup refused). Local: typecheck 0, lint 0, 174 passed + 35 skipped (no Docker) |
+| Last regression run | **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** Local after part 4 (25 Aug, uncommitted): typecheck 0, lint 0, **unit 282/282, coverage 94.87% lines / 93.06% branches**, security 6 passed + 20 skipped, integration 21 skipped (no Docker — the new `tests/integration/llm.test.ts` proves on the CI push) |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -86,6 +86,66 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-25 — [FND-230 · Stage 2 part 4] Claude integration layer — staged, NOT committed
+**Did:** `src/lib/llm/`: `config.ts` (the ONE reader of `ANTHROPIC_API_KEY`; models, caps,
+max tokens, timeout, retries, pricing all env — caps REQUIRED, unset ≠ unlimited),
+`pricing.ts` (list prices, 6 dp, unpriced model refused), `spend.ts` (pure cap decision),
+`client.ts` (cap → call over `http.ts` → record), `response.ts` (Zod parse of the Messages
+response), `prompt.ts` (obviously-placeholder system prompt with the `cache_control` seam),
+`chat.ts` (the server-side turn: verify → validate → conversation → Claude → `messages`),
+`store.ts` (supabase adapters; `spentSince` paginates), `wiring.ts` (env → deps).
+`supabase/functions/chat/index.ts` (thin Deno adapter), `scripts/chat.ts` (`npm run chat`).
+`errors.ts` +`SPEND_CAP`/`RATE_LIMITED`/`MODEL_REFUSAL`; `http.ts` surfaces `Retry-After`;
+`clients.ts` `Database` type gains `api_usage`/`conversations`/`messages`. `zod@4` added.
+Tests: 101 new unit (client 26, chat 27, store 12, pure 33, wiring 3), secrets suite +3
+(key has exactly one reader; `supabase/functions` scanned), `tests/integration/llm.test.ts`
+(real stack, fixture fetch: one row per turn, cap → 402 + zero fetch + zero rows, 401/403
+before any fetch, pagination). Docs: SECURITY §8 rewritten, SCHEMA §3, RUNBOOK §3, TESTING
+§2, TASKS 2.4.x, `.env.example`, CLAUDE §5.
+**Decided — the four Part A decisions:**
+(1) **Runtime = Supabase Edge Function.** The key lives in Supabase secrets next to the
+service-role key; no extra server; part 6's static UI calls one same-origin function with
+the anon key. The whole path is runtime-agnostic (`handleChatTurn`), the Deno file is ~40
+lines. Cost: Deno import resolution of the NodeNext `.js` specifiers is settled at part-6
+deploy (`supabase functions serve` needs Docker) — sloppy-imports or an esbuild bundle.
+(2) **Model routing = env** (`CLAUDE_MODEL_DEFAULT` / `_FAST`), re-read every invocation →
+`supabase secrets set`, no redeploy. Strings confirmed: `claude-sonnet-5`,
+`claude-haiku-4-5-20251001`. The Claude-API skill's house default is Opus 5 ($5/$25); the
+client's budget is why the project default stays Sonnet 5 ($3/$15).
+(3) **Cap = monthly hard (the promise) + daily hard (the retry-storm brake), provider-wide,
+UTC windows** (the invoice is UTC), `spent + worst case of this call`, fail-closed when the
+ledger cannot be read, warn at 80%. Per-user/per-conversation not promised, not built.
+(4) **No streaming yet.** Builder, parser and recorder are separate functions; a `stream()`
+sibling adds only SSE parsing. Non-streaming with `max_tokens` 1024 stays well inside the
+60 s timeout.
+Also: retries ONLY on provably-unbilled 429/5xx envelopes; timeout/transport after send is
+recorded as a worst-case `:unconfirmed` reservation and never retried. A recording failure
+after a success returns the reply and alerts — the next call fails closed anyway. A turn is
+system prompt + the one message: earlier turns are NOT loaded (the boundary said no history
+retrieval; flagged for the reviewer). **Review decision 25 Aug: history is part 6 work (TASKS 2.6.2a) — current conversation's messages only; semantic recall stays Stage 3.** `.env` `CLAUDE_MAX_TOKENS` set to 1024 to match the example.
+**Measured:** live Sonnet 5 call `req_011CeNPXfxvgJzSwMaXUPubk`: 168 in + 118 out =
+168×$3/M + 118×$15/M = **$0.002274**; recorded as `tests/fixtures/anthropic/messages-ok.json`.
+Cap tripped (daily 0) → `SPEND_CAP`, zero fetch, zero new rows. Live key value in 0 files
+outside `.env`; `sk-ant-` prefix nowhere in `src/` but one comment.
+**Surprised by:** (1) the logger's key-fragment redaction hides any field whose name contains
+`token` — `usage.inputTokens` logged as `[REDACTED]`; log fields renamed `in`/`out`.
+(2) postgrest-js does not throw on a failed fetch — it returns `{ code: '', message:
+'TypeError: fetch failed' }`; mapped to `NETWORK` (the auth adapters in `clients.ts` still
+map that shape to `HTTP_STATUS` — harmless there, noted). (3) PostgREST `max_rows` would
+have blinded the cap past 1,000 rows/month — `spentSince` paginates and the stack test
+inserts 1,001 rows to prove it. (4) `.env` has `CLAUDE_MAX_TOKENS=4096`: the worst-case
+reservation per call is then ≈ $0.06, which is what the cap check refuses against near
+the limit — the example default is now 1024.
+**Not verified (no Docker, no Supabase credentials on this machine):** the stack suite
+(`llm.test.ts`) and `supabase db reset` from zero — both run on the CI push; the Edge
+Function under `supabase functions serve`; a real `api_usage` ROW in Postgres (the row
+shown in the report is the in-memory store's record from the live call — the SQL insert
+path is unit-tested against PostgREST fixtures and proven on the stack in CI).
+**Next:** reviewer reads the FND-230 report → push → CI proves `llm.test.ts` → part 5
+(voice and brand prompt into `prompt.ts`'s cached prefix).
 
 ---
 

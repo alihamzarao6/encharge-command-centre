@@ -1,0 +1,25 @@
+{
+  "model": "claude-sonnet-5",
+  "id": "msg_011CeNPXgjonsWJz86v6tSW6",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "I can help a mortgage broker with tasks like organizing client information, explaining general mortgage concepts, drafting plain-language communications, or answering process-related questions—though I don't have this brokerage's specific brand voice, rates, lender details, or marketing frameworks loaded yet, so I can't produce compliant marketing copy or cite specific figures at this time."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 168,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": { "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0 },
+    "output_tokens": 118,
+    "output_tokens_details": { "thinking_tokens": 0 },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

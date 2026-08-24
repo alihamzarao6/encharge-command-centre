@@ -251,7 +251,16 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         lastError = new HttpStatusError(
           `${method} ${safeUrl} responded ${response.status}`,
           response.status,
-          { context: { method, url: safeUrl, attempt, bodySnippet: bodyText.slice(0, 200) } },
+          {
+            context: {
+              method,
+              url: safeUrl,
+              attempt,
+              bodySnippet: bodyText.slice(0, 500),
+              // Surfaced so a caller with its own retry policy can honour the server's delay.
+              retryAfter: response.headers.get('retry-after'),
+            },
+          },
         );
         if (!lastError.retryable) {
           // A definite answer from the service: not a failure of the service.

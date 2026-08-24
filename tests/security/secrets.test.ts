@@ -16,12 +16,12 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..');
-const SCAN_ROOTS = ['src', 'scripts', 'dist', 'build', 'public'].filter((dir) =>
-  existsSync(join(REPO_ROOT, dir)),
+const SCAN_ROOTS = ['src', 'scripts', 'supabase/functions', 'dist', 'build', 'public'].filter(
+  (dir) => existsSync(join(REPO_ROOT, dir)),
 );
 
 // Three real base64url segments — matches actual JWTs, not regex sources that mention eyJ.
@@ -72,5 +72,31 @@ describe('no secret material in client-shippable code', () => {
       const content = readFileSync(full, 'utf8');
       expect(content.includes(key), `service role key value found in ${file}`).toBe(false);
     }
+  });
+});
+
+/**
+ * Stage 2 part 4 (task 2.4.3, R18): the Anthropic key is read from the server environment
+ * by exactly one module, and the Anthropic origin is named in exactly one module. Anything
+ * else touching either is a second key path that a future client bundle could pull in.
+ */
+describe('the Anthropic key has exactly one reader', () => {
+  const srcFiles = listFiles(join(REPO_ROOT, 'src')).map((f) => f.split(sep).join('/'));
+
+  it('ANTHROPIC_API_KEY is referenced only by src/lib/llm/config.ts', () => {
+    const readers = srcFiles.filter((f) => readFileSync(f, 'utf8').includes('ANTHROPIC_API_KEY'));
+    expect(readers.map((f) => f.slice(f.indexOf('src/')))).toEqual(['src/lib/llm/config.ts']);
+  });
+
+  it('api.anthropic.com is named only by src/lib/llm/config.ts', () => {
+    const callers = srcFiles.filter((f) => readFileSync(f, 'utf8').includes('api.anthropic.com'));
+    expect(callers.map((f) => f.slice(f.indexOf('src/')))).toEqual(['src/lib/llm/config.ts']);
+  });
+
+  it('no module outside src/lib/llm reads x-api-key or builds an Anthropic header', () => {
+    const offenders = srcFiles.filter(
+      (f) => !f.includes('src/lib/llm/') && readFileSync(f, 'utf8').includes("'x-api-key':"),
+    );
+    expect(offenders).toEqual([]);
   });
 });

@@ -76,10 +76,26 @@ re-push with the replay script (`npm run replay-crm -- --id=<id>`, Stage 3). Nev
 GoHighLevel to "fix" it — that creates divergence from the source of truth. Remember the
 account is shared with an unrelated business (R22): never replay account-wide.
 
-### The chat says the cap is reached
-Not a bug. `api_usage` against `ANTHROPIC_DAILY_SPEND_CAP_USD` / the monthly cap. Raise the
-cap in the server environment if the spend is legitimate, or wait for the daily reset. The
-call is refused *before* it reaches Anthropic, so nothing was spent.
+### The chat says the cap is reached (HTTP 402, code `SPEND_CAP`)
+Not a bug. The message names the window (daily or monthly). Check spend:
+`select date_trunc('day', created_at at time zone 'utc') d, sum(cost_usd) from api_usage
+where provider = 'anthropic' and created_at >= date_trunc('month', now() at time zone 'utc')
+group by 1 order by 1;` — against `ANTHROPIC_DAILY_SPEND_CAP_USD` / `_MONTHLY_`. Windows are
+UTC (the Anthropic invoice is UTC): the daily window resets at 08:00 Perth. Raise the cap
+with `supabase secrets set ANTHROPIC_DAILY_SPEND_CAP_USD=…` (no redeploy) if the spend is
+legitimate, or wait. The call is refused *before* it reaches Anthropic, so nothing was
+spent. Rows with `operation` ending `:unconfirmed` are worst-case reservations for calls
+whose usage could not be read (timeout after send) — a run of them means Anthropic or the
+network was unhealthy, not that someone is chatting.
+
+### The chat returns 503 with code `NETWORK` / `HTTP_STATUS` and the cap looks fine
+The cap **fails closed**: if `api_usage` cannot be read, the call is refused rather than
+made blind. Check the Supabase project (paused? — see below) before anything else.
+
+### The chat returned a reply but `TURN_NOT_SAVED` (503)
+Claude answered and was metered (`api_usage` has the row) but `messages` could not be written.
+The user was told the reply was generated; do not resend on their behalf — check the database
+and let them retry.
 
 ### A user cannot log in / sees nothing
 Check `app_users`: the account must exist with `is_active = true`. Supabase Auth succeeding

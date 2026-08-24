@@ -42,8 +42,12 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `extract/inhouseFinance` | "our finance partner", named broker on team page, bank ownership, and clean negatives |
 | `ranking/prefilter` | Every hard reject from CLIENT-CONTEXT.md section 7, both rubrics |
 | `ranking/score` | Weighted dimensions, tier boundaries at exactly 40/60/80, both rubrics |
-| `llm/parse` | Valid JSON, JSON with prose wrapper, markdown fences, malformed, empty |
-| `llm/schemas` | Every Zod schema accepts valid and rejects each invalid shape |
+| `llm/parse` | Valid JSON, JSON with prose wrapper, markdown fences, malformed, empty *(extraction stages)* |
+| `llm/schemas` | Every Zod schema accepts valid and rejects each invalid shape *(extraction stages)* |
+| `llm/client` | Cap refuses **before** fetch (fetch count 0, no row); one success = one `api_usage` row with real tokens; timeout/transport after send records the reservation and is **not** retried; 429/529 envelopes retried, 4xx not; key in no log line / result / error. **Shipped 25 Aug** — `tests/unit/llm/client.test.ts` |
+| `llm/chat` | 401 / 403 / 503 before any Claude call; own vs workspace vs other's-private conversation; every Claude failure mapped to a status the UI can render. **Shipped 25 Aug** |
+| `llm/store` | `spentSince` paginates past 1,000 rows; every column written; PostgREST and transport failures typed. **Shipped 25 Aug** |
+| `llm/spend`, `llm/pricing`, `llm/config`, `llm/response` | Cap arithmetic at the boundary, UTC windows, list-price cost to 6 dp, unpriced model refused, caps required, Zod response parse. **Shipped 25 Aug** |
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
 | `memory/facts` | Supersede logic, current-facts query, scope isolation |

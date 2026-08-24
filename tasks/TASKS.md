@@ -110,11 +110,11 @@ their first real run (CI on push, or credentials).*
 
 ### Part 4 — Claude integration layer
 
-- [ ] 2.4.1 *(was 2.12)* `src/lib/llm/client.ts` — Claude wrapper over `src/lib/http.ts`: model routing (`claude-sonnet-5` default, `claude-haiku-4-5-20251001` high-volume), prompt caching on the stable prefix, timeout, retry only on idempotent failures, **daily and monthly cap enforced in code before the call**, every call written to `api_usage` (model, input/output/cache tokens, cost)
-- [ ] 2.4.2 *(was 2.13–2.14)* `src/lib/llm/schemas.ts` + `parse.ts` — Zod schemas, tolerant parse, one retry with the validation error, then review queue (CLAUDE.md rule 13)
-- [ ] 2.4.3 **The Anthropic key is read from server environment only**; a test asserts no module importable by the client bundle references `ANTHROPIC_API_KEY`, and the CI build greps built client assets for `sk-ant-` (T11, R18)
-- [ ] 2.4.4 Contract tests against recorded Anthropic fixtures (msw); cap-trip test: cap already spent → call refused, no HTTP request made, no `api_usage` row
-- [ ] 2.4.5 `docs/SECURITY.md` §8, `docs/MEMORY.md` updated; acceptance items 5–6 evidence captured
+- [x] 2.4.1 *(was 2.12)* `src/lib/llm/client.ts` — Claude wrapper over `src/lib/http.ts` (request marked non-idempotent; `client.ts` retries only provably-unbilled 429/5xx envelopes, never timeouts): model routing from `CLAUDE_MODEL_DEFAULT` / `CLAUDE_MODEL_FAST` (env, no redeploy), prompt caching (`cache_control` on the stable prefix — `prompt.ts` placeholder until part 5), timeout, **UTC daily + monthly provider-wide caps enforced in code before the call, fail-closed**, every billed or possibly-billed call written to `api_usage` (`store.ts`; reservations as `:unconfirmed`). `chat.ts` = the server-side turn (verify → validate → conversation → Claude → `messages`); `wiring.ts` = env → deps; `supabase/functions/chat` Deno adapter; `npm run chat` runner. Unit: 26 client + 27 chat + 12 store + 3 wiring + 33 pure
+- [~] 2.4.2 *(was 2.13–2.14)* Response parsing is Zod (`response.ts`, rule 13 — `zod` added as a dependency). The **extraction** schemas + tolerant parse + one-retry-then-review-queue belong to the stages that extract (4 and 5); nothing in part 4 produces structured output to parse
+- [x] 2.4.3 **The Anthropic key is read from the server environment by exactly one module** (`config.ts`) — `tests/security/secrets.test.ts` asserts `ANTHROPIC_API_KEY`, `api.anthropic.com` and the `x-api-key` header each have one reader in `src/`, scans `supabase/functions/` too; the built-asset grep lands with the bundle in part 6 (T11, R18)
+- [x] 2.4.4 Contract tests against a recorded Anthropic fixture (`tests/fixtures/anthropic/messages-ok.json`, recorded from the live call `req_011CeNPXfxvgJzSwMaXUPubk`) via the injectable fetch — no msw dependency needed; cap-trip test asserts zero fetches and zero rows, unit and against the real stack (`tests/integration/llm.test.ts`)
+- [x] 2.4.5 `docs/SECURITY.md` §8 rewritten for the real shape, `SCHEMA.md` §3, `RUNBOOK.md` §3, `TESTING.md` §2, `.env.example`, `CLAUDE.md` §5, `docs/MEMORY.md`; acceptance item 5 evidence captured (unit + stack); item 6's browser half lands with the bundle in part 6
 
 ### Part 5 — Voice and brand prompt layer
 
@@ -128,6 +128,7 @@ their first real run (CI on push, or credentials).*
 
 - [ ] 2.6.1 Chat UI: login, conversation list, message thread, composer. **Mobile-first**, verified at 375 / 768 / 1280 — no horizontal scroll, inputs ≥ 16px (iOS zoom trap, `EXISTING-PROTOTYPE.md`)
 - [ ] 2.6.2 Conversations and messages persisted server-side against `user_id` (SCHEMA §4) — the same conversation visible on phone and laptop after login
+- [ ] 2.6.2a **Conversation history in the request** (decided on FND-230 review, 25 Aug): a turn sends the prior `messages` of the **current conversation only** to Claude, so the second message remembers the first. Load via a `ConversationStore.recentMessages(conversationId)` adapter and pass them through `CompletionRequest.messages` (already an array — `chat.ts` sends one message today, deliberately). Bounded (last N turns / token budget, config), oldest first, `user`/`assistant` roles only. **No semantic recall, no facts, no cross-conversation retrieval — that stays Stage 3.** Cost note: history is uncached input; the part-5 prefix stays the cached part
 - [ ] 2.6.3 Deployed at a stable URL over HTTPS; the browser calls **only our endpoint**, never `api.anthropic.com`; no secret in the bundle (build-time grep in CI)
 - [ ] 2.6.4 Error states visible, not silent: cap reached, auth failure, upstream timeout each show a message
 - [ ] 2.6.5 Screenshots at the three widths committed under `docs/assets/stage-2/`; `docs/RUNBOOK.md` §1 system map updated with the deployed URL and owner
