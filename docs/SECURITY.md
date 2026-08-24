@@ -202,8 +202,10 @@ UUIDs creates no second identity (auth-user count identical before/after); a new
 user signs in and reads `workspace` memory; a deactivated user's **still-valid JWT**
 receives zero rows from every table (the refusal is RLS, not UI) and a fresh sign-in is
 refused by the ban; an auth account with no `app_users` row reads nothing; a non-admin
-caller cannot create users and the attempt mints no identity; and no generated password
-appears in any captured log line or in any row of any table.
+caller cannot create users and the attempt mints no identity; no generated password
+appears in any captured log line or in any row of any table; and an anonymous `signUp`
+is refused and mints no user (so re-enabling public signup fails CI instead of passing
+quietly).
 
 ---
 

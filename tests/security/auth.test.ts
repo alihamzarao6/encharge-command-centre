@@ -15,6 +15,7 @@
  *   5. the service role key appears in no result object and no log line (the
  *      client-bundle scan is tests/security/secrets.test.ts)
  *   6. no generated password appears in any log line or in any row of any table
+ *   +  public signup is refused (config.toml enable_signup = false) and mints no user
  *
  * Every log line the library emits during the run is captured through a sink and scanned.
  * Fixtures are synthetic and removed; the seeded accounts keep their attached credentials
@@ -295,6 +296,26 @@ describe.skipIf(env === null)(
         httpStatus: 403,
         reason: 'not_allowlisted',
       });
+    }, 60_000);
+
+    it('public signup is refused — accounts exist only through the audited admin path', async () => {
+      // config.toml enable_signup = false. Without this assertion, re-enabling signup would
+      // pass CI silently; the hosted project must mirror the setting (manual, deploy-time).
+      const attemptEmail = `auth-signup-${RUN}@example.com`;
+      const anon = createClient(cfg.url, cfg.anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const attempt = await anon.auth.signUp({
+        email: attemptEmail,
+        password: `Signup-${crypto.randomUUID()}`,
+      });
+      expect(attempt.error, 'anon signUp must be refused').not.toBeNull();
+
+      const minted = await db.query<{ n: string }>(
+        `select count(*) as n from auth.users where email = $1`,
+        [attemptEmail],
+      );
+      expect(minted.rows[0]?.n).toBe('0');
     }, 60_000);
 
     it('5. the service role key appears in no log line captured from the full run', () => {

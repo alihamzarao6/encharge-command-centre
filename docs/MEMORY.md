@@ -102,7 +102,8 @@ human actor because the app_users trigger can only record 'service_role'), `clie
 (CSPRNG, 24 chars, look-alikes removed), `cli.ts` + `scripts/staff.ts` (`npm run staff`, via
 tsx). Tests: 53 unit (fakes + capturing log sink; expired/tampered tokens via GoTrue-shaped
 fixtures), `tests/security/auth.test.ts` (Part C against a real stack through the production
-code path), `tests/security/secrets.test.ts` (client-shippable files scanned for embedded
+code path, plus an anon-signUp-refused assertion added on review so the signup-off setting
+cannot be re-enabled quietly), `tests/security/secrets.test.ts` (client-shippable files scanned for embedded
 JWTs / `sk-ant-`), rls suite + schema suite extended (`service_role` full-DML assertion;
 `is_admin` column + seeded flags). Docs: SECURITY §4–§6, SCHEMA §7–§8, TASKS 2.3.x, CLAUDE §5.
 **Decided — the three Part A decisions:**
