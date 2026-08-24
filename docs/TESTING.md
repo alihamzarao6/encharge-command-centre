@@ -161,12 +161,20 @@ On every push:
 Red CI blocks merge. No exceptions, no "will fix after".
 
 *Status 23 Aug 2026 (Stage 2 part 1):* steps 1–5 and 7 are live in `.github/workflows/ci.yml`
-— gitleaks runs twice (full git history and the working tree) from a pinned binary. Step 6
-(`test:int` with Supabase in a service container) is enabled in Stage 2 part 2 with the first
-migration; step 8 (`n8n:validate`) in Stage 3 with the first workflow. Each arrives in the same
-commit as the thing it tests. The coverage gate is enforced by vitest's `thresholds` (80 lines /
-75 branches / 80 functions / 80 statements), so a drop below the floor is a non-zero exit, not
-a warning.
+— gitleaks runs twice (full git history and the working tree) from a pinned binary. Step 8
+(`n8n:validate`) arrives in Stage 3 with the first workflow, in the same commit as the thing
+it tests. The coverage gate is enforced by vitest's `thresholds` (80 lines / 75 branches /
+80 functions / 80 statements), so a drop below the floor is a non-zero exit, not a warning.
+
+*Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
+Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →
+`supabase db reset --local` (the from-zero replay proof, migrations + seed, on every push) →
+`npm run test:int` (`tests/integration/schema.test.ts`) → `npm run test:security`
+(`tests/security/rls.test.ts`, SECURITY.md §6). Both suites read the stack's throwaway
+credentials from the environment (`npx supabase status -o env`); without them they are
+**skipped locally** (a machine without Docker cannot run the stack) but the CI job sets
+`REQUIRE_SUPABASE_TESTS=1`, which turns a missing stack into a loud failure — a green CI
+proves the suites ran, never that they were skipped.
 
 ---
 

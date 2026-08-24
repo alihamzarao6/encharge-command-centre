@@ -74,6 +74,52 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: ignore
 
-      # Stage 2 part 2 enables: Supabase local in a service container + `npm run test:int`
-      # and `tests/security/rls.test.ts`. Stage 3 adds `npm run n8n:validate`. Each is added
-      # here in the same commit as the thing it tests (TESTING.md §8).
+  # Stage 2 part 2 (FND-210): the database proven from zero on every push. Stage 3 adds
+  # `npm run n8n:validate` in the same commit as the first workflow (TESTING.md §8).
+  integration:
+    name: supabase local · migrations from zero · schema + RLS suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Missing stack env is a loud failure here, never a silent skip (tests/helpers).
+      REQUIRE_SUPABASE_TESTS: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 24 (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Supabase CLI (pinned to the devDependency version)
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.115.0
+
+      - name: Start Supabase local stack
+        run: supabase start
+
+      - name: Replay schema from zero (migrations + seed) — the from-zero acceptance check
+        run: supabase db reset --local
+
+      - name: Export stack credentials for the test suites (local throwaway keys, not secrets)
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env)"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Integration suite (schema from zero, seed, triggers, constraints)
+        run: npm run test:int
+
+      - name: 'Security suite (RLS: anon zero rows, allowlist, memory scoping)'
+        run: npm run test:security

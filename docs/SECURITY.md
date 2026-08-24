@@ -114,12 +114,31 @@ out-of-allowlist URL, or a tool invocation.
 - `anon` key: zero table access by policy.
 - Connection strings never logged. The logger redacts by key name (`password`, `key`,
   `token`, `secret`, `authorization`) at the serialiser level, not per call site.
-- Daily backups enabled. Restore procedure tested once, in Stage 2 (part 2), and documented.
+- Backups: **the free plan has no automated backups** (found in Stage 2 part 2 — RUNBOOK §6
+  has the reality, the client cost decision, and the manual `pg_dump` procedure). The
+  restore drill is still owed before Stage 2 sign-off; do not describe backups as "enabled"
+  anywhere until it has actually run.
 
-**MCP note.** The Supabase MCP is connected in the developer's environment. It reads freely;
-it never applies schema changes. Every schema change is a migration file. This is not a
-preference — a dashboard-applied change absent from the repo will silently break
-`supabase db reset` and every later environment.
+**MCP note — who and what can reach the client's database.** The Supabase MCP server is
+connected in the developer's environment and holds its own **Supabase management-API
+credential, authenticated as the developer's Supabase account** — the account with access
+to the client's project. That credential is not in the repo, not in `.env`, and is distinct
+from any CLI access token (none exists on this machine). Through it, the MCP's
+`execute_sql` tool runs **arbitrary SQL on the client's project as the `postgres` role,
+which carries BYPASSRLS** — it sees and can change everything, RLS notwithstanding — and
+its management tools can restore, pause and administer the project. Treat MCP access as
+equivalent to holding the database superuser password, because operationally it is.
+
+Standing rules, unchanged: it reads freely; it never applies schema changes. Every schema
+change is a migration file applied through the CLI. A dashboard- or MCP-applied change
+absent from the repo will silently break `supabase db reset` and every later environment.
+
+*Precedent, 24 Aug 2026 (FND-210):* the part-2 migration set was validated against the
+live project **through the MCP's `execute_sql`**, inside a single `BEGIN…ROLLBACK`
+transaction, because this machine had no Docker and no CLI credentials. Nothing persisted
+(verified: 0 tables, 0 policies, 0 auth users afterwards) and the files remained the only
+source of truth. That is the ceiling of acceptable MCP write activity: transactions that
+provably roll back, disclosed in the report. Anything that commits goes through the CLI.
 
 ---
 

@@ -42,7 +42,7 @@ stop and ask.
 | Layer | Technology |
 |---|---|
 | Orchestration | n8n, self-hosted on Railway, Postgres-backed queue mode |
-| Database | Supabase (Postgres 15 + pgvector + Storage + Edge Functions) — **confirmed, see §3** |
+| Database | Supabase (Postgres 17 + pgvector + Storage + Edge Functions) — **confirmed, see §3**; the live project runs PG 17.6 (was documented as 15) |
 | AI | Claude API (`claude-sonnet-5` default, `claude-haiku-4-5-20251001` high-volume) |
 | Embeddings | Voyage AI `voyage-3` (Anthropic serves no embeddings endpoint) — for the Stage 3 memory layer |
 | UI | Dashboard (Stage 3). Notion stays as an internal working surface, not the primary interface (D29) |

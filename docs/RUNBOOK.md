@@ -130,12 +130,47 @@ content goes.
 
 ## 6. Backup and restore
 
-- Daily automatic backups, 7-day retention.
-- Restore: dashboard → Backups → restore to a **new** project first, verify the data, then cut
-  over. Never restore over a live project as a first move.
+**Status 24 Aug 2026 (Stage 2 part 2): the earlier text here ("daily automatic backups,
+7-day retention") described the Pro plan, not this project.** The client's Supabase org is
+on the **free plan** (confirmed from the management API, 24 Aug), which has **no automated
+backups at all**. Until that changes, the only recoverable copy of the database is one we
+make ourselves.
+
+**Decision needed from the client (cost item, flag before Stage 2 sign-off):**
+- **Option A — Supabase Pro** (US$25/month): daily automated backups, 7-day retention,
+  restore from the dashboard. The right answer once real conversations and memory exist.
+- **Option B — scripted `pg_dump`** (free): a scheduled dump to storage we control. Weaker
+  (retention and scheduling are ours to get wrong) and it needs somewhere safe to put the
+  files. Acceptable only while the database holds no client conversations.
+
+**Manual backup and restore drill (works on any plan):**
+
+```bash
+# 1. Dump the remote database (needs SUPABASE_DB_URL with the real password)
+npx supabase db dump --db-url "$SUPABASE_DB_URL" -f backup.sql          # schema
+npx supabase db dump --db-url "$SUPABASE_DB_URL" -f data.sql --data-only --use-copy
+
+# 2. Restore into a scratch target FIRST — local stack or a throwaway project.
+#    Never restore over a live project as a first move.
+npx supabase start
+npx supabase db reset --local          # schema from migrations (the source of truth)
+psql "$LOCAL_DB_URL" -f data.sql       # data on top
+
+# 3. Verify: row counts per table against the source, then spot-check.
+```
+
+- **The restore drill has NOT yet been performed.** Part 2 could not run it: this
+  machine has no Docker (no local stack to restore into) and `.env` carries no database
+  password (no way to dump the remote). It is a Stage 2 acceptance item and must be done —
+  once as a drill, before sign-off — as soon as either exists. A restore procedure that has
+  never been run is not a restore procedure; until the drill runs, treat this section as a
+  plan, not a capability.
 - The n8n encryption key must be backed up separately. Without it, every stored credential is
   unrecoverable and must be re-entered by hand.
-- Workflows are in git (`n8n/workflows/`) and can be re-imported.
+- Workflows are in git (`n8n/workflows/`) and can be re-imported. The schema is in
+  `supabase/migrations/` and is replayable from zero — proven by the CI integration job on
+  every push. Backups are therefore about **data** (conversations, memory, leads), not
+  structure.
 
 ---
 

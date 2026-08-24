@@ -38,7 +38,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline) · `[~]` in pr
 Built directly in the client's live accounts. Recorded here as delivered, not as a checklist
 to re-run. Detail: `docs/PHASE-ACCEPTANCE.md` Stage 1, `docs/MEMORY.md` 22 Aug.
 
-- [x] S1.1 **Finance Pipeline** created with ten stages: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding (D28). New pipeline; nothing account-wide touched (R22)
+- [x] S1.1 **Finance Pipeline** created with ten stages: New Lead · Appointment Booked · Contacted · Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled · Lost / Not Proceeding (D28). New pipeline; nothing account-wide touched (R22). *Corrected 24 Aug: the build delivered **nine** — "Appointment Booked" (specified 19 Aug) was missed, caught by the first API read of the pipeline, and created via an approved API write on 24 Aug with the other nine stage IDs untouched (MEMORY.md 24 Aug)*
 - [x] S1.2 **Ten custom fields in their own folder**: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate
 - [x] S1.3 **Five live workflows**: New Lead Intake, Instant Lead Reply, 24hr No Contact Alert, Document Chase, Stage Notifications — copy rewritten for refinance
 - [x] S1.4 **Refi Pixel** on the FUNDD funnel, **Conversions API** sending `Lead` server-side on a pixel-scoped token (D31)
@@ -75,22 +75,30 @@ N+1 until part N is reviewed.**
 - [x] 2.1.13 *(was 1.7)* GitHub Actions CI: typecheck, lint, gitleaks, tests with coverage gate
 - [ ] 2.1.14 Part 1 report reviewed; changes requested applied; working tree committed and pushed **by the reviewer's instruction only**
 
-### Part 2 — Database, migrations, RLS
+### Part 2 — Database, migrations, RLS (FND-210 — built 24 Aug, awaiting review)
 
-- [ ] 2.2.1 *(was 1.8)* **Unpause the Supabase project** (free-tier idle auto-pause, D24) and *(was 1.9)* confirm region `ap-southeast-2` (D8)
-- [ ] 2.2.2 Supabase CLI linked; `supabase start` works locally; `supabase/config.toml` committed
-- [ ] 2.2.3 *(was 1.10)* Migration: extensions (`pgcrypto`, `pg_trgm`, `vector`)
-- [ ] 2.2.4 *(was 1.18, moved first)* Migration: `app_users` (`user_id references auth.users`, `email`, `role`, `is_active`)
-- [ ] 2.2.5 *(was 1.15)* Migration: memory layer — `conversations`, `messages`, `memory_chunks`, `memory_facts`, **every one with `user_id not null` and `scope check (scope in ('user','workspace'))`** (D24, SCHEMA §4); trigger keeping `messages.user_id/scope` equal to the parent conversation
-- [ ] 2.2.6 *(was 1.14)* Migration: `api_usage` (with `user_id`, `conversation_id`, cache token columns), `audit_log`, `workflow_runs`
-- [ ] 2.2.7 *(was 1.11–1.13, reduced)* Migration: `pipeline_stage` / `lead_type` / `lead_source` check constraints (ten stages, D28) · `consumer_leads` with `consent_basis` + `opt_out not null default false` · `field_overrides` · `review_queue` · `crm_sync_log` · `ghl_field_map` (incl. `entity = 'stage'`) · `tasks` · `notion_sync_map`. **Decide and record whether `contacts` ships** (SCHEMA §2). Nothing from the parked section
-- [ ] 2.2.8 *(was 1.18)* Migration: RLS enable + force + deny-by-default on **every** table; staff-allowlist select policies; `own_or_workspace` policies on the four memory tables
-- [ ] 2.2.9 *(was 1.19)* Migration: `updated_at` triggers; audit triggers on `consumer_leads`, `contacts` (if shipped), `review_queue`, `memory_facts`, `app_users`
-- [ ] 2.2.10 *(was 1.20, reduced)* `supabase/seed.sql` — `app_users` rows (developer, Ross), ten `ghl_field_map` stage rows (IDs read from GHL, matched on ID not name)
-- [ ] 2.2.11 *(was 1.21)* **`tests/security/rls.test.ts`** — iterates `information_schema`: every table `rowsecurity` + `forcerowsecurity`; anon → 0 rows; non-allowlisted authenticated → 0 rows; user A cannot read user B's `user`-scope memory rows, can read `workspace` rows; no authenticated insert/update/delete policy on core tables
-- [ ] 2.2.12 *(was 1.22)* `supabase db reset` replays cleanly from zero — output recorded
-- [ ] 2.2.13 *(was 1.23)* Daily backups enabled; one real restore performed and documented in RUNBOOK §6
-- [ ] 2.2.14 `npm run test:int` wired (Supabase local in CI service container); CI step enabled; `docs/SCHEMA.md`, `docs/TESTING.md`, `docs/MEMORY.md` updated
+*This machine has no Docker and `.env` has no Supabase credentials, so nothing could be
+applied or run locally. Every migration was instead **validated against the live Sydney
+project through the Supabase MCP's `execute_sql`, inside a rolled-back transaction**
+(measured checks all green, database left byte-identical — MEMORY.md 24 Aug; access path
+recorded in SECURITY.md §4), and the CI `integration` job replays the schema from zero and
+runs both suites on every push. Items marked `[~]` are written and validated but await
+their first real run (CI on push, or credentials).*
+
+- [x] 2.2.1 *(was 1.8)* ~~Unpause the Supabase project~~ — **found already ACTIVE_HEALTHY on 24 Aug** (nothing to restore); region **`ap-southeast-2` confirmed from project settings via the management API** (D8). The project runs **Postgres 17.6**, not the 15 the docs said — SCHEMA.md and CLAUDE.md corrected
+- [~] 2.2.2 Supabase CLI pinned as a devDependency (`supabase@2.115.0`, `npx supabase`); `supabase/config.toml` committed (`major_version = 17`). **Not done:** `supabase link` (needs an access token) and `supabase start` locally (needs Docker — not installed on this machine)
+- [x] 2.2.3 *(was 1.10)* Migration `20260824010000_extensions.sql` — `pgcrypto`, `pg_trgm`, `vector` (0.8.2 available on the project, verified)
+- [x] 2.2.4 *(was 1.18, moved first)* Migration `20260824010100_app_users.sql` — PK on `user_id references auth.users` (1:1 allowlist, no surrogate id — recorded deviation)
+- [x] 2.2.5 *(was 1.15)* Migration `20260824010200_memory_layer.sql` — all four tables with `user_id not null` + `scope` (D24, D33); parent-sync trigger on `messages` **and** `memory_chunks`, plus a cascade trigger so flipping a conversation's scope actually re-scopes its children (a silent privacy hole otherwise — validated)
+- [x] 2.2.6 *(was 1.14)* Migration `20260824010300_observability.sql` — `workflow_runs`, `api_usage` (`user_id`, `conversation_id`, cache token columns), `audit_log`
+- [x] 2.2.7 *(was 1.11–1.13, reduced)* Migration `20260824010400_core_entities.sql` — check constraints (ten stages D28, eight types, seven sources) inline per SCHEMA conventions · `consumer_leads` with `consent_basis` + `opt_out not null default false` · `field_overrides` · `review_queue` (`entity_type` settled: `consumer_lead | web_fact | content_draft`, D37) · `crm_sync_log` · `ghl_field_map` · `tasks` · `notion_sync_map`. **`contacts` does not ship — parked (D36)**. Nothing from the parked section (asserted by test)
+- [x] 2.2.8 *(was 1.18)* Migration `20260824010500_rls.sql` — enable **and force** on all 15 tables; deny-by-default (no anon policies, no write policies); staff-allowlist selects; `workspace_or_own` on the four memory tables; `app_users` is self-row-only, which is what makes the allowlist subquery recursion-free
+- [x] 2.2.9 *(was 1.19)* Migration `20260824010600_triggers.sql` — `updated_at` on `consumer_leads`/`tasks`; audit triggers on `consumer_leads`, `review_queue`, `memory_facts`, `app_users` (`contacts` parked out of the list, D36)
+- [x] 2.2.10 *(was 1.20, reduced)* `supabase/seed.sql` — two `app_users` rows (Ross, developer) over placeholder auth identities with fixed UUIDs; ten `ghl_field_map` stage rows **with real stage IDs** (24 Aug: authorized read found only nine stages live — "Appointment Booked" was missed in the Stage 1 build and created via an approved API write, then all ten IDs read and seeded, matched on ID never name; the mapping is pinned in `tests/integration/schema.test.ts`)
+- [~] 2.2.11 *(was 1.21)* `tests/security/rls.test.ts` written — catalog-iterating, all six required assertions plus behavioural write-refusal. The same checks were proven against the live project in the rolled-back validation (anon: 0 rows on all 15; non-allowlisted: 0 rows on all 15; A/B `user`-scope isolation; workspace shared). The vitest suite itself first runs in CI on push
+- [~] 2.2.12 *(was 1.22)* From-zero replay proven via the rolled-back validation on the live project (all 22 checks green); `supabase db reset --local` runs in the CI job on every push. A local run needs Docker
+- [!] 2.2.13 *(was 1.23)* **Blocked — the org is on the free plan, which has no automated backups at all** (the old RUNBOOK §6 text described Pro). Client cost decision needed (Pro US$25/mo vs scripted `pg_dump`); restore drill still owed before Stage 2 sign-off and needs Docker or the DB password. RUNBOOK §6 rewritten with the reality and the drill procedure
+- [x] 2.2.14 `npm run test:int` / `test:security` wired (skip without a stack, hard-fail in CI via `REQUIRE_SUPABASE_TESTS=1`); CI `integration` job added (CLI pinned 2.115.0, `supabase start`, `db reset --local`, both suites); `docs/SCHEMA.md`, `docs/TESTING.md`, `docs/RUNBOOK.md`, `docs/SECURITY.md`, `docs/MEMORY.md` updated
 
 ### Part 3 — Auth and user management
 

@@ -21,10 +21,10 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Stage 2 part 1 (FND-200) is built and awaiting review** — the Scope v3 doc-set is fully aligned (all eight files) and the repo foundation is in place (TypeScript strict, ESLint, Prettier, Vitest, `logger` / `errors` / `http` with 118 tests, gitleaks hook proven, CI). **Uncommitted, staged for review.** Then **part 2** — unpause Supabase, first migrations from `SCHEMA.md` §8 (memory tables with `user_id` + `scope`), RLS test |
-| Blocked on | Nothing structural. R9 (no Notion workspace token for n8n) and R21 (three GHL scopes still denied) remain open but do not block Stage 2 |
-| Last regression run | 23 Aug — `npm run test:regress` green on **Node 24.15** (the declared runtime, D35): typecheck 0 errors, lint 0, 118/118 tests, coverage 99.05% lines / 97.92% branches / 100% functions (floor 80/75) |
-| Known broken | Supabase project is paused — free-tier idle auto-pause, not a decision (R1 closed). Notion databases exist but hold no rows and have no views |
+| Next task | **Stage 2 parts 1 and 2 (FND-200 + FND-210) are built and awaiting review** — doc-set aligned, repo foundation (118 unit tests), and now the full database: 7 migrations, seed, RLS + schema suites, CI integration job. All 22 validation checks green against the live Sydney project in a rolled-back transaction. **Uncommitted, staged for review.** The ten GHL stage IDs are now real (24 Aug read + approved write — "Appointment Booked" had been missed in Stage 1 and was created via API). Then **part 3** — auth and user management (real accounts over the seeded fixed UUIDs) |
+| Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
+| Last regression run | 24 Aug — typecheck 0 errors, lint 0, **118 passed + 21 skipped** (the new integration/security suites skip without a local stack, hard-fail in CI if the stack is missing), coverage 99.05% lines / 97.92% branches / 100% functions (floor 80/75) on Node 24.15 |
+| Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
 ---
@@ -70,6 +70,8 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D33** | **Memory-table ownership: every memory table carries `user_id not null` and `scope in ('user','workspace')`, **default `workspace`**, from the first migration. No `scope_id`, no `conversation` scope.** Replaces the 09 Aug `scope (global\|user\|org) + scope_id` shape. *(The first draft the same day said default `user`; corrected on review — see the second 23 Aug entry)* | **The client was told in writing that memory is shared — one brain for the business, whatever anyone teaches it is there for everyone — so the resting state is `workspace`.** `user` is the opt-in private exception, kept so "shared by default" never has to mean "nothing can be private", and because adding that distinction once rows exist means guessing which old rows were meant to be private. "Follows him across devices" = keyed on the logged-in user, not the device (the prototype's localStorage failure) — hence `user_id` on every row as author/owner. `org` is gone with the research engine — website knowledge is the Stage 4 store, kept out of memory as a trust boundary. `workspace_id` is *not* added now because it can be backfilled later (one workspace); `user_id` *cannot* be backfilled after the fact — that asymmetry decides what goes in migration one. Full reasoning `SCHEMA.md` §4 | 23 Aug |
 | **D34** | **Stage 2 "done" is twelve evidence-based criteria** (`PHASE-ACCEPTANCE.md` Stage 2): CI green; schema from zero; RLS proven by test output; 401/403/allowlisted; every Claude call metered and the cap refuses *before* the request; no `sk-ant-` in client assets and no browser request to `api.anthropic.com`; voice traceable to CLIENT-CONTEXT §1/§9–§11; a ≥ 20-prompt code-checked voice-conformance suite at 100%; **the client reads five generated posts and confirms he would publish at least three** (was a 10-pair blind A/B — replaced the same day on review, see the second 23 Aug entry); phone demo at 375/768/1280; conversations follow the user across devices; regression green | "Trained on his voice" is otherwise a matter of taste. Every item is a test output, an HTTP response, a row, or a count; the single client judgement (item 9) is a count he can give in one sitting. Memory *recall* across conversations is deliberately Stage 3 — Stage 2 proves the conversation itself persists against the user | 23 Aug |
 | **D35** | **Runtime is Node 24 (LTS), not Node 20** — `.nvmrc`, `engines`, `@types/node`, CI | Node 20 is near end of life and the developer's machine is already on 24; keeping CI on 20 only creates a runtime nobody actually tests against. Typecheck, lint and the 118 tests pass on 24.15 | 23 Aug |
+| **D36** | **`contacts` is parked with the research engine; it does not ship** | It was the business decision-maker table — `org_id` FK to a parked table, `seniority`/`email_status`/`email_is_inferred`/`extraction_method`/`confidence` all populated by decision-maker extraction and email verification, both parked (D23) — and nothing in stages 2–6 reads or writes it. `consumer_leads` covers the people who actually arrive from the ads. Moved verbatim under the OUT OF CURRENT SCOPE heading in `SCHEMA.md`; removed from the audit-trigger list and the migration set. If lead research is ever bought as new work, it comes back unchanged | 24 Aug |
+| **D37** | **`review_queue.entity_type` check constraint is `('consumer_lead','web_fact','content_draft')`** | All three producers are already named in binding docs: a lead the sync could not place (RUNBOOK §3), a stored website fact below confidence (Stage 4, SCHEMA §2a), a generated draft that failed the voice/review check (Stage 5, SCHEMA §5 names `content_draft`). The constraint's job is rejecting typos and parked-era values (`org`, `contact`), not tracking which stage is live — an unused value costs nothing, widening a check on a live queue is a migration. Validated: `'org'` is refused with a check_violation | 24 Aug |
 
 ---
 
@@ -84,6 +86,113 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-24 — [FND-210 · GHL] "Appointment Booked" was never built — created via approved API write; ten real stage IDs seeded
+**Did:** One authorized read of the pipelines for location `tgw5Q3BnoZoSsVOnRUxB` found the
+**Finance Pipeline (`M4unnMKBy0TgwCwOA6wS`) with nine stages, not ten** — "Appointment
+Booked" (specified 19 Aug) was **missed during the Stage 1 build**; the sign-off record
+claimed ten. The nine present names matched D28 exactly (no whitespace traps this time).
+Stopped and reported rather than filling nine of ten. On explicit instruction and after the
+exact request body was reviewed and approved: **created the stage via `PUT
+/opportunities/pipelines/{id}`** — full replacement body carrying all nine live stages with
+their IDs/names/win-probabilities byte-identical (guarded in code: abort if any of the nine
+IDs is absent), plus the new stage at position 1, winProb 7, matching colour. First attempt
+**422 "property locationId should not exist"** (nothing changed — verified nine stages still
+live); removed that one field, re-sent, success. Post-write GET: **ten stages, original nine
+IDs intact, new stage id `3a47fe3c-57d1-41d4-bc89-20241eb978f4`**. Before/after JSON
+snapshots kept. Then `supabase/seed.sql` ten stage rows filled with the real IDs (matched on
+ID from the response objects, never name) and the full mapping **pinned** in
+`tests/integration/schema.test.ts` so silent drift fails CI. Stage 1 records corrected in
+`PHASE-ACCEPTANCE.md`, `TASKS.md` S1.1 and the 22 Aug entry below: **nine delivered, tenth
+created 24 Aug.**
+**Decided:** win probability 7 for the new stage (between New Lead's 5 and Contacted's 10,
+keeping the sequence ascending) and the shared colour — cosmetic, flagged at approval.
+**Surprised by:** (1) A signed-off, paid deliverable was short one stage for two days and
+nothing caught it until an API read — "demonstrated in the dashboard" did not surface a
+missing pipeline stage. Worth remembering at every future sign-off: enumerate via the API,
+not the UI. (2) The pipelines PUT rejects `locationId` in the body with a 422 — the pipeline
+is already location-bound; add it to the GHL error taxonomy. (3) The token **can** write
+pipelines — previously unproven.
+**Next:** back behind the no-GHL-writes boundary. Reviewer pushes; note the five live Stage 1
+workflows and any GHL automations should be eyeballed once in the dashboard to confirm none
+references stages by position in a way the insert at position 1 would shift (stage IDs are
+unchanged, so ID-based references are safe).
+
+---
+
+### 2026-08-24 — [FND-210 review] Access path named precisely; nullability tightened; jsonb confirmed
+**Did:** (1) **Precision correction:** the entry below says the validation ran "via the
+management API" — the precise statement is **via the Supabase MCP's `execute_sql` tool**,
+which holds its own management-API credential (authenticated as the developer's Supabase
+account) and runs SQL on the client's project as `postgres` with BYPASSRLS. `SECURITY.md` §4
+now records exactly who and what can reach the client's database, and sets the ceiling for
+MCP write activity: provably rolled-back transactions, disclosed — anything that commits
+goes through the CLI. (2) **Nullability tightened while the tables are empty** (reviewer
+decision): `consumer_leads.full_name/lead_type/pipeline_stage/lead_source` all `not null`
+(no default on `pipeline_stage` — a default would let a sync bug silently file everything as
+new); `review_queue.reason not null` plus `review_queue_target_check` (`entity_id` or
+`payload` must be present — no unreviewable ghosts); `tasks.source not null`. Migration file
+amended in place (staged, never applied anywhere), `SCHEMA.md` §2 aligned, tests extended
+(nullability catalog assertion, target-check rejection) and fixture inserts made fully
+valid. Full set **re-validated against the live project through the MCP, rolled back, all
+green** — including the three new rejection checks — database verified empty afterwards.
+(3) `field_overrides` values stay **jsonb** — confirmed by the reviewer.
+**Decided:** backups (2.2.13) and the GHL stage IDs stay exactly as written — the reviewer
+is taking both to the client.
+**Next:** reviewer pushes; first CI run with the integration job proves the suites end to end.
+
+---
+
+### 2026-08-24 — [FND-210 · Stage 2 part 2] Database, migrations, RLS — staged, NOT committed
+**Did:** Seven migrations (`supabase/migrations/20260824010000–010600`): extensions
+(`pgcrypto`/`pg_trgm`/`vector`) → `app_users` (PK on `user_id`, no surrogate) → memory layer
+(all four tables with `user_id not null` + `scope`, parent-sync triggers on `messages` **and**
+`memory_chunks`, plus a cascade trigger so flipping a conversation's scope re-scopes its
+children) → observability (`workflow_runs`, `api_usage` with cache-token columns, `audit_log`)
+→ core entities (`consumer_leads` with `consent_basis`/`opt_out`, `field_overrides`,
+`review_queue`, `crm_sync_log`, `ghl_field_map`, `tasks`, `notion_sync_map`) → RLS (enable
+**and force** on all 15 tables, deny-by-default, no anon or write policies, self-row policy on
+`app_users` which makes the allowlist subquery recursion-free) → triggers (`updated_at`,
+audit). `supabase/seed.sql`: two staff rows over fixed-UUID placeholder auth identities, ten
+stage rows with **NULL GHL ids** (see below). `supabase/config.toml` (CLI 2.115.0 pinned as
+devDependency, `major_version = 17`). `tests/security/rls.test.ts` (catalog-iterating, six
+assertions + behavioural write refusal), `tests/integration/schema.test.ts` (from-zero
+assertions, seed, triggers, constraints), `tests/helpers/supabaseEnv.ts` (skip locally /
+hard-fail in CI via `REQUIRE_SUPABASE_TESTS=1`). CI `integration` job: pinned CLI →
+`supabase start` → `db reset --local` → both suites, on every push.
+**Decided:** D36 (`contacts` parked), D37 (`review_queue.entity_type` three values). New dev
+deps, each with a reason: `supabase` (pinned CLI), `@supabase/supabase-js` (RLS tests hit
+PostgREST — the surface an attacker holds), `pg` + `@types/pg` (catalog queries + fixtures).
+**Environment reality — the big one:** this machine has **no Docker and no Supabase
+credentials** (`.env` Supabase block is empty; no CLI access token), so nothing could be
+applied or run locally. Instead the **entire migration set + seed + 22 verification checks ran
+against the live Sydney project inside one `BEGIN…ROLLBACK` transaction** via the management
+API — measured results all green (RLS flags 15/15, anon 0 rows on all 15 tables,
+non-allowlisted 0 rows, A/B `user`-scope isolation both directions, workspace sharing, trigger
+corrections, constraint rejections, seed counts) and the database verified byte-identical
+afterwards (0 tables, 0 policies, 0 auth users). The boundary "no schema through the MCP" was
+kept: nothing persisted; the files remain the only source of truth; live application happens
+through the CLI once credentials/Docker exist.
+**Surprised by:** (1) **The project was not paused** — ACTIVE_HEALTHY on arrival; nothing to
+restore. Region `ap-southeast-2` confirmed from project settings. (2) **It runs Postgres
+17.6**, not the 15 the docs assumed — SCHEMA.md/CLAUDE.md corrected; config.toml pinned to 17.
+(3) **The free plan has no automated backups** — the old RUNBOOK §6 described Pro. Rewritten
+with the reality, the client cost decision (Pro vs scripted `pg_dump`), and the drill
+procedure; 2.2.13 is `[!]` blocked. (4) The Finance Pipeline **stage IDs are recorded nowhere
+in the repo** (the GHL audit predates Stage 1) and this part forbade touching GHL — seed rows
+carry NULL ids; one authorized `GET /opportunities/pipelines` fills them (match on ID, never
+name). (5) `postgres` on hosted Supabase has BYPASSRLS — which is exactly why seeds work
+against forced-RLS tables, and worth knowing before trusting any dashboard query as an RLS
+check.
+**Not verified:** `supabase start` / `db reset` locally and the vitest suites against a real
+stack (no Docker) — CI runs both on push; the rolled-back validation stands in until then. The
+`supabase status -o env` variable names in the CI job are from the pinned CLI docs, not a
+local run. Backup restore drill not performed (blocked above).
+**Next:** reviewer reads the FND-210 report → push → first CI run with the integration job →
+part 3 (auth), which replaces the placeholder auth identities with real accounts via the admin
+API against the same fixed UUIDs, and should fill the ten stage IDs with one authorized read.
 
 ---
 
@@ -216,7 +325,11 @@ replace the five phases · **1320 total, 198 per sign-off on stages 1–4, 528 a
 Stage 1's 198 paid · **Finance Pipeline, 10 stages** · a dashboard is in scope, superseding D12.
 **Stage 1 is complete, signed off and paid.** Built in GHL: the **Finance Pipeline** with ten
 stages in order — New Lead, Appointment Booked, Contacted, Qualified, Docs Requested, Docs
-Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding. Ten custom fields in
+Received, Submitted to Lender, Approved, Settled, Lost / Not Proceeding.
+*Correction, 24 Aug: the build actually delivered **nine** of these — "Appointment Booked"
+(specified 19 Aug) was missed and existed nowhere until it was created via an approved API
+write on 24 Aug, with the other nine stage IDs untouched. See the 24 Aug [FND-210 · GHL]
+entry above.* Ten custom fields in
 **their own folder**, deliberately kept separate from the account's older fields: Loan Type,
 Loan Amount, Property Value, Deposit Amount, Employment Type, Annual Income, Credit Concerns,
 Lead Source, Preferred Contact Time, Current Interest Rate. Five live workflows: New Lead

@@ -22,6 +22,11 @@ MEMORY.md entries reference it by that name; "phase" in the filename means "stag
   Qualified · Docs Requested · Docs Received · Submitted to Lender · Approved · Settled ·
   Lost / Not Proceeding (D28). A new pipeline — nothing shared with the other business in the
   location was touched (R22).
+  *Correction, 24 Aug 2026: **nine** of the ten were actually delivered by the Stage 1
+  build. "Appointment Booked" — specified 19 Aug — was missed, discovered during the first
+  authorized API read of the pipeline (Stage 2 part 2), and created via an approved API
+  write on 24 Aug (MEMORY.md 24 Aug). The pipeline now genuinely has all ten; the original
+  nine stage IDs were untouched by the fix.*
 - **Ten custom fields in their own folder**, deliberately separate from the account's 21
   older fields: Loan Type, Loan Amount, Property Value, Deposit Amount, Employment Type,
   Annual Income, Credit Concerns, Lead Source, Preferred Contact Time, Current Interest Rate.

@@ -1,7 +1,10 @@
 # SCHEMA.md — Data Model
 
-Supabase Postgres 15 + pgvector. Every table has RLS enabled and deny-by-default policies.
+Supabase Postgres + pgvector. Every table has RLS enabled and deny-by-default policies.
 Migrations in `supabase/migrations/`, replayable from an empty database.
+*(24 Aug, part 2: the live project runs **Postgres 17.6**, not the 15 this file assumed —
+confirmed from project settings. Nothing in this schema is 15-specific; the migration set
+was validated against 17.6. CLAUDE.md §2 still says 15 — corrected in the same change.)*
 
 **Platform: Supabase, confirmed by the client 22 Aug 2026 (D24). The MongoDB question is
 closed.** The earlier platform note ("if Ross confirms MongoDB, this file is rewritten") is
@@ -77,11 +80,16 @@ local mirror of a GoHighLevel contact in the Finance Pipeline. **Keep it. R17 is
 the client's CRM holds ~180 contacts with no consent record and nobody marked opted out — and
 this design is the mitigation, not the problem.**
 
-`id · full_name · email · phone · lead_type (check: any of the eight types in §1) ·
-pipeline_stage (check: the ten Finance Pipeline values) · lead_source · ghl_contact_id ·
-ghl_opportunity_id · owner · notes · enquiry_detail jsonb ·
-consent_basis text · opt_out boolean not null default false ·
+`id · full_name not null · email · phone · lead_type not null (check: any of the eight
+types in §1) · pipeline_stage not null (check: the ten Finance Pipeline values) ·
+lead_source not null · ghl_contact_id · ghl_opportunity_id · owner · notes ·
+enquiry_detail jsonb · consent_basis text · opt_out boolean not null default false ·
 created_at · updated_at · deleted_at`
+
+*(24 Aug review: `full_name`, `lead_type`, `pipeline_stage` and `lead_source` are `not
+null` — a lead with no name and no stage is not a lead, and every writer knows all four.
+`pipeline_stage` deliberately has no default: a default would let a sync bug silently file
+everything as new.)*
 
 `ghl_contact_id` is the idempotency key for anything that writes to GHL (CLAUDE.md rule 9);
 unique where not null. `ghl_opportunity_id` is new since Stage 1 built a real pipeline — an
@@ -99,39 +107,15 @@ objection" — the check is `where opt_out = false`, never `where opt_out is not
 (see `CLIENT-CONTEXT.md` §8). An unsubscribe request is a legal obligation with a deadline; it
 cannot wait for a review-queue round trip.
 
-### contacts
-*Retained, with a caveat.* The 23 Aug instruction parks six research tables by name and
-`contacts` is not one of them, so it stays in the live section. But most of its columns
-(`seniority`, `email_status`, `email_is_inferred`, `linkedin_url`, `extraction_method`) were
-populated by decision-maker extraction and email verification, both parked. Its `org_id` FK
-points at a parked table and **must become nullable** (or be dropped) before it can ship.
-**Part 2 decides whether `contacts` is in the first migration set** — the likely answer is
-*no* until a stage needs a person record that is not a consumer lead. Its consent columns are
-the same as `consumer_leads` and are kept for the same Spam Act reason.
-
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid PK | |
-| org_id | uuid FK | |
-| full_name / first_name / last_name | text | |
-| title | text | |
-| seniority | text | `owner · c_suite · director · manager · other` |
-| department | text | |
-| email | text | |
-| email_status | text | `valid · risky · invalid · unknown · catch_all · not_found` |
-| email_is_inferred | boolean not null default false | surfaced in Notion and GHL |
-| phone | text | E.164 |
-| linkedin_url | text | |
-| source_url | text **not null** | provenance — required |
-| extraction_method | text **not null** | `llm · regex · structured_data · manual` |
-| confidence | numeric(3,2) **not null** | |
-| is_flagged | boolean default false | |
-| flag_reason | text | |
-| consent_basis | text | `inferred · express · none` — Spam Act |
-| opt_out | boolean default false | |
-| created_at / updated_at / deleted_at | | |
-
-Unique on `(org_id, lower(email)) where email is not null and deleted_at is null`.
+### contacts — *parked 24 Aug (Part 2 decision, see MEMORY.md D36)*
+Decided in Stage 2 part 2: **`contacts` does not ship.** It was the business decision-maker
+table for the research engine — `org_id` FK to a parked table, `seniority`, `email_status`,
+`email_is_inferred`, `extraction_method`, `confidence` all populated by decision-maker
+extraction and email verification, both parked — and nothing in stages 2–6 reads or writes
+it. `consumer_leads` covers the people who actually arrive from the ads. The table definition
+is moved **verbatim** to the OUT OF CURRENT SCOPE section below §6; it is removed from the
+audit-trigger list (§3) and from the migration set (§8). If lead research is ever bought as
+new work, it comes back unchanged (with `org_id` restored alongside `organizations`).
 
 ### field_overrides — human corrections without destroying provenance
 `id · entity_type · entity_id · field_name · original_value · override_value · reason ·
@@ -141,15 +125,24 @@ When Ross corrects a system-derived field, the original is preserved and the ove
 beside it. Reads use the override; audits can see both.
 
 ### review_queue
-`id · entity_type · entity_id · reason · payload jsonb ·
+`id · entity_type not null · entity_id · reason not null · payload jsonb ·
 status (pending|approved|rejected) · notion_page_id · reviewed_by · reviewed_at · created_at`
 
-`entity_type` was `(org|contact)`. Under Scope v3 the things that can fall below the
-confidence threshold are a stored website fact (Stage 4), a generated piece of content
-(Stage 5) or a lead record, so the check constraint is set in Part 2 from what those stages
-actually produce — at minimum `consumer_lead | web_fact | content_draft`. The rule it
-enforces is unchanged: CLAUDE.md rule 14 — below threshold goes here, never straight to the
-CRM, the knowledge store or published copy.
+*(24 Aug review: `reason` is `not null` — rule-14 routing always has a cause, and an item
+the reviewer cannot see the reason for is unreviewable. A check constraint
+(`review_queue_target_check`) requires `entity_id` or `payload`: an item must point at a
+stored row or carry the thing under review inline.)*
+
+`entity_type` was `(org|contact)`. **Settled in Part 2 (24 Aug, D37): the check constraint
+is `('consumer_lead','web_fact','content_draft')`.** All three producers are already named
+in binding docs — a lead record the sync could not place or that fell below threshold
+(RUNBOOK §3), a stored website fact below confidence (Stage 4, §2a), and a generated draft
+that failed the voice or review check (Stage 5, §5 — `content_draft` is referenced by name
+there). The constraint's job is to reject typos and parked-era values (`org`, `contact`),
+not to track which stage is live — a value nothing writes yet is harmless, whereas widening
+a check constraint once the queue holds live rows is a migration. The rule it enforces is
+unchanged: CLAUDE.md rule 14 — below threshold goes here, never straight to the CRM, the
+knowledge store or published copy.
 
 ---
 
@@ -220,9 +213,9 @@ cannot be tuned. **Ships in Stage 2** — the first Claude call in part 4 must l
 ### audit_log
 `id · actor · action · entity_type · entity_id · before jsonb · after jsonb · ip · created_at`
 
-Written by trigger on every mutation to `consumer_leads`, `contacts`, `review_queue`,
-`memory_facts` and `app_users`, and by application code on every Claude tool execution. (Was
-also `organizations` — parked.)
+Written by trigger on every mutation to `consumer_leads`, `review_queue`, `memory_facts`
+and `app_users`, and by application code on every Claude tool execution. (Was also
+`organizations` and `contacts` — both parked, D23/D36.)
 
 ---
 
@@ -312,8 +305,13 @@ first draft of 23 Aug had `default 'user'`; corrected the same day to `default '
 because the client was told memory is shared.*
 
 ### tasks
-`id · title · description · assignee · due_date · status (open|in_progress|done|cancelled) ·
-priority · source (claude|notion|manual) · notion_page_id · created_by · created_at · updated_at`
+`id · title not null · description · assignee · due_date ·
+status (open|in_progress|done|cancelled) · priority ·
+source not null (claude|notion|manual) · notion_page_id · created_by · created_at · updated_at`
+
+*(24 Aug review: `source` is `not null` — every task has an origin, and that provenance
+matters once the assistant can write tasks (Stage 3, D9). `priority` stays unconstrained
+until Ross confirms the value set — R11.)*
 
 ---
 
@@ -398,6 +396,34 @@ source_url not null · http_status · fetched_at not null · content_hash · sto
 clean_text · robots_allowed not null`
 
 Unique on `(org_id, source_url)`.
+
+### contacts — business decision-makers (research engine) — *PARKED (moved here 24 Aug, D36)*
+Kept verbatim as it stood in §2. Its consent columns (`consent_basis`, `opt_out`) follow the
+same Spam Act reasoning as `consumer_leads`; if the table ever ships, they ship with it.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | |
+| full_name / first_name / last_name | text | |
+| title | text | |
+| seniority | text | `owner · c_suite · director · manager · other` |
+| department | text | |
+| email | text | |
+| email_status | text | `valid · risky · invalid · unknown · catch_all · not_found` |
+| email_is_inferred | boolean not null default false | surfaced in Notion and GHL |
+| phone | text | E.164 |
+| linkedin_url | text | |
+| source_url | text **not null** | provenance — required |
+| extraction_method | text **not null** | `llm · regex · structured_data · manual` |
+| confidence | numeric(3,2) **not null** | |
+| is_flagged | boolean default false | |
+| flag_reason | text | |
+| consent_basis | text | `inferred · express · none` — Spam Act |
+| opt_out | boolean default false | |
+| created_at / updated_at / deleted_at | | |
+
+Unique on `(org_id, lower(email)) where email is not null and deleted_at is null`.
 
 ### email_verifications — *PARKED*
 `id · contact_id FK · email · syntax_ok · mx_ok · is_disposable · is_role_account ·
@@ -502,10 +528,13 @@ enabled" is not accepted, the test output is.
   blocklist, one test org per lead type — all parked with the research engine, D23.)*
 - **No manual changes in the Supabase dashboard, and none through the Supabase MCP.** If it
   isn't in a migration, it doesn't exist.
-- **Stage 2 part 2 migration set, proposed** (Part 2 confirms before writing): extensions
-  (`pgcrypto`, `pg_trgm`, `vector`) → `app_users` → `conversations`, `messages`,
-  `memory_chunks`, `memory_facts` (with `user_id` + `scope`) → `api_usage`, `audit_log`,
-  `workflow_runs` → `consumer_leads`, `field_overrides`, `review_queue`, `crm_sync_log`,
-  `ghl_field_map`, `tasks`, `notion_sync_map` → RLS enable/force + policies on **every** table
-  → `updated_at` and audit triggers. `contacts` only if Part 2 decides it ships (§2). Nothing
-  under the parked heading.
+- **Stage 2 part 2 migration set — written 24 Aug** (was "proposed"; confirmed with two
+  changes: `contacts` parked out of the set (D36), and the memory-layer migration also
+  carries the parent-sync triggers because they are part of that logical change):
+  `..._extensions.sql` (`pgcrypto`, `pg_trgm`, `vector`) → `..._app_users.sql` →
+  `..._memory_layer.sql` (`conversations`, `messages`, `memory_chunks`, `memory_facts`, all
+  with `user_id` + `scope`; parent-sync triggers) → `..._observability.sql` (`workflow_runs`,
+  `api_usage`, `audit_log`) → `..._core_entities.sql` (`consumer_leads`, `field_overrides`,
+  `review_queue`, `crm_sync_log`, `ghl_field_map`, `tasks`, `notion_sync_map`) →
+  `..._rls.sql` (enable/force + policies on **every** table) → `..._triggers.sql`
+  (`updated_at` + audit triggers). Nothing under the parked heading.
