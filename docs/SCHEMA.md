@@ -472,6 +472,14 @@ Every table follows this shape. No exceptions.
 alter table public.consumer_leads enable row level security;
 alter table public.consumer_leads force row level security;
 
+-- Privilege layer is explicit, never inherited (24 Aug, found by CI): hosted pre-grants
+-- ALL via default privileges, the local stack grants nothing — so the migration states
+-- the grants itself. anon holds nothing; authenticated holds SELECT only. RLS filters
+-- rows only after this check passes.
+revoke all on public.consumer_leads from anon;
+revoke all on public.consumer_leads from authenticated;
+grant select on public.consumer_leads to authenticated;
+
 -- deny by default: no permissive policy for anon or authenticated
 -- service_role bypasses RLS and is used only by n8n / Edge Functions
 

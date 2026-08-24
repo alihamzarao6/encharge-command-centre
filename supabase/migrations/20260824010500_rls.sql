@@ -5,8 +5,20 @@
 -- (postgres still bypasses via its BYPASSRLS attribute, which is what lets migrations and
 -- seeds run; anon and authenticated have no such attribute).
 --
+-- Privilege layer (grants) — explicit, never inherited. RLS filters rows only AFTER the
+-- privilege check passes, and the two environments disagree about defaults: hosted
+-- Supabase pre-grants ALL on postgres-created tables to anon/authenticated via default
+-- privileges, while the local/CI stack grants nothing (found by CI on the first push:
+-- 42501 "permission denied for table conversations" for authenticated — the policies were
+-- never even evaluated). So this migration states the privilege layer itself:
+-- anon holds NOTHING; authenticated holds SELECT and nothing else. On hosted this REVOKES
+-- the implicit write grants — defense in depth even though RLS already blocks the rows.
+-- tests/security/rls.test.ts asserts the grants per table, so a future migration that
+-- forgets to grant (or over-grants) fails loudly instead of passing quietly.
+--
 -- Policy shape:
---   * No policy for anon, anywhere. Zero table access on the public key (SECURITY.md §4).
+--   * No policy for anon, anywhere — and no grants either. Zero table access on the
+--     public key (SECURITY.md §4).
 --   * authenticated gets SELECT only, gated on the app_users allowlist. No insert/update/
 --     delete policies exist for authenticated on any table: all writes go through Edge
 --     Functions / n8n running as service_role (BYPASSRLS), which validate input and write
@@ -72,6 +84,16 @@ alter table public.tasks force row level security;
 
 alter table public.notion_sync_map enable row level security;
 alter table public.notion_sync_map force row level security;
+
+-- ---------------------------------------------------------------------------------------
+-- Privilege layer: normalize away environment defaults, then state the intended grants.
+-- Covers the 15 tables above; any later migration that adds a table must carry its own
+-- grant (the RLS test iterates pg_tables and fails CI if one is missing).
+-- ---------------------------------------------------------------------------------------
+
+revoke all on all tables in schema public from anon;
+revoke all on all tables in schema public from authenticated;
+grant select on all tables in schema public to authenticated;
 
 -- ---------------------------------------------------------------------------------------
 -- app_users: self-row only, active only

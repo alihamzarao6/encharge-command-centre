@@ -89,6 +89,31 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-08-24 — [FND-210 · CI fix] Missing GRANTs: RLS suite failed in CI; privilege layer made explicit
+**Did:** First CI run failed the security suite: **42501 "permission denied for table
+conversations"** for `authenticated` on the allowlisted-read tests. Root cause was the
+privilege layer, not RLS: the migration enabled/forced RLS and wrote policies but **never
+granted `authenticated` SELECT**, so local/CI refused at the grant check before evaluating
+any policy. The hosted dry-runs could not catch it — **hosted pre-grants ALL on
+postgres-created tables to anon/authenticated via default privileges; the local stack
+grants nothing.** Worse finding: RLS tests 2–3 (anon / non-allowlisted zero rows) had
+*passed* in CI **for the wrong reason** — refused by missing grant, they would have passed
+with no policies at all. Fix in `…010500_rls.sql` (edited in place — applied durably
+nowhere): `revoke all … from anon`, `revoke all … from authenticated`, `grant select … to
+authenticated` — explicit, environment-independent, and on hosted the revoke strips the
+implicit write grants (defense in depth). New test in `rls.test.ts` asserts via
+`information_schema.role_table_grants` that authenticated holds SELECT on **every** table
+and nothing else, and anon holds nothing — so the zero-row tests now prove RLS, and a
+future migration that forgets or over-grants fails loudly. `SCHEMA.md` §7 pattern and
+`SECURITY.md` §6 updated. Re-validated on the hosted project (rolled-back transaction via
+the MCP, per the SECURITY §4 ceiling): grants exactly as intended, policy path still green.
+**Lesson:** hosted and local Supabase disagree about default table privileges; never rely
+on inherited grants, and always pair a "returns zero rows" assertion with a "the role can
+SELECT at all" assertion — a denial can have the wrong cause.
+**Next:** push the fix; CI green expected on this run.
+
+---
+
 ### 2026-08-24 — [FND-210 · GHL] "Appointment Booked" was never built — created via approved API write; ten real stage IDs seeded
 **Did:** One authorized read of the pipelines for location `tgw5Q3BnoZoSsVOnRUxB` found the
 **Finance Pipeline (`M4unnMKBy0TgwCwOA6wS`) with nine stages, not ten** — "Appointment

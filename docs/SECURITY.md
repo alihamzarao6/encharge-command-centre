@@ -160,11 +160,17 @@ provably roll back, disclosed in the report. Anything that commits goes through 
 Not "we enabled RLS" — proven by test. `tests/security/rls.test.ts` iterates every table in
 `information_schema` and asserts:
 1. `rowsecurity = true` and `forcerowsecurity = true`
-2. An anon client `select *` returns zero rows
-3. An authenticated but non-allowlisted client returns zero rows
-4. No `authenticated` role has insert/update/delete policies on core tables
+2. **The privilege layer is exactly as intended: `authenticated` holds SELECT on every
+   table and nothing else; `anon` holds no table grant at all.** Without this, the
+   zero-row assertions below can pass for the wrong reason — a missing GRANT refuses the
+   query (42501) before any policy is evaluated, which is what CI caught on the first
+   push (24 Aug)
+3. An anon client `select *` returns zero rows
+4. An authenticated but non-allowlisted client returns zero rows
+5. No `authenticated` role has insert/update/delete policies on core tables
 
-A new table added without RLS fails CI. That is the point.
+A new table added without RLS — or without its grant, or with too broad a grant — fails
+CI. That is the point.
 
 ---
 

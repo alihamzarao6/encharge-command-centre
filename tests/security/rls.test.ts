@@ -165,6 +165,40 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     expect(missing).toStrictEqual([]);
   });
 
+  it('privilege layer: authenticated holds SELECT on every table and nothing else; anon holds nothing', async () => {
+    // Without this, tests 2 and 3 can pass for the wrong reason: a missing GRANT refuses
+    // the query at the privilege layer (42501) before any RLS policy is evaluated, and
+    // "zero rows" would prove nothing about the policies. Asserting the grants here means
+    // the zero-row tests below are exercising RLS itself — and a future migration that
+    // forgets its grant (or over-grants) fails loudly. (Found by CI on the first push:
+    // hosted pre-grants via default privileges, the local stack grants nothing.)
+    const grants = await db.query<{
+      table_name: string;
+      grantee: string;
+      privilege_type: string;
+    }>(
+      `select table_name, grantee, privilege_type
+       from information_schema.role_table_grants
+       where table_schema = 'public' and grantee in ('anon', 'authenticated')`,
+    );
+
+    const anonGrants = grants.rows.filter((g) => g.grantee === 'anon');
+    expect(anonGrants, 'anon must hold no table grants at all').toStrictEqual([]);
+
+    const authSelect = new Set(
+      grants.rows
+        .filter((g) => g.grantee === 'authenticated' && g.privilege_type === 'SELECT')
+        .map((g) => g.table_name),
+    );
+    const missingSelect = tables.filter((t) => !authSelect.has(t));
+    expect(missingSelect, 'tables where authenticated lacks SELECT').toStrictEqual([]);
+
+    const authBeyondSelect = grants.rows.filter(
+      (g) => g.grantee === 'authenticated' && g.privilege_type !== 'SELECT',
+    );
+    expect(authBeyondSelect, 'authenticated must hold nothing beyond SELECT').toStrictEqual([]);
+  });
+
   it('2. anon client: zero rows from every table', async () => {
     for (const table of tables) {
       const res = await anon.from(table).select('*', { count: 'exact', head: true });
