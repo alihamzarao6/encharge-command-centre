@@ -23,7 +23,7 @@ file means every later session works from a wrong picture.
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
 | Next task | **Parts 1–2 (FND-200 + FND-210) are pushed and green** (CI run 32686391063). **Part 3 (FND-220, auth and user management) is built and staged for review — uncommitted**: email+password decided and recorded, `is_admin` + `service_role`-grants migrations, `src/lib/auth/` (verify/admin/clients/cli/password), `npm run staff` CLI, auth security suite + secrets scan. SQL validated rolled-back on the live project; GoTrue flows prove on the CI push. Then **part 4** — Claude integration layer |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | 24 Aug (part 3, local): typecheck 0, lint 0, **174 passed + 34 skipped**, coverage **93.84% lines / 92.1% branches** (floor 80/75) on Node 24.15 — the stack suites skip locally (no Docker) and run in CI. Previous full-CI green: run 32686391063 (`2843901`), including `db reset --local` from zero + schema + RLS suites |
+| Last regression run | **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** The part-3 auth suite ran for real (bootstrap on the seeded UUID, sign-in, DB-level deactivation, signup refused). Local: typecheck 0, lint 0, 174 passed + 35 skipped (no Docker) |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -86,6 +86,25 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-24 — [FND-220 · CI fix] Email provider switch; seeded-identity count; CI 32779504738 green
+**Did:** CI #6 failed 9 of 10 stack tests on one cause: `[auth.email] enable_signup = false`
+is the email **provider** switch (`GOTRUE_EXTERNAL_EMAIL_ENABLED`) and disabled sign-in too
+("Email logins are disabled"). Restored to `true`; signup stays refused via
+`[auth] enable_signup = false` (`GOTRUE_DISABLE_SIGNUP`) — the anon-signUp test still bites.
+Second finding, **checked before fixing because it looked like an identity fork**: auth item
+0 read 3 auth users, not 2. It was the whole-table count racing rls.test.ts, which creates
+its own users concurrently (its user "a" was created before its sign-in failed — exactly
++1). Not a fork: `attachSeededCredentials` has no code path to createUser. Assertion now
+scoped to the seeded identities (by id or email) = 2 before and after — the actual property.
+rls.test `afterAll` now cleans up only users that were created, so a setup failure gives one
+error instead of a TypeError on top. **Run 32779504738 on `61188d4`: 171 unit · 15
+integration · 23 security · 0 skipped · coverage 93.84/92.1.**
+**Lesson:** in the CLI config the two "enable_signup" keys are different GoTrue settings;
+and never assert on a whole-table count when test files share a stack — assert the property.
+**Next:** flip the hosted project's signup toggle as soon as migrations are applied; part 4.
 
 ---
 
