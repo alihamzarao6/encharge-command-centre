@@ -1,4 +1,4 @@
-/**
+/** 
  * POST /functions/v1/chat — the deployed chat endpoint (Stage 2 part 4; deployed in part 6).
  *
  * Thin Deno adapter over src/lib/llm/chat.ts: parse the request, hand the bearer token and
