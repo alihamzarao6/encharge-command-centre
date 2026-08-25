@@ -159,6 +159,7 @@ their first real run (CI on push, or credentials).*
 - [x] 3.9 *(was 1.38)* Properties and relations per `PLAN.md` §7; editable vs read-only per CLIENT-CONTEXT §8 — **done 10 Aug**; enforced by the sync whitelist (D22), not by Notion
 - [ ] 3.10 *(was 1.39–1.42)* Notion client, views via `create_view`, phone pass, contract tests — **only if Stage 3 decides Notion is still worth wiring at runtime** (R9 — no workspace token for n8n yet)
 - [ ] 3.11 *(was 4.16)* Pipeline metrics reconcile against GoHighLevel, not our own count (CLIENT-CONTEXT §11)
+- [ ] 3.11a **Users section in the dashboard** (added 26 Aug on FND-250 review — Ross must not need a script to add a user). Admin-only (`is_admin`) page: list staff (email, role, active, last sign-in), **Add user** (email → one-time password shown once on screen, or an invite email), **Deactivate**, **Reset password**. Backend: a new Edge Function `admin` that calls the already-tested `src/lib/auth/admin.ts` functions (`createStaffUser` / `deactivateStaffUser` / `resetStaffPassword`) under the caller's own admin session — same gates and audit as the CLI, service role never in the browser. Plus **"Forgot password"** on the login page via Supabase's email reset (needs SMTP from the client's domain — ask Ross). Acceptance: a non-admin cannot see the page or call the function (403, browser test); every action lands in `audit_log` under the admin's user id; the CLI keeps working (it is the break-glass path)
 - [ ] 3.12 `npm run test:regress` green · client demo + sign-off → **PAYMENT 3 (198)**
 
 ---
