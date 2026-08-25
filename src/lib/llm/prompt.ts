@@ -1,13 +1,13 @@
 /**
- * PLACEHOLDER system prompt. Stage 2 part 5 replaces this with the voice and brand layer
- * built from CLIENT-CONTEXT.md §1, §9, §10 and §11 with a traceability table.
+ * System prompt for the chat path. The SHAPE is what client.ts depends on: an ordered list
+ * of blocks, with a cache breakpoint after the stable prefix. The CONTENT is the voice and
+ * brand layer in src/lib/voice/ (Stage 2 part 5), built from CLIENT-CONTEXT.md §1, §9, §10
+ * and §11 with every rule citing its section.
  *
- * What is real here is the SHAPE: an ordered list of stable blocks, the last of which
- * carries a cache breakpoint. Part 5 drops its long, unchanging prefix into the same shape
- * and caching starts paying without touching client.ts. (Prompt caching needs ≥ 1,024
- * tokens on Sonnet — this placeholder is far shorter, so `cache_read_input_tokens` stays 0
- * until part 5. That is expected, not a bug.)
+ * Kept as a separate module so the LLM layer imports a shape, not a brand: the voice can
+ * change version without client.ts or chat.ts knowing.
  */
+import { buildVoiceSystemBlocks } from '../voice/prompt.js';
 
 export interface SystemBlock {
   readonly text: string;
@@ -15,14 +15,6 @@ export interface SystemBlock {
   readonly cache: boolean;
 }
 
-export const PLACEHOLDER_MARKER = '[PLACEHOLDER SYSTEM PROMPT — Stage 2 part 5 replaces this]';
-
-export const PLACEHOLDER_SYSTEM_PROMPT = `${PLACEHOLDER_MARKER}
-You are an assistant for a Perth mortgage brokerage. The brand voice, positioning rules and
-copy frameworks have NOT been loaded yet. Answer plainly and briefly. Do not invent rates,
-figures, lender names or claims. If asked for marketing copy, say the voice layer is not
-configured yet.`;
-
 export function buildSystemBlocks(): readonly SystemBlock[] {
-  return [{ text: PLACEHOLDER_SYSTEM_PROMPT, cache: true }];
+  return buildVoiceSystemBlocks();
 }

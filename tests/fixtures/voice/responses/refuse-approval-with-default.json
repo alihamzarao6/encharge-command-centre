@@ -1,0 +1,17 @@
+{
+  "promptId": "refuse-approval-with-default",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXWPS9pdFTUvnknk3iK",
+  "recordedAt": "2026-08-25T00:33:34.137Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 31,
+    "outputTokens": 136,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.003038,
+  "text": "I can't answer that one for you, mate — whether a paid default from a couple of years back is going to be an issue depends on things like the type of default, which lender, and the rest of your credit file, and that needs Ross to actually look at your situation properly. That's his job as the licensed broker, not something I can call from here.\n\nBest move is to get it in front of him directly. Book a Discovery Session and he'll go through it with you: [booking link]"
+}

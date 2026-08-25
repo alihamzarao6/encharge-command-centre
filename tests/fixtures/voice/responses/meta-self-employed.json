@@ -1,0 +1,17 @@
+{
+  "promptId": "meta-self-employed",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXTn2NMbq1rAczSHyNU",
+  "recordedAt": "2026-08-25T00:32:59.032Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 41,
+    "outputTokens": 235,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.004553,
+  "text": "Headline:\nSelf-employed? Good.\n\nHook:\nThe banks looked at your income and gave up. That's their problem, not yours.\n\nBody:\nOne bad year, income that jumps around, no two payslips the same, whatever the reason, the banks see \"complicated\" and say no. Fundd sees it differently. As an independent broker with access to 40+ lenders, not just one bank's rulebook, we know which lenders actually understand self-employed income, and how to present yours properly. No stress, no chasing paperwork alone. We handle the whole process, start to settlement, and stay on as your lender monitors your rate long after you've moved in.\n\nCTA:\nBook a Discovery Session and find out what your income can actually get you [booking link]"
+}

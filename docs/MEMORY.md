@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 4 (FND-230, Claude integration layer) is committed** (`2048b75` + CI fix `22bdbb0`): `src/lib/llm/` (config / pricing / spend / client / response / prompt / chat / store / wiring), `supabase/functions/chat` Deno adapter, `npm run chat` runner, `zod` dependency, three `ErrorCode`s. One live Sonnet 5 call made and recorded as the fixture ($0.002274). Then **part 5** — voice and brand prompt layer |
+| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240, voice and brand prompt layer) is staged, NOT committed** — `src/lib/voice/` (rules with sources / prompt + version + hash / conformance checks / fixture schemas), 24 prompts + 24 live-recorded responses in `tests/fixtures/voice/`, `npm run voice`, `docs/VOICE.md`; `CLAUDE_THINKING=disabled` default in the LLM layer (D39). Reviewer reads the FND-240 report → push → CI proves the suite on fixtures → **part 6** — chat interface, responsive, deployed |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
+| Last regression run | **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -71,6 +71,8 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D34** | **Stage 2 "done" is twelve evidence-based criteria** (`PHASE-ACCEPTANCE.md` Stage 2): CI green; schema from zero; RLS proven by test output; 401/403/allowlisted; every Claude call metered and the cap refuses *before* the request; no `sk-ant-` in client assets and no browser request to `api.anthropic.com`; voice traceable to CLIENT-CONTEXT §1/§9–§11; a ≥ 20-prompt code-checked voice-conformance suite at 100%; **the client reads five generated posts and confirms he would publish at least three** (was a 10-pair blind A/B — replaced the same day on review, see the second 23 Aug entry); phone demo at 375/768/1280; conversations follow the user across devices; regression green | "Trained on his voice" is otherwise a matter of taste. Every item is a test output, an HTTP response, a row, or a count; the single client judgement (item 9) is a count he can give in one sitting. Memory *recall* across conversations is deliberately Stage 3 — Stage 2 proves the conversation itself persists against the user | 23 Aug |
 | **D35** | **Runtime is Node 24 (LTS), not Node 20** — `.nvmrc`, `engines`, `@types/node`, CI | Node 20 is near end of life and the developer's machine is already on 24; keeping CI on 20 only creates a runtime nobody actually tests against. Typecheck, lint and the 118 tests pass on 24.15 | 23 Aug |
 | **D36** | **`contacts` is parked with the research engine; it does not ship** | It was the business decision-maker table — `org_id` FK to a parked table, `seniority`/`email_status`/`email_is_inferred`/`extraction_method`/`confidence` all populated by decision-maker extraction and email verification, both parked (D23) — and nothing in stages 2–6 reads or writes it. `consumer_leads` covers the people who actually arrive from the ads. Moved verbatim under the OUT OF CURRENT SCOPE heading in `SCHEMA.md`; removed from the audit-trigger list and the migration set. If lead research is ever bought as new work, it comes back unchanged | 24 Aug |
+| **D38** | **The voice prompt is code — `src/lib/voice/rules.ts`, every rule carrying its CLIENT-CONTEXT section — versioned by `VOICE_PROMPT_VERSION` + a content hash that the conformance fixtures pin to. Refining the voice is a commit, not a runtime edit** | The brief's ideal was "refinable without a redeploy, like the model". A prompt edited outside the repo cannot be traced to a client source, proven by the suite, reviewed or reverted — the same reasoning as D18 for schema. The runtime seam for *live* refinement exists (`buildVoiceSystemBlocks({ belowBreakpoint })`, uncached, capped) and is where Stage 3 workspace memory facts land: "train it as I go" becomes facts below the breakpoint, not edits to the traced prefix. `docs/VOICE.md` §3 | 25 Aug |
+| **D39** | **Extended thinking is OFF by default on every Claude call (`CLAUDE_THINKING=disabled`, config.ts); the request always sends the field explicitly** | Sonnet 5 thinks *adaptively when the field is omitted*, bills it as output and counts it against `max_tokens`: at 1,024 the first voice recording returned **empty** replies (1,023 thinking tokens, no text) and truncated posts, and cost twice as much. Part 4 sent no field and would have saved an empty assistant turn. Copywriting with no tools gains nothing from reasoning; turning it on is a priced, per-route decision | 25 Aug |
 | **D37** | **`review_queue.entity_type` check constraint is `('consumer_lead','web_fact','content_draft')`** | All three producers are already named in binding docs: a lead the sync could not place (RUNBOOK §3), a stored website fact below confidence (Stage 4, SCHEMA §2a), a generated draft that failed the voice/review check (Stage 5, SCHEMA §5 names `content_draft`). The constraint's job is rejecting typos and parked-era values (`org`, `contact`), not tracking which stage is live — an unused value costs nothing, widening a check on a live queue is a migration. Validated: `'org'` is refused with a check_violation | 24 Aug |
 
 ---
@@ -86,6 +88,55 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-25 — [FND-240 · Stage 2 part 5] Voice and brand prompt layer — staged, NOT committed
+**Did:** `src/lib/voice/`: `rules.ts` (32 rules as data, each with a `source` — §1/§9/§10/§11,
+D25/D30/R7/R19, the FND-240 boundary, or `mechanics`), `prompt.ts` (one cached prefix block,
+`VOICE_PROMPT_VERSION` 2026-08-25.4, FNV-1a hash, optional uncached `belowBreakpoint` capped
+at 4,000 chars), `conformance.ts` (22 code checks), `fixtures.ts` (Zod shapes). `llm/prompt.ts`
+now delegates; the placeholder is gone. `tests/fixtures/voice/prompts.json` (24 prompts: 3
+positioning, 6 Facebook, 4 Meta, 2 Google, 3 lead replies, 4 refusals, 2 chat) + 24 recorded
+live responses pinned to version + hash + request id + usage + cost. `scripts/voice.ts` →
+`npm run voice` (`check` / `record [--out] [--only]` / `live "<brief>"`) through
+`createClaudeClient` with an in-memory ledger — the env caps hold, no database needed.
+Tests: checks 37, prompt 12, conformance 3 + 291 fixture checks; `llm` tests updated for the
+thinking field. Docs: `docs/VOICE.md` (new: layout, traceability table generated from
+`rules.ts` and asserted by test, four decisions, version log, corrections workflow, live
+failure profile, what to ask Ross for, CLIENT-CONTEXT ambiguities), TESTING §2/§3d, SECURITY
+§8, TASKS 2.5.x, CLAUDE §5, `.env.example`.
+**Decided:** D38 (prompt is code, versioned, pinned) and D39 (thinking off by default). Word
+caps on posts/ads are guidance not a gate (never a client rule; the model cannot count —
+6/8 posts ran 152–184 on "150 max"); the SMS reply keeps 60. `hook-green` decides on the
+absence of Red Brain feature language only — a positive emotion-word list failed on every
+new angle and would have been softened forever. `Note:` lines to Ross are not copy. Brand in
+copy is **Fundd** (D25; confirm with Ross before the demo, TASKS 2.5.1). "15 minutes" and
+"50k" from §9 are deliberately not in the prompt (would need whitelisting as claims).
+**Surprised by:** (1) **Sonnet 5 thinks adaptively when `thinking` is omitted** — the first
+recording had empty replies at 1,024 tokens and cost $0.239 vs $0.111 without; a part-4 bug
+this part happened to trip. (2) The model wrote "free Discovery Session" in 4/24 outputs
+despite an explicit ban until the session was *named* positively. (3) Telling it
+"storytelling numbers in words" made it write "forty lenders" — the pillar check wanted 40.
+(4) `H1:`/`D1:` labels read as the digit 1 by the numbers check. (5) tsx prints a libuv
+assertion on Windows at `process.exit` after a live call — cosmetic, exit code is right.
+**Measured:** prefix 3,017 tokens; cache write $0.011314, read $0.000905, uncached $0.009051;
+118-token reply $0.00283 warm / $0.01097 cold (was $0.002274); 24-prompt recording $0.107.
+Typecheck + lint clean; unit 615/615, coverage 95.72 / 92.78; 291/291 fixture checks; live
+first pass at v.4 290/291, the one miss (a supplied rate in a hook) passed on re-record.
+`docs/CLIENT-CONTEXT.md` blob `0ef1fd32…` identical to HEAD.
+**Not verified (no Docker / no Supabase credentials here):** `npm run chat` end to end with the
+new prefix (the CLI runner path is unchanged and unit-tested; `npm run voice -- live` proves
+the prefix + client + cap + pricing live); `supabase db reset` from zero (no migration in this
+part — CI replays it); the stack suites (CI).
+**Review, 25 Aug:** brand confirmed by Ross — "Everything will be Fundd. Email, landing page,
+booking page, Calender." — TASKS 2.5.1 closed. `LENDER_PANEL_COUNT` / `LENDER_PANEL_CLAIM` /
+`DISCOVERY_SESSION_NAME` pulled into named constants in `rules.ts`, commented as unverified
+with client-confirmed values pending: one place to change when he confirms. D39 and the two
+check judgement calls (hook-green on absence of Red only; no word cap the model cannot count)
+agreed. Prefix text and hash unchanged (`796dc50d`), fixtures still valid. Pushed.
+**Next:** push → part 6 (chat UI, history in the request,
+Edge Function bundling; add `messages.prompt_version` with the history migration).
 
 ---
 

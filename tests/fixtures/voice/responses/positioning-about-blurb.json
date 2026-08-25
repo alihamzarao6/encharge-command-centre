@@ -1,0 +1,17 @@
+{
+  "promptId": "positioning-about-blurb",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXPf92ULtoXfHV4h2Wm",
+  "recordedAt": "2026-08-25T00:32:01.999Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 27,
+    "outputTokens": 198,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.003956,
+  "text": "Fundd is an independent mortgage brokerage helping Perth home buyers and owners get into the property market and stay ahead of it. With access to 40+ lenders, we're not tied to any bank, so the deal we find works for you, not them.\n\nFrom your first call to settlement day, we handle the process so you're not stuck decoding jargon or chasing paperwork on your own. And once you've settled, we don't disappear. We keep an eye on your rate and help you plan the next move.\n\nReady to see where you stand? Book a Discovery Session with Ross today.\n\nCTA: Book a Discovery Session at [booking link]"
+}

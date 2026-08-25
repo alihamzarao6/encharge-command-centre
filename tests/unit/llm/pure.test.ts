@@ -13,7 +13,8 @@ import {
   pricingFor,
   roundUsd,
 } from '../../../src/lib/llm/pricing.js';
-import { PLACEHOLDER_MARKER, buildSystemBlocks } from '../../../src/lib/llm/prompt.js';
+import { buildSystemBlocks } from '../../../src/lib/llm/prompt.js';
+import { buildVoicePrefix } from '../../../src/lib/voice/prompt.js';
 import { parseErrorEnvelope, parseMessageResponse } from '../../../src/lib/llm/response.js';
 import { checkSpendCap, utcDayStart, utcMonthStart } from '../../../src/lib/llm/spend.js';
 import { FAKE_KEY, fixture } from './helpers.js';
@@ -37,6 +38,7 @@ describe('loadLlmConfig', () => {
       maxTokens: CONFIG_DEFAULTS.maxTokens,
       timeoutMs: CONFIG_DEFAULTS.timeoutMs,
       retries: CONFIG_DEFAULTS.retries,
+      thinking: 'disabled',
       caps: { dailyUsd: 5, monthlyUsd: 50, warnFraction: 0.8 },
     });
     expect(result.value.pricing).toBe(DEFAULT_PRICING);
@@ -50,6 +52,7 @@ describe('loadLlmConfig', () => {
       CLAUDE_MAX_TOKENS: '2048',
       CLAUDE_TIMEOUT_MS: '30000',
       CLAUDE_RETRIES: '0',
+      CLAUDE_THINKING: 'adaptive',
       ANTHROPIC_SPEND_WARN_FRACTION: '0.5',
       ANTHROPIC_DAILY_SPEND_CAP_USD: '0',
       ANTHROPIC_BASE_URL: 'https://proxy.example/',
@@ -61,6 +64,7 @@ describe('loadLlmConfig', () => {
       maxTokens: 2048,
       timeoutMs: 30_000,
       retries: 0,
+      thinking: 'adaptive',
       caps: { dailyUsd: 0, monthlyUsd: 50, warnFraction: 0.5 },
       baseUrl: 'https://proxy.example',
     });
@@ -75,6 +79,7 @@ describe('loadLlmConfig', () => {
     ['fractional max tokens', { ...BASE_ENV, CLAUDE_MAX_TOKENS: '1.5' }],
     ['zero timeout', { ...BASE_ENV, CLAUDE_TIMEOUT_MS: '0' }],
     ['too many retries', { ...BASE_ENV, CLAUDE_RETRIES: '9' }],
+    ['unknown thinking mode', { ...BASE_ENV, CLAUDE_THINKING: 'enabled' }],
     ['warn fraction > 1', { ...BASE_ENV, ANTHROPIC_SPEND_WARN_FRACTION: '2' }],
     ['http base url', { ...BASE_ENV, ANTHROPIC_BASE_URL: 'http://plain.example' }],
     ['bad pricing json', { ...BASE_ENV, CLAUDE_PRICING_JSON: '{' }],
@@ -320,11 +325,11 @@ describe('response parsing', () => {
   });
 });
 
-describe('placeholder prompt', () => {
-  it('is obviously a placeholder and marks its stable prefix for caching', () => {
+describe('system prompt', () => {
+  it('is the voice prefix with a cache breakpoint after it', () => {
     const blocks = buildSystemBlocks();
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]?.text.startsWith(PLACEHOLDER_MARKER)).toBe(true);
+    expect(blocks[0]?.text).toBe(buildVoicePrefix());
     expect(blocks[0]?.cache).toBe(true);
   });
 });

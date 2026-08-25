@@ -1,0 +1,17 @@
+{
+  "promptId": "google-first-home-buyer-perth",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXUpzFMjcUdeb22im4k",
+  "recordedAt": "2026-08-25T00:33:13.182Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 42,
+    "outputTokens": 126,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.002921,
+  "text": "H1: First Home Buyer Mortgage Broker Perth\n\nH2: Stop Paying Off Your Landlord's Mortgage\n\nH3: Book Your Discovery Session Today\n\nD1: Sick of rent going nowhere? See what you could borrow.\n\nD2: Independent access to 40+ lenders, a no-stress process start to finish, and support that continues long after settlement."
+}

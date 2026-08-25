@@ -1,0 +1,17 @@
+{
+  "promptId": "positioning-vs-bank",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXPMFzg8M7yDRjeGp5v",
+  "recordedAt": "2026-08-25T00:31:58.017Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 48,
+    "outputTokens": 183,
+    "cacheWriteTokens": 3017,
+    "cacheReadTokens": 0
+  },
+  "costUsd": 0.014203,
+  "text": "The difference is I'm independent, so I've got access to 40+ lenders instead of just the one product a bank's going to push at you. That means I'm actually working for you, not for a bank's own book.\n\nThen I run the whole thing end to end, first call right through to settlement, so you're not stuck chasing paperwork or figuring it out yourself.\n\nAnd it doesn't stop at settlement either, I keep an eye on your rate and I'm there for whatever's next, refinancing, next property, whatever it is. A bank can't do any of that for you, they can only sell you what they've got."
+}

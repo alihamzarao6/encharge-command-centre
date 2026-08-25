@@ -19,7 +19,8 @@
     "test:regress": "npm run typecheck && npm run lint && vitest run --coverage && vitest run tests/integration tests/security",
     "secrets:scan": "gitleaks detect --source . --redact --no-banner",
     "staff": "tsx scripts/staff.ts",
-    "chat": "tsx scripts/chat.ts"
+    "chat": "tsx scripts/chat.ts",
+    "voice": "tsx scripts/voice.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

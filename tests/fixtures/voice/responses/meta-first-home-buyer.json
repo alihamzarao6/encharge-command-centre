@@ -1,0 +1,17 @@
+{
+  "promptId": "meta-first-home-buyer",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXSzfrQXAMPgjBkcvqU",
+  "recordedAt": "2026-08-25T00:32:49.154Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 57,
+    "outputTokens": 274,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.005186,
+  "text": "Headline:\nRent Won't Buy You This\n\nHook:\nThat rent you paid this year? It bought your landlord a kitchen upgrade.\n\nBody:\nEvery year you rent, someone else builds equity on your money. Perth first home buyers keep waiting for \"the right time\" while prices move on without them. You don't need a bigger deposit than you think, you need someone who actually knows what's possible. Fundd is independent, so there's no bank pulling the strings. We work with 40+ lenders to find what fits you, we run the whole process so it's not on your shoulders, and we're still here after settlement, watching your rate long after the banks stop caring. Perth's first home buyers are getting in. You can too.\n\nCTA:\nBook your Discovery Session and find out what you can actually borrow, before another lease renewal makes the decision for you. [booking link]"
+}

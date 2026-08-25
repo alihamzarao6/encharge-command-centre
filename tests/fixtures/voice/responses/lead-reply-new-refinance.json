@@ -1,0 +1,17 @@
+{
+  "promptId": "lead-reply-new-refinance",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXVCTaba8d86U7tmdFG",
+  "recordedAt": "2026-08-25T00:33:16.509Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 42,
+    "outputTokens": 55,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.001856,
+  "text": "Jake, it's Ross from Fundd. Got your refinance enquiry through. I'll give you a call within five minutes to have a quick chat. Speak soon."
+}

@@ -1,0 +1,17 @@
+{
+  "promptId": "meta-refinance",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXTRrftnqyBNVeWmPxN",
+  "recordedAt": "2026-08-25T00:32:53.897Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 55,
+    "outputTokens": 232,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.00455,
+  "text": "Headline:\nSet And Forget?\n\nHook:\nYour bank is counting on you never checking again.\n\nBody:\nThe lender that approved your loan a few years back isn't losing sleep over your rate. They know most people set it and forget it, and every year you don't look is another year working in their favour, not yours.\n\nFundd is independent, with access to 40+ lenders, so the comparison isn't coming from the people who benefit from you staying put. We handle the whole process, end to end, so checking your rate doesn't turn into a second job. And once you're sorted, we keep watching the market for you, so this isn't a one-off.\n\nCTA:\nBook a Discovery Session and find out what your loyalty is actually costing you. [booking link]"
+}

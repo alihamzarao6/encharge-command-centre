@@ -25,9 +25,20 @@ export interface LlmConfig {
   readonly timeoutMs: number;
   /** Retries after the first attempt, applied ONLY to responses that provably billed nothing. */
   readonly retries: number;
+  /**
+   * Extended thinking. Claude 5 models think ADAPTIVELY when the request omits the field,
+   * and thinking tokens are billed as output and count against max_tokens — so an omitted
+   * field let a 1,024-token chat turn spend everything on reasoning and return an empty
+   * reply (found in part 5, MEMORY.md 25 Aug). Copy generation with no tools gains nothing
+   * from it; the default is therefore an explicit `disabled`. `adaptive` is available for
+   * a future route that needs it (cost then varies per call).
+   */
+  readonly thinking: ThinkingMode;
   readonly caps: SpendCaps;
   readonly pricing: PricingTable;
 }
+
+export type ThinkingMode = 'disabled' | 'adaptive';
 
 export const ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com';
 export const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -39,6 +50,7 @@ export const CONFIG_DEFAULTS = {
   timeoutMs: 60_000,
   retries: 2,
   warnFraction: 0.8,
+  thinking: 'disabled' as ThinkingMode,
 } as const;
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -120,6 +132,12 @@ export function loadLlmConfig(env: Env = process.env): Result<LlmConfig, ConfigE
   );
   if (!retries.ok) return retries;
 
+  const thinkingRaw = read(env, 'CLAUDE_THINKING') ?? CONFIG_DEFAULTS.thinking;
+  if (thinkingRaw !== 'disabled' && thinkingRaw !== 'adaptive') {
+    return err(new ConfigError('CLAUDE_THINKING must be "disabled" or "adaptive"'));
+  }
+  const thinking: ThinkingMode = thinkingRaw;
+
   let pricing: PricingTable = DEFAULT_PRICING;
   const pricingJson = read(env, 'CLAUDE_PRICING_JSON');
   if (pricingJson !== undefined) {
@@ -144,6 +162,7 @@ export function loadLlmConfig(env: Env = process.env): Result<LlmConfig, ConfigE
     maxTokens: maxTokens.value,
     timeoutMs: timeoutMs.value,
     retries: retries.value,
+    thinking,
     caps: { dailyUsd: daily.value, monthlyUsd: monthly.value, warnFraction: warn.value },
     pricing,
   });

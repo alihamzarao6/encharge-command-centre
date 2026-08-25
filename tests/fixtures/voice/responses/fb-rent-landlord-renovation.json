@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-rent-landlord-renovation",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXQKuAYvQ2KjWVzXgon",
+  "recordedAt": "2026-08-25T00:32:12.865Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 50,
+    "outputTokens": 324,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.005915,
+  "text": "Your landlord's kitchen is getting done up.\n\nStone benchtops. New appliances. Maybe a lick of paint through the whole place.\n\nGuess who's paying for it.\n\nEvery Friday your rent goes out, a chunk of it is funding someone else's asset. Their equity. Their renovation. Their retirement plan.\n\nMeanwhile you're told you \"can't buy yet\" - too expensive, deposit's too far off, rates are scary.\n\nHere's the thing. Most people in that boat have never actually had someone independent sit down and work out what they could borrow. They've just assumed.\n\nFundd isn't a bank. We're independent, with access to 40+ lenders, and we handle the whole thing end to end so it's not the stressful mess you're picturing. And once you're in, we don't disappear - we keep an eye on your rate for the long run.\n\nFind out where you actually stand before you fund one more renovation that isn't yours.\n\nCTA: Book a Discovery Session with Ross - [booking link]"
+}

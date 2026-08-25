@@ -118,11 +118,11 @@ their first real run (CI on push, or credentials).*
 
 ### Part 5 — Voice and brand prompt layer
 
-- [ ] 2.5.1 Voice corpus assembled **only** from `CLIENT-CONTEXT.md` §1, §9, §10, §11 and any samples Ross supplies; every rule in the system prompt cites its section (traceability table committed). Brand name in generated copy: **Fundd** (D25) — confirm with Ross before the first demo
-- [ ] 2.5.2 `src/lib/voice/` — system-prompt builder (pure function) + unit tests; stable prefix structured for prompt caching
-- [ ] 2.5.3 `tests/fixtures/voice/` — ≥ 20 fixed prompts with recorded responses; **code-checked conformance**: never positions as a bank; three pillars on positioning questions; Meta ad = Hook → Body → CTA, headline < 28 chars; one CTA per asset; no stale stack reference (R19); no number / rate / claim not present in the prompt (R7). 100% pass in CI
-- [ ] 2.5.4 Five generated posts prepared for acceptance item 9 (Ross confirms he would publish at least three as they stand) — *was a 10-pair blind A/B; replaced 23 Aug*
-- [ ] 2.5.5 `docs/CLIENT-CONTEXT.md` §9–§11 **untouched**; `docs/MEMORY.md` updated
+- [x] 2.5.1 Voice corpus assembled **only** from `CLIENT-CONTEXT.md` §1, §9, §10, §11 and any samples Ross supplies; every rule in the system prompt cites its section (traceability table committed). Brand name in generated copy: **Fundd** — confirmed by Ross 25 Aug ("Everything will be Fundd. Email, landing page, booking page, Calender."), D25 closed. Panel size and Discovery Session name are `LENDER_PANEL_COUNT` / `DISCOVERY_SESSION_NAME` in `rules.ts`, marked unverified until Ross confirms
+- [x] 2.5.2 `src/lib/voice/` — system-prompt builder (pure function) + unit tests; stable prefix structured for prompt caching
+- [x] 2.5.3 `tests/fixtures/voice/` — ≥ 20 fixed prompts with recorded responses; **code-checked conformance**: never positions as a bank; three pillars on positioning questions; Meta ad = Hook → Body → CTA, headline < 28 chars; one CTA per asset; no stale stack reference (R19); no number / rate / claim not present in the prompt (R7). 100% pass in CI
+- [ ] 2.5.4 Five generated posts prepared for acceptance item 9 (Ross confirms he would publish at least three as they stand) — *was a 10-pair blind A/B; replaced 23 Aug*. **25 Aug:** eight recorded posts exist in `tests/fixtures/voice/responses/fb-*.json` and the reviewer's own brief runs with `npm run voice -- live "<brief>"`; the five for item 9 are generated fresh in the acceptance session from briefs Ross has not seen output of (part 7)
+- [x] 2.5.5 `docs/CLIENT-CONTEXT.md` §9–§11 **untouched** (blob identical to HEAD, checked 25 Aug); `docs/MEMORY.md` updated; `docs/VOICE.md` added (traceability table, version log, corrections workflow, cost)
 
 ### Part 6 — Chat interface, responsive, deployed
 

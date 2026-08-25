@@ -1,0 +1,17 @@
+{
+  "promptId": "chat-three-hooks-injustice",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXX42sqnTmKSySwZUkx",
+  "recordedAt": "2026-08-25T00:33:40.747Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 36,
+    "outputTokens": 52,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.001793,
+  "text": "Your rent just paid your landlord's mortgage.\n\nThe bank knocked you back. Their mate got approved.\n\nSame wage as him. He owns three houses."
+}

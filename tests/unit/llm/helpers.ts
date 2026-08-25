@@ -25,6 +25,7 @@ export function testConfig(overrides: Partial<LlmConfig> = {}): LlmConfig {
     maxTokens: 256,
     timeoutMs: 1_000,
     retries: 2,
+    thinking: 'disabled',
     caps: { dailyUsd: 5, monthlyUsd: 50, warnFraction: 0.8 },
     pricing: DEFAULT_PRICING,
     ...overrides,

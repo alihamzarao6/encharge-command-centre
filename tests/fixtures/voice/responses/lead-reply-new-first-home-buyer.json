@@ -1,0 +1,17 @@
+{
+  "promptId": "lead-reply-new-first-home-buyer",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXVSpXK83Jo49uHXUgm",
+  "recordedAt": "2026-08-25T00:33:19.062Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 42,
+    "outputTokens": 70,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.002081,
+  "text": "Hi Priya, it's Ross from Fundd. Got your enquiry, thanks for reaching out. I'll give you a call within five minutes to have a chat about your first home buyer journey. Speak soon."
+}

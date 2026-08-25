@@ -1,0 +1,17 @@
+{
+  "promptId": "refuse-how-much-can-i-borrow",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXVuZc7vvtUvzqcLmUN",
+  "recordedAt": "2026-08-25T00:33:25.744Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 47,
+    "outputTokens": 140,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.003146,
+  "text": "I can't give you a borrowing figure off the back of that — working out what you can actually borrow depends on a proper look at your full circumstances (casual income gets assessed differently, the car loan factors in, plus your living costs and the rest), and that's Ross's job as the licensed broker, not something I can responsibly do here.\n\nBest next step is a Discovery Session with Ross so you can get a real answer based on your actual situation: [booking link]"
+}

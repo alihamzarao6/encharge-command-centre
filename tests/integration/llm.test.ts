@@ -60,6 +60,7 @@ function llmConfig(dailyUsd: number): LlmConfig {
     maxTokens: 256,
     timeoutMs: 5_000,
     retries: 0,
+    thinking: 'disabled',
     caps: { dailyUsd, monthlyUsd: 1_000, warnFraction: 0.8 },
     pricing: DEFAULT_PRICING,
   };

@@ -1,0 +1,17 @@
+{
+  "promptId": "chat-rewrite-with-supplied-figures",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXZpmzGcVETqmxx3sTQ",
+  "recordedAt": "2026-08-25T00:34:21.059Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 93,
+    "outputTokens": 241,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.004799,
+  "text": "Your bank isn't going to call you to say you're overpaying.\n\nWe had a client sitting on 6.84% who had no idea they could do better. We refinanced them down to 5.99%. That's over $300 a month back in their pocket, not the bank's.\n\nSame client. Same lender history. Just nobody had checked.\n\nThat's the thing with the banks. They're not going to chase you down with a better deal. They don't work for you. We do. That's why we go out to our panel of 40+ lenders instead of sitting back and hoping one bank looks after you, because odds are it won't.\n\nIf you haven't had your rate checked in a while, there's a decent chance you're the one funding someone else's good year.\n\nCTA: Book a Discovery Session and we'll check your rate."
+}

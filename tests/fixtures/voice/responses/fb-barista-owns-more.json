@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-barista-owns-more",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXREmcxRvv4s4bxgQap",
+  "recordedAt": "2026-08-25T00:32:25.860Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 47,
+    "outputTokens": 338,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.006116,
+  "text": "He makes your coffee every morning. Nice enough, chats about the weather, remembers your order.\n\nYou're in a suit. Corporate job, good salary, the whole package. He's twenty-three in a barista apron.\n\nHe owns two properties. You're still \"thinking about getting into the market.\"\n\nThe difference isn't income. It isn't luck. It's that he stopped waiting for the \"right time\" and found out what he could actually borrow, while you were still assuming the banks would say no.\n\nPerth prices haven't been kind to people who wait. Every year on the sidelines is a year further behind someone who just started.\n\nFundd is independent, no bank bias, working for you, not the banks. Forty-plus lenders on the panel, so if one says no, that's not the end of the conversation. We handle the whole process end to end, no stress, from that first chat through to settlement, and we stick around after to help with what's next.\n\nYou don't need a suit to get ahead. You need to know your number.\n\nCTA: Book a Discovery Session with Ross and find out what you can actually borrow. [booking link]"
+}

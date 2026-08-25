@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-self-employed-no-idea",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXRi9QJgBeeTPZjhZqE",
+  "recordedAt": "2026-08-25T00:32:32.840Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 40,
+    "outputTokens": 310,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.005675,
+  "text": "They took one look at your last two tax returns and said no.\n\nMeanwhile the bloke on wages, earning half what you do, walked in and got approved in a week.\n\nThat's not fair, but it's exactly why so many tradies never bother applying. You assume the banks won't understand fluctuating income, business write-offs, or how you actually get paid. So you don't even try.\n\nHere's the thing: the banks were never built to understand self-employed income. That's not your problem to solve, it's ours.\n\nFundd is independent, we're not tied to any bank. We work with a panel of 40+ lenders, some of whom actually know how to read a tradie's financials properly. We handle the whole process for you, start to finish, no stress, and once you're settled we keep an eye on your rate and what's next.\n\nIf the banks have already knocked you back, or you've just assumed they would, book a Discovery Session and find out what you can actually borrow.\n\nCTA: Book a Discovery Session at [booking link]"
+}

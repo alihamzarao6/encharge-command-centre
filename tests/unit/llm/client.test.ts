@@ -210,6 +210,8 @@ describe('successful call — Part C item 3', () => {
     const body = JSON.parse(bodyOf(call?.init)) as ReturnType<typeof buildRequestBody>;
     expect(body.model).toBe('claude-sonnet-5');
     expect(body.max_tokens).toBe(256);
+    // Sonnet 5 thinks adaptively when the field is omitted; the chat path must say so explicitly.
+    expect(body.thinking).toEqual({ type: 'disabled' });
     expect(body.system[0]).toEqual({
       type: 'text',
       text: 'placeholder system',

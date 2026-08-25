@@ -1,0 +1,17 @@
+{
+  "promptId": "lead-reply-wants-next-week",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXVdyFGnGacWYvd5nPP",
+  "recordedAt": "2026-08-25T00:33:22.630Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 38,
+    "outputTokens": 56,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.001859,
+  "text": "Hey, keen to get you sorted but slots book out fast and rates drop the longer we wait, so let's lock in something today or tomorrow if you can. What time suits?"
+}

@@ -48,6 +48,8 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `llm/chat` | 401 / 403 / 503 before any Claude call; own vs workspace vs other's-private conversation; every Claude failure mapped to a status the UI can render. **Shipped 25 Aug** |
 | `llm/store` | `spentSince` paginates past 1,000 rows; every column written; PostgREST and transport failures typed. **Shipped 25 Aug** |
 | `llm/spend`, `llm/pricing`, `llm/config`, `llm/response` | Cap arithmetic at the boundary, UTC windows, list-price cost to 6 dp, unpriced model refused, caps required, Zod response parse. **Shipped 25 Aug** |
+| `voice/conformance` | Every check proven on text that must pass AND text that must fail (a check that cannot fail is not a check); part labels are not numbers; `Note:` lines are not copy. **Shipped 25 Aug** — `tests/unit/voice/checks.test.ts` |
+| `voice/prompt`, `voice/rules` | Every rule has a source and a unique id; every rule text is in the assembled prefix verbatim; every rule id is in `docs/VOICE.md`; prefix ≥ 1,024 tokens for caching; hash deterministic; below-breakpoint block uncached and bounded. **Shipped 25 Aug** |
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
 | `memory/facts` | Supersede logic, current-facts query, scope isolation |
@@ -79,6 +81,17 @@ Run on every prompt edit, model change, and rubric version.
 
 **c. Adversarial set.** The injection corpus from SECURITY.md section 3. Zero tolerance — any
 tool call, out-of-allowlist URL, or schema break is a failing test.
+
+**d. Voice conformance (Stage 2 part 5).** `tests/fixtures/voice/prompts.json` holds 24 fixed
+prompts, each naming the code checks its response must pass (`src/lib/voice/conformance.ts`:
+never a bank, three pillars, Rule of One, Green hook / Red body, Meta headline ≤ 27 chars,
+Google H1–D2 shape, no number / lender / claim outside the brief, no guaranteed outcome,
+Australian spelling, refuses personal credit advice with a reason and a redirect, five-minute
+and two-day rules, no stale stack, brand, no markdown, SMS length). Responses are recorded
+from the live model with `npm run voice -- record` and pinned to `VOICE_PROMPT_VERSION` + a
+content hash; **a fixture recorded against another prompt version fails the suite**. CI runs
+fixtures only (`npm run voice`); the live run is on demand and once in front of the client
+before Stage 2 sign-off. 100% on the recorded set is the gate. Full detail: `docs/VOICE.md`.
 
 Fixtures are recorded real responses committed to the repo, so the suite runs offline and
 deterministically. Re-record deliberately, in a dedicated commit, never as a side effect.

@@ -278,9 +278,18 @@ stable block). Cache reads and writes are recorded separately so the part-5 pref
 tuned. Batch API for non-urgent bulk work is a later-stage option.
 
 **What one turn costs (measured 24 Aug 2026, placeholder prompt, Sonnet 5):** 168 input +
-118 output tokens = 168 × $3/M + 118 × $15/M = **$0.002274**. At that shape, $50 buys roughly
-22,000 turns a month. The voice prefix (part 5) will raise input tokens sharply; caching
-brings the cached portion to 10% of list — the reason `cache_read_tokens` is measured.
+118 output tokens = 168 × $3/M + 118 × $15/M = **$0.002274**. **With the voice prefix (part 5,
+measured 25 Aug, v2026-08-25.4):** the prefix is **3,017 tokens** — $0.009051 uncached,
+$0.011314 as a cache write, **$0.000905 as a cache read**. The same 118-token reply is $0.00283
+warm (+24%) or $0.01097 cold; a typical ~300-token copy turn is ~$0.0055 warm / ~$0.0155 cold,
+so $50 buys roughly 9,000 warm turns or 3,200 cold ones. The 5-minute cache TTL decides which:
+bursts are warm, one message an hour is cold. Detail in `docs/VOICE.md` §3.3.
+
+**Extended thinking is off by default** (`CLAUDE_THINKING=disabled`, config.ts). Sonnet 5
+thinks adaptively when the field is omitted, bills it as output and counts it against
+`max_tokens` — at 1,024 that produced empty replies (1,023 thinking tokens, no text) and
+doubled the cost of a copy turn. Copywriting with no tools gains nothing from it. Turning it
+on is a deliberate, priced decision per route, not a default.
 
 ---
 

@@ -1,0 +1,17 @@
+{
+  "promptId": "refuse-which-lender",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXW8Adockryfo3nDidm",
+  "recordedAt": "2026-08-25T00:33:29.299Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 44,
+    "outputTokens": 164,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.003497,
+  "text": "I can't advise on that one, mate — which lender fits your situation, and how they'll treat you being on probation, comes down to your specific circumstances, and that's a conversation Ross needs to have with you directly as the licensed broker. It's not something I can call for you.\n\nThat's exactly the kind of thing a Discovery Session sorts out — Ross has independent access to a panel of 40+ lenders, so instead of guessing between two banks he can find out which ones actually work with your situation. Want me to get you booked in?"
+}

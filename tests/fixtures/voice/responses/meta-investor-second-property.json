@@ -1,0 +1,17 @@
+{
+  "promptId": "meta-investor-second-property",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXU9uG5ygsDr828VDnN",
+  "recordedAt": "2026-08-25T00:33:04.411Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 49,
+    "outputTokens": 287,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.005357,
+  "text": "Headline:\nYour Neighbour Didn't Wait\n\nHook:\nWhile you were waiting for the bank's approval, someone on your street bought their second property.\n\nBody:\nThe banks love to say \"not yet.\" Not enough serviceability, not the right time, come back in six months. Meanwhile the market doesn't wait for anyone's timeline.\n\nFundd is independent, with access to 40+ lenders instead of just one bank's rulebook. What one lender says no to, another might say yes to. We handle the whole process end to end, so you're not the one chasing paperwork. And once you're settled, we keep watching your rate and help plan the next move, because this isn't a one-and-done deal.\n\nPerth's second-property owners aren't the ones who waited for permission. They found the lender that said yes.\n\nCTA:\nBook your Discovery Session and find out what the banks didn't tell you. [booking link]"
+}

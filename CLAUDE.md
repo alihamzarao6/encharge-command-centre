@@ -112,6 +112,7 @@ supabase db reset
 supabase migration new <name>
 npm run staff -- help   # admin user management (add-user / deactivate / reset-password / bootstrap)
 npm run chat -- "hi"    # one real chat turn through the server-side path (needs a stack + key in env)
+npm run voice           # voice conformance over recorded fixtures (CI mode); `-- record` re-records live, `-- live "<brief>"` one generation
 npm run n8n:export
 npm run n8n:validate
 ```

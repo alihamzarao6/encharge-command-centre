@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-congratulations-cuts-deeper",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXQkcD4KrALHzqhAJT3",
+  "recordedAt": "2026-08-25T00:32:19.460Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 70,
+    "outputTokens": 319,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.0059,
+  "text": "A year ago, a bank looked at their file and said no.\n\nNo explanation that meant anything. Just a knock-back, and that quiet feeling of being sized up and found wanting.\n\nThis week they picked up the keys to their first place.\n\nNothing about their situation changed overnight. What changed was who was looking at it. One bank's no was never the full picture, it was one lender's opinion, weighed against one set of boxes they didn't tick. There were 40+ other lenders who saw it differently, and they never even knew to ask.\n\nThat's the part that gets us. People walk away from a single knock-back thinking the door's shut, when it was just one door.\n\nIndependent means someone's actually on your side, working the whole panel until one says yes, and staying with you from that first call to the keys in your hand, and after.\n\nIf a bank's already told you no, that's not the end of the file. It's just the start of asking someone independent.\n\nCTA: Book a Discovery Session with Fundd and find out what the banks didn't tell you: [booking link]"
+}

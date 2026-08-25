@@ -35,7 +35,7 @@ import {
 } from '../errors.js';
 import { parseJsonBody, parseRetryAfterMs, type HttpClient, type HttpResponse } from '../http.js';
 import { redactString, type Logger } from '../logger.js';
-import type { LlmConfig } from './config.js';
+import type { LlmConfig, ThinkingMode } from './config.js';
 import { ModelRefusalError, RateLimitedError, SpendCapError, type SpendWindow } from './errors.js';
 import {
   costUsd,
@@ -158,6 +158,8 @@ export function buildHeaders(config: LlmConfig): Readonly<Record<string, string>
 interface RequestBody {
   readonly model: string;
   readonly max_tokens: number;
+  /** Always sent explicitly — see LlmConfig.thinking for why an omitted field is a bug. */
+  readonly thinking: { readonly type: ThinkingMode };
   readonly system: readonly {
     readonly type: 'text';
     readonly text: string;
@@ -171,10 +173,12 @@ export function buildRequestBody(
   maxTokens: number,
   system: readonly SystemBlock[],
   messages: readonly ChatMessage[],
+  thinking: ThinkingMode,
 ): RequestBody {
   return {
     model,
     max_tokens: maxTokens,
+    thinking: { type: thinking },
     system: system.map((block) =>
       block.cache
         ? { type: 'text', text: block.text, cache_control: { type: 'ephemeral' } }
@@ -298,7 +302,7 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
 
     // --- the call -----------------------------------------------------------------------
     const body = JSON.stringify(
-      buildRequestBody(model, maxTokens, request.system, request.messages),
+      buildRequestBody(model, maxTokens, request.system, request.messages, config.thinking),
     );
     const headers = buildHeaders(config);
     const reservation: UsageRecord = {

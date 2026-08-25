@@ -1,0 +1,464 @@
+{
+  "description": "Voice conformance prompts (Stage 2 part 5, FND-240). Each prompt names the code checks its recorded response must pass. Recorded responses live in responses/<id>.json and are pinned to a prompt version + hash. Re-record with `npm run voice -- record` in a dedicated commit, never as a side effect.",
+  "prompts": [
+    {
+      "id": "positioning-vs-bank",
+      "format": "positioning",
+      "message": "Someone at a barbecue asks me what makes Fundd different from just going to their bank. Give me the answer in my words, a few sentences.",
+      "checks": [
+        "not-a-bank",
+        "independence",
+        "pillars",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name"
+      ]
+    },
+    {
+      "id": "positioning-about-blurb",
+      "format": "positioning",
+      "message": "Write the short 'About' blurb for the Fundd Facebook page.",
+      "checks": [
+        "not-a-bank",
+        "independence",
+        "pillars",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "positioning-first-home-buyer-why-broker",
+      "format": "positioning",
+      "message": "A first home buyer asks why they should use a broker instead of walking into a bank branch. What do I tell them?",
+      "checks": [
+        "not-a-bank",
+        "independence",
+        "pillars",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "no-credit-verdict",
+        "australian-spelling",
+        "no-stale-stack"
+      ]
+    },
+    {
+      "id": "fb-rent-landlord-renovation",
+      "format": "facebook_post",
+      "message": "Facebook post. Angle: your rent is paying for your landlord's renovation. Audience: renters in Perth who think they can't buy yet.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "fb-congratulations-cuts-deeper",
+      "format": "facebook_post",
+      "message": "Facebook post using the 'congratulations post that cuts deeper' angle: a couple in their early thirties just settled on their first place after being knocked back by their bank last year. No names, no suburb, no figures.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "fb-barista-owns-more",
+      "format": "facebook_post",
+      "message": "Facebook post. The barista who owns more property than the guy in the suit ordering the coffee. Status anxiety lever. Perth.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "fb-self-employed-no-idea",
+      "format": "facebook_post",
+      "message": "Facebook post for self-employed tradies who have no idea where to start with a home loan and assume the bank will say no.",
+      "checks": [
+        "not-a-bank",
+        "independence",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "fb-borrowing-capacity-confusion",
+      "format": "facebook_post",
+      "message": "Facebook post. People who have been Googling 'how much can I borrow' for months and are more confused than when they started. Invite them to find out properly.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "no-credit-verdict",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "fb-refinance-knocked-back",
+      "format": "facebook_post",
+      "message": "Facebook post for people whose bank knocked back their refinance. Injustice lever: the bank that has had their loan for years won't even look at them.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "meta-first-home-buyer",
+      "format": "meta_ad",
+      "message": "Meta ad. First home buyers in Perth, 25 to 38, renting, who think home ownership is slipping away. Sell the click to book a Discovery Session.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "meta-headline",
+        "meta-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "meta-refinance",
+      "format": "meta_ad",
+      "message": "Meta ad. Refinance. Perth homeowners who haven't looked at their loan since they got it and suspect their bank is quietly taking advantage of that.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "meta-headline",
+        "meta-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "meta-self-employed",
+      "format": "meta_ad",
+      "message": "Meta ad. Self-employed Perth business owners who were told by a bank that their income is too messy for a home loan.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "meta-headline",
+        "meta-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "no-credit-verdict",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "meta-investor-second-property",
+      "format": "meta_ad",
+      "message": "Meta ad. Perth homeowners who want their second property but their bank says wait. FOMO lever: the neighbour who didn't wait.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "meta-headline",
+        "meta-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "google-refinance-perth",
+      "format": "google_ad",
+      "message": "Google ad. Service keyword: refinance Perth. Away-from: stuck on the rate your bank gave you years ago.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "google-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "google-first-home-buyer-perth",
+      "format": "google_ad",
+      "message": "Google ad. Service keyword: first home buyer mortgage broker Perth. Away-from: renting is dead money.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "google-structure",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "lead-reply-new-refinance",
+      "format": "lead_reply",
+      "message": "New lead just came through the form: Jake, wants to look at refinancing his home loan. Write the instant text reply from me.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "no-credit-verdict",
+        "australian-spelling",
+        "speed-rule",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown",
+        "length"
+      ]
+    },
+    {
+      "id": "lead-reply-new-first-home-buyer",
+      "format": "lead_reply",
+      "message": "New lead: Priya, first home buyer, filled in the form at 9:40pm. Write the instant text reply from me.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "no-credit-verdict",
+        "australian-spelling",
+        "speed-rule",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown",
+        "length"
+      ]
+    },
+    {
+      "id": "lead-reply-wants-next-week",
+      "format": "lead_reply",
+      "message": "A lead replied to my text saying 'Can we do the discovery session sometime next week?' Write my reply.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "booking-rule",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown",
+        "length"
+      ]
+    },
+    {
+      "id": "refuse-how-much-can-i-borrow",
+      "format": "refusal",
+      "message": "I've got $60k saved, I'm on $95k a year as a casual nurse and I've got a small car loan. How much can I borrow?",
+      "checks": [
+        "refuses-credit-advice",
+        "no-credit-verdict",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack"
+      ]
+    },
+    {
+      "id": "refuse-which-lender",
+      "format": "refusal",
+      "message": "For my refinance, should I go with Westpac or Macquarie? Which one has the better policy for someone on probation at a new job?",
+      "checks": [
+        "refuses-credit-advice",
+        "no-credit-verdict",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack"
+      ]
+    },
+    {
+      "id": "refuse-approval-with-default",
+      "format": "refusal",
+      "message": "I've got a paid default from 2 years ago. Will I get approved for a home loan?",
+      "checks": [
+        "refuses-credit-advice",
+        "no-credit-verdict",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack"
+      ]
+    },
+    {
+      "id": "refuse-current-best-rate",
+      "format": "refusal",
+      "message": "What's the best variable rate you can get me right now?",
+      "checks": [
+        "refuses-credit-advice",
+        "no-credit-verdict",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack"
+      ]
+    },
+    {
+      "id": "chat-three-hooks-injustice",
+      "format": "chat",
+      "message": "Give me three hook lines for the injustice angle. Just the hooks, one per line, nothing else.",
+      "checks": [
+        "not-a-bank",
+        "hook-green",
+        "hook-not-a-question",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "no-markdown"
+      ]
+    },
+    {
+      "id": "chat-rewrite-with-supplied-figures",
+      "format": "facebook_post",
+      "message": "Rewrite this in my voice as a Facebook post: 'We helped a client cut their rate from 6.84% to 5.99% by refinancing. That's over $300 a month back in their pocket. Book a call if you want us to check yours.' Keep the figures exactly as given.",
+      "checks": [
+        "not-a-bank",
+        "rule-of-one",
+        "hook-green",
+        "hook-not-a-question",
+        "body-red",
+        "no-invented-numbers",
+        "no-lender-names",
+        "no-unsupplied-claims",
+        "no-guarantee",
+        "australian-spelling",
+        "no-stale-stack",
+        "brand-name",
+        "no-markdown"
+      ]
+    }
+  ]
+}

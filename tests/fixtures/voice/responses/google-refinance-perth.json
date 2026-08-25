@@ -1,0 +1,17 @@
+{
+  "promptId": "google-refinance-perth",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXUYwqycBTNfZ89hKJq",
+  "recordedAt": "2026-08-25T00:33:08.144Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 44,
+    "outputTokens": 105,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.002612,
+  "text": "H1: Refinance Perth\n\nH2: Still On Your Old Bank Rate?\n\nH3: Book A Discovery Session\n\nD1: Still stuck on the rate they gave you years ago?\n\nD2: Independent access to 40+ lenders, a no-stress process end to end, and ongoing rate checks after you settle."
+}

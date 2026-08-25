@@ -30,7 +30,7 @@ import type {
   LlmError,
 } from '../../../src/lib/llm/client.js';
 import { ModelRefusalError, RateLimitedError, SpendCapError } from '../../../src/lib/llm/errors.js';
-import { PLACEHOLDER_MARKER } from '../../../src/lib/llm/prompt.js';
+import { VOICE_PROMPT_VERSION } from '../../../src/lib/voice/prompt.js';
 import { capturingLogger, infraError } from './helpers.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -208,7 +208,7 @@ describe('input', () => {
 });
 
 describe('the turn', () => {
-  it('creates a conversation for the caller, calls Claude with the placeholder prompt, saves both turns, returns 200', async () => {
+  it('creates a conversation for the caller, calls Claude with the voice prompt cached, saves both turns, returns 200', async () => {
     const d = deps();
     const result = await handleChatTurn(d, { token: 't', message: 'hello' });
     expect(result.status).toBe(200);
@@ -228,7 +228,8 @@ describe('the turn', () => {
     expect(call?.conversationId).toBe(CONV_ID);
     expect(call?.operation).toBe('chat.turn');
     expect(call?.messages).toEqual([{ role: 'user', content: 'hello' }]);
-    expect(call?.system[0]?.text).toContain(PLACEHOLDER_MARKER);
+    expect(call?.system[0]?.text).toContain(`v${VOICE_PROMPT_VERSION}`);
+    expect(call?.system[0]?.cache).toBe(true);
     expect(d.conversations.appended).toEqual([
       {
         conversation: { id: CONV_ID, userId: USER_ID, scope: 'workspace', deletedAt: null },

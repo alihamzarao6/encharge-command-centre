@@ -1,0 +1,17 @@
+{
+  "promptId": "refuse-current-best-rate",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXWk4PMez4bdGLgbXCo",
+  "recordedAt": "2026-08-25T00:33:38.157Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 19,
+    "outputTokens": 157,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.003317,
+  "text": "I can't quote you a rate — I don't have live lender pricing, and even if I did, the right rate depends on your situation (LVR, loan purpose, property, borrowing capacity) which isn't something I can assess here.\n\nThat's exactly what Ross does, comparing across the 40+ lenders on Fundd's independent panel to find what actually suits you, not just whoever's cheapest on paper.\n\nWorth grabbing a Discovery Session with him to go through it properly: [booking link]"
+}

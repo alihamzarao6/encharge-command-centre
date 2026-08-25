@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-borrowing-capacity-confusion",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXSDymc6wSMxQX9g9k7",
+  "recordedAt": "2026-08-25T00:32:37.799Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 49,
+    "outputTokens": 260,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.004952,
+  "text": "Months of Google searches. Ten different borrowing power calculators. Ten different answers.\n\nNone of them know your payslips, your other debts, whether you're self-employed, or what a lender actually thinks of your situation. They're guessing. That's why you're still confused.\n\nFundd works differently. We're independent, so there's no bank pushing you toward their number, just an honest look at what you can actually borrow across a panel of 40+ lenders. We handle the whole process from that first conversation through to settlement, and we don't disappear once the loan's done either, we keep an eye on your rate and help you plan the next move.\n\nStop guessing off a calculator that's never met you. Book a Discovery Session with Ross and get a real answer.\n\nCTA: Book a Discovery Session with Ross to find out what you can actually borrow"
+}

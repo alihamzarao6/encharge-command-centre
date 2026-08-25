@@ -1,0 +1,17 @@
+{
+  "promptId": "positioning-first-home-buyer-why-broker",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXPxKPTGDkhVTLMDYs3",
+  "recordedAt": "2026-08-25T00:32:07.078Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 38,
+    "outputTokens": 246,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.004709,
+  "text": "Tell them something like this:\n\nWalking into a bank, you get one lender's products and someone whose job is to sell you that bank's loan, not find you the best one. We're independent, so we work with a panel of 40+ lenders and find what actually suits your situation, not what suits a branch target.\n\nIt's also a lot less painful. We handle the whole thing end to end, from that first chat through to settlement, so you're not the one chasing paperwork or figuring out what a bank wants next.\n\nAnd it doesn't stop at settlement. We keep an eye on your rate over time and help you plan the next step, whether that's refinancing or your next property, rather than you being on your own once the loan's done.\n\nWorth having a proper chat about your situation. Get them into a Discovery Session at [booking link]."
+}

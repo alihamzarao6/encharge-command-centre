@@ -1,0 +1,17 @@
+{
+  "promptId": "fb-refinance-knocked-back",
+  "promptVersion": "2026-08-25.4",
+  "promptHash": "796dc50d",
+  "model": "claude-sonnet-5",
+  "requestId": "req_011CeNXSbDTn77RQETk53X7Y",
+  "recordedAt": "2026-08-25T00:32:43.267Z",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 49,
+    "outputTokens": 265,
+    "cacheWriteTokens": 0,
+    "cacheReadTokens": 3017
+  },
+  "costUsd": 0.005027,
+  "text": "Years of on-time repayments. Years of loyalty. And when you finally ask your bank for a better deal, they can't even be bothered looking properly at your file.\n\nThat's not bad luck. That's how the banks work. You're not a customer to them, you're a number on a spreadsheet, and once you're signed up they've got no reason to fight for you.\n\nAn independent broker doesn't have that problem, because there's no bank to protect. Fundd works with a panel of 40+ lenders, not one, so the person going through your file actually wants to find you a better outcome. From the first call through to settlement it's handled for you, and once you're sorted, rates get monitored so this doesn't happen to you again.\n\nIf your own bank won't look twice at you, it's time someone else did.\n\nCTA: Book a Discovery Session with Fundd. [booking link]"
+}
