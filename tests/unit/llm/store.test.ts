@@ -6,7 +6,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createServiceClient } from '../../../src/lib/auth/clients.js';
-import { supabaseConversationStore, supabaseUsageStore } from '../../../src/lib/llm/store.js';
+import {
+  TITLE_MAX_CHARS,
+  supabaseConversationStore,
+  supabaseUsageStore,
+  titleFromMessage,
+} from '../../../src/lib/llm/store.js';
 
 const CONFIG = { url: 'http://stack.test', anonKey: 'anon', serviceRoleKey: 'service' };
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -169,14 +174,14 @@ describe('supabaseUsageStore', () => {
 });
 
 describe('supabaseConversationStore', () => {
-  const ROW = { id: CONV_ID, user_id: USER_ID, scope: 'workspace', deleted_at: null };
+  const ROW = { id: CONV_ID, user_id: USER_ID, scope: 'workspace', title: null, deleted_at: null };
 
   it('get returns the row, null when absent, and refuses an impossible scope', async () => {
     stub((req) => (req.query.includes('id=eq.') ? json([ROW]) : undefined));
     const store = supabaseConversationStore(createServiceClient(CONFIG));
     expect(await store.get(CONV_ID)).toEqual({
       ok: true,
-      value: { id: CONV_ID, userId: USER_ID, scope: 'workspace', deletedAt: null },
+      value: { id: CONV_ID, userId: USER_ID, scope: 'workspace', title: null, deletedAt: null },
     });
 
     stub(() => json([]));
@@ -200,7 +205,7 @@ describe('supabaseConversationStore', () => {
     const result = await store.create(USER_ID);
     expect(result).toEqual({
       ok: true,
-      value: { id: CONV_ID, userId: USER_ID, scope: 'workspace', deletedAt: null },
+      value: { id: CONV_ID, userId: USER_ID, scope: 'workspace', title: null, deletedAt: null },
     });
     expect(JSON.parse(seen[0]?.body ?? '')).toEqual({ user_id: USER_ID });
   });
@@ -228,7 +233,13 @@ describe('supabaseConversationStore', () => {
     });
     const store = supabaseConversationStore(createServiceClient(CONFIG));
     const result = await store.appendTurn({
-      conversation: { id: CONV_ID, userId: USER_ID, scope: 'workspace', deletedAt: null },
+      conversation: {
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'workspace',
+        title: null,
+        deletedAt: null,
+      },
       userContent: 'hello',
       assistant: { content: 'reply', model: 'claude-sonnet-5', inputTokens: 10, outputTokens: 5 },
     });
@@ -260,7 +271,13 @@ describe('supabaseConversationStore', () => {
 
   it('appendTurn stops at the first failing write', async () => {
     const input = {
-      conversation: { id: CONV_ID, userId: USER_ID, scope: 'workspace' as const, deletedAt: null },
+      conversation: {
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'workspace' as const,
+        title: null,
+        deletedAt: null,
+      },
       userContent: 'hello',
       assistant: { content: 'reply', model: 'm', inputTokens: 1, outputTokens: 1 },
     };
@@ -289,5 +306,101 @@ describe('supabaseConversationStore', () => {
     expect(
       (await supabaseConversationStore(createServiceClient(CONFIG)).appendTurn(input)).ok,
     ).toBe(false);
+  });
+});
+
+describe('supabaseConversationStore — history and titles (part 6)', () => {
+  it('recentMessages asks for the newest N user/assistant rows and returns them oldest first', async () => {
+    stub((req) => {
+      if (req.path !== '/rest/v1/messages') return undefined;
+      return json([
+        { role: 'assistant', content: 'a2' },
+        { role: 'user', content: 'u2' },
+        { role: 'assistant', content: 'a1' },
+        { role: 'user', content: 'u1' },
+      ]);
+    });
+    const store = supabaseConversationStore(createServiceClient(CONFIG));
+    const result = await store.recentMessages(CONV_ID, 4);
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { role: 'user', content: 'u1' },
+        { role: 'assistant', content: 'a1' },
+        { role: 'user', content: 'u2' },
+        { role: 'assistant', content: 'a2' },
+      ],
+    });
+    const query = seen[0]?.query ?? '';
+    expect(query).toContain(`conversation_id=eq.${CONV_ID}`);
+    expect(query).toContain('role=in.%28user%2Cassistant%29');
+    expect(query).toContain('content=not.is.null');
+    expect(query).toContain('order=created_at.desc');
+    expect(query).toContain('limit=4');
+  });
+
+  it('recentMessages drops rows it cannot use and surfaces failures as typed errors', async () => {
+    stub(() =>
+      json([
+        { role: 'tool', content: 'x' },
+        { role: 'user', content: null },
+      ]),
+    );
+    const store = supabaseConversationStore(createServiceClient(CONFIG));
+    expect(await store.recentMessages(CONV_ID, 10)).toEqual({ ok: true, value: [] });
+
+    seen.length = 0;
+    stub(() => json({ message: 'nope', code: '42501' }, 401));
+    const refused = await store.recentMessages(CONV_ID, 10);
+    expect(refused.ok).toBe(false);
+
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('reset')));
+    expect((await store.recentMessages(CONV_ID, 10)).ok).toBe(false);
+  });
+
+  it('appendTurn titles an untitled conversation from the first message, and never re-titles', async () => {
+    const handler: Handler = (req, index) => {
+      if (req.path === '/rest/v1/messages') return json({ id: `m${index}` }, 201);
+      if (req.path === '/rest/v1/conversations') return new Response(null, { status: 204 });
+      return undefined;
+    };
+    stub(handler);
+    const store = supabaseConversationStore(createServiceClient(CONFIG));
+    await store.appendTurn({
+      conversation: {
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'workspace',
+        title: null,
+        deletedAt: null,
+      },
+      userContent: '  Write me a   post\nabout offsets ',
+      assistant: { content: 'reply', model: 'm', inputTokens: 1, outputTokens: 1 },
+    });
+    expect(JSON.parse(seen[2]?.body ?? '')).toMatchObject({
+      title: 'Write me a post about offsets',
+    });
+
+    seen.length = 0;
+    stub(handler);
+    await store.appendTurn({
+      conversation: {
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'workspace',
+        title: 'kept',
+        deletedAt: null,
+      },
+      userContent: 'second',
+      assistant: { content: 'reply', model: 'm', inputTokens: 1, outputTokens: 1 },
+    });
+    expect(JSON.parse(seen[2]?.body ?? '')).not.toHaveProperty('title');
+  });
+
+  it('titleFromMessage trims to one line and caps the length with an ellipsis', () => {
+    expect(titleFromMessage('hi')).toBe('hi');
+    const long = titleFromMessage('word '.repeat(40));
+    expect(long.length).toBe(TITLE_MAX_CHARS);
+    expect(long.endsWith('…')).toBe(true);
   });
 });

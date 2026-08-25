@@ -5,7 +5,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', 'coverage/**', 'dist/**', '.agents/**', 'supabase/**'],
+    ignores: [
+      'node_modules/**',
+      'coverage/**',
+      'dist/**',
+      'web/dist/**',
+      'tests/e2e/.output/**',
+      '.agents/**',
+      'supabase/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
@@ -50,7 +58,7 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['eslint.config.js', 'vitest.config.ts'],
+    files: ['eslint.config.js', 'vitest.config.ts', 'web/vite.config.ts'],
     ...tseslint.configs.disableTypeChecked,
   },
   prettier,

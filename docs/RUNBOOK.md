@@ -22,7 +22,8 @@ kept in full.
 | Database | Supabase (Sydney) | client | Source of truth — confirmed platform (D24) |
 | AI | Anthropic Console | client | Claude API — **key is server-side only, never in a browser (R18, SECURITY §2)** |
 | Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — account still to be created) |
-| Chat / dashboard | Deployed app (URL recorded at Stage 2 part 6) | client | The interface the client talks to — primary surface (D29) |
+| Chat / dashboard | Static web app (`web/`) on **Vercel** (project `fundd-command-centre`, account `alihamzarao6` until handover) — URL: _to be recorded at deploy, see §1a_ | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
+| Chat endpoint | Supabase Edge Function `chat` (`src/functions/chat`, bundled by `npm run functions:bundle`) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
 | Internal surface | Notion | client | Internal working surface; eight databases exist (MEMORY 10 Aug) |
 | CRM | GoHighLevel, white-labelled at `app.enchargecapital.com` (stays through the rebrand, D25) | client | Finance Pipeline, ten custom fields, five workflows (Stage 1) |
 | Ads / pixel | Meta — Refi Pixel + Conversions API | client | `Lead` event server-side from the FUNDD funnel (Stage 1, D31) |
@@ -30,6 +31,60 @@ kept in full.
 *Was also: Serper (website discovery), MillionVerifier (email verification), Google Sheets
 "Finance leads" (export mirror), Meta / LinkedIn social-insights apps — parked, see the
 bottom of this file.*
+
+### 1a. Deploying the chat interface (Stage 2 part 6)
+
+Two deployables, two commands, both from the repo root. Each has been run only as far as
+this machine allows (no Docker, no project credentials here) — the first live run is the
+reviewer's, and its URL goes in the table above.
+
+**The Edge Function** (Supabase — the client's project; nothing to pay):
+
+```bash
+supabase login                              # once
+supabase link --project-ref <ref>           # once
+supabase secrets set ANTHROPIC_API_KEY=... ANTHROPIC_DAILY_SPEND_CAP_USD=5 \
+  ANTHROPIC_MONTHLY_SPEND_CAP_USD=50 SUPABASE_URL=... SUPABASE_ANON_KEY=... \
+  SUPABASE_SERVICE_ROLE_KEY=... CHAT_ALLOWED_ORIGIN=https://<the web app origin>
+npm run functions:bundle                    # writes supabase/functions/chat/index.ts (gitignored)
+supabase functions deploy chat --no-verify-jwt
+```
+
+`--no-verify-jwt` matches `config.toml`: the library verifies the bearer token itself and
+answers 401/403 with a body the interface can show. `CHAT_ALLOWED_ORIGIN` is the exact
+origin of the web app (scheme + host, no path); unset, no browser can call the function.
+
+**The web app** (Vercel — Hobby plan is free but its terms exclude commercial use; the
+client's own Vercel account on a paid plan, or a transfer of the project at handover, is
+the end state. The Vercel CLI is logged in as `alihamzarao6` on the build machine):
+
+```bash
+VITE_SUPABASE_URL=https://<ref>.supabase.co VITE_SUPABASE_ANON_KEY=<anon key> npm run web:build
+npm run web:check                           # MUST print "0 hits" before anything is uploaded
+vercel link --yes --project fundd-command-centre     # once: creates/links the project
+vercel env add VITE_SUPABASE_URL production          # paste the value when prompted
+vercel env add VITE_SUPABASE_ANON_KEY production
+vercel deploy --prod --prebuilt=false               # or `vercel deploy web/dist --prod` for a prebuilt upload
+```
+
+`vercel.json` (repo root) pins the build (`npm run web:build`), the output directory (`web/dist`)
+and the SPA rewrite. The first production deploy prints the `*.vercel.app` URL; a custom
+domain (e.g. `app.fundd.com.au`) is added in the Vercel dashboard → Domains, and then set
+as `CHAT_ALLOWED_ORIGIN`. Only the two `VITE_` values reach the bundle (Vite's rule); the
+service role key and the Anthropic key have no `VITE_` name.
+
+**Then close the loop:** `supabase secrets set CHAT_ALLOWED_ORIGIN=https://<the deployed
+origin>` and `supabase functions deploy chat --no-verify-jwt` again — without it the
+function's CORS answer names no origin and the browser refuses every request.
+
+**Local run, no stack:** `npm run test:e2e` builds and drives the app against a scripted
+Supabase in the installed Chrome. **Local run against a stack:** `VITE_SUPABASE_URL` /
+`VITE_SUPABASE_ANON_KEY` in `.env` (the repo root `.env` is Vite's env dir) → `npm run web:dev`
+→ http://127.0.0.1:5173, with `supabase functions serve chat` for the endpoint.
+
+**Rollback:** Vercel keeps every deployment — dashboard → Deployments → "Promote to
+Production" on the previous one (or `vercel rollback`); the function: redeploy the previous
+commit.
 
 ---
 
@@ -76,6 +131,16 @@ re-push with the replay script (`npm run replay-crm -- --id=<id>`, Stage 3). Nev
 GoHighLevel to "fix" it — that creates divergence from the source of truth. Remember the
 account is shared with an unrelated business (R22): never replay account-wide.
 
+### A reply stopped part-way ("The connection dropped part-way through the reply")
+
+The stream from the Edge Function died. The interface shows what arrived, marked
+incomplete and NOT saved; Retry resends the same message. `api_usage` has a row with
+operation `chat.turn:partial` for the money that was spent (real input tokens, output
+estimated from the text received). If this is frequent from one network, the browser falls
+back to plain JSON only when the response is not an event stream — a proxy that buffers
+SSE still delivers the whole reply at once, which is fine; one that cuts long responses
+needs `CHAT_TIMEOUT` attention, see `CLAUDE_TIMEOUT_MS`.
+
 ### The chat says the cap is reached (HTTP 402, code `SPEND_CAP`)
 Not a bug. The message names the window (daily or monthly). Check spend:
 `select date_trunc('day', created_at at time zone 'utc') d, sum(cost_usd) from api_usage
@@ -98,6 +163,15 @@ The user was told the reply was generated; do not resend on their behalf — che
 and let them retry.
 
 ### A user cannot log in / sees nothing
+
+The interface says exactly one of three things. "The email or password is incorrect" (wrong
+password AND unknown email — deliberately identical); "This account has been deactivated"
+(GoTrue ban from `npm run staff -- deactivate`, or an `app_users` row that is not active —
+the app signs the session out); "Couldn't reach the sign-in service" (network). A user who
+signs in but sees an empty conversation list has no rows visible under RLS — check
+`app_users.is_active` first.
+
+#### (original notes)
 Check `app_users`: the account must exist with `is_active = true`. Supabase Auth succeeding
 but the app showing nothing is RLS doing its job for a non-allowlisted account, not a bug.
 

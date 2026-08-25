@@ -8,8 +8,10 @@ export default defineConfig({
     testTimeout: 10_000,
     coverage: {
       provider: 'v8',
-      include: ['src/lib/**/*.ts'],
-      exclude: ['src/lib/**/*.d.ts'],
+      include: ['src/lib/**/*.ts', 'web/src/lib/**/*.ts'],
+      // env.ts reads import.meta.env at module load (browser-only); supabase.ts builds the
+      // browser client. Both are one-liners over tested functions and are covered by e2e.
+      exclude: ['src/lib/**/*.d.ts', 'web/src/lib/env.ts', 'web/src/lib/supabase.ts'],
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: 'coverage',
       // TESTING.md §7 — CI fails below this floor.

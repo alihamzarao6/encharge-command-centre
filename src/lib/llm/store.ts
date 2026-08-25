@@ -12,7 +12,13 @@ import type { PostgrestError } from '@supabase/supabase-js';
 
 import { AppError, NetworkError, ensureError, err, ok, type Result } from '../errors.js';
 import type { ServiceClient } from '../auth/clients.js';
-import type { AppendTurnInput, AppendedTurn, ConversationRow, ConversationStore } from './chat.js';
+import type {
+  AppendTurnInput,
+  AppendedTurn,
+  ConversationRow,
+  ConversationStore,
+  HistoryMessage,
+} from './chat.js';
 import type { UsageRecord, UsageStore } from './client.js';
 import { roundUsd } from './pricing.js';
 
@@ -93,12 +99,32 @@ export function supabaseUsageStore(client: ServiceClient): UsageStore {
   };
 }
 
-const CONVERSATION_COLUMNS = 'id, user_id, scope, deleted_at';
+const CONVERSATION_COLUMNS = 'id, user_id, scope, title, deleted_at';
+
+/**
+ * A conversation's title is its first message, trimmed to one line. Set server-side on the
+ * first turn so the list a phone shows is meaningful without a round trip, and never
+ * overwritten afterwards.
+ */
+export const TITLE_MAX_CHARS = 80;
+
+export function titleFromMessage(message: string): string {
+  const oneLine = message.replace(/\s+/g, ' ').trim();
+  if (oneLine.length <= TITLE_MAX_CHARS) return oneLine;
+  return `${oneLine.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+/** Declared wider than the query's inferred type on purpose: the filter is belt-and-braces. */
+function toHistoryMessage(row: { role: string; content: string | null }): HistoryMessage | null {
+  if ((row.role !== 'user' && row.role !== 'assistant') || row.content === null) return null;
+  return { role: row.role, content: row.content };
+}
 
 function toConversationRow(row: {
   id: string;
   user_id: string;
   scope: string;
+  title: string | null;
   deleted_at: string | null;
 }): Result<ConversationRow> {
   if (row.scope !== 'user' && row.scope !== 'workspace') {
@@ -108,7 +134,13 @@ function toConversationRow(row: {
       }),
     );
   }
-  return ok({ id: row.id, userId: row.user_id, scope: row.scope, deletedAt: row.deleted_at });
+  return ok({
+    id: row.id,
+    userId: row.user_id,
+    scope: row.scope,
+    title: row.title,
+    deletedAt: row.deleted_at,
+  });
 }
 
 export function supabaseConversationStore(client: ServiceClient): ConversationStore {
@@ -144,6 +176,31 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
         return err(mapThrown(caught, 'conversations.insert'));
       }
     },
+    recentMessages: async (conversationId, limit) => {
+      try {
+        // Newest first at the database so LIMIT keeps the right end; reversed here so the
+        // request reads oldest first, the order Claude expects.
+        const { data, error } = await client
+          .from('messages')
+          .select('role, content')
+          .eq('conversation_id', conversationId)
+          .in('role', ['user', 'assistant'])
+          .not('content', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        if (error !== null) {
+          return err(mapPostgrest(error, 'messages.recent'));
+        }
+        const history: HistoryMessage[] = [];
+        for (const row of data) {
+          const item = toHistoryMessage(row);
+          if (item !== null) history.unshift(item);
+        }
+        return ok(history);
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'messages.recent'));
+      }
+    },
     appendTurn: async (input: AppendTurnInput) => {
       try {
         const base = {
@@ -176,7 +233,12 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
         }
         const touched = await client
           .from('conversations')
-          .update({ last_active_at: new Date().toISOString() })
+          .update({
+            last_active_at: new Date().toISOString(),
+            ...(input.conversation.title === null
+              ? { title: titleFromMessage(input.userContent) }
+              : {}),
+          })
           .eq('id', input.conversation.id);
         if (touched.error !== null) {
           return err(mapPostgrest(touched.error, 'conversations.touch'));

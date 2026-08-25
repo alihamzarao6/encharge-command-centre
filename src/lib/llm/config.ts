@@ -13,6 +13,7 @@
  * call.
  */
 import { ConfigError, err, ok, type Result } from '../errors.js';
+import { DEFAULT_HISTORY_BOUNDS, type HistoryBounds } from './chat.js';
 import { DEFAULT_PRICING, parsePricingJson, type PricingTable } from './pricing.js';
 import type { SpendCaps } from './spend.js';
 
@@ -34,6 +35,8 @@ export interface LlmConfig {
    * a future route that needs it (cost then varies per call).
    */
   readonly thinking: ThinkingMode;
+  /** Conversation history carried per turn (TASKS 2.6.2a). Zero messages = none. */
+  readonly history: HistoryBounds;
   readonly caps: SpendCaps;
   readonly pricing: PricingTable;
 }
@@ -132,6 +135,23 @@ export function loadLlmConfig(env: Env = process.env): Result<LlmConfig, ConfigE
   );
   if (!retries.ok) return retries;
 
+  const historyMessages = readNumber(
+    env,
+    'CHAT_HISTORY_MAX_MESSAGES',
+    DEFAULT_HISTORY_BOUNDS.maxMessages,
+    (n) => Number.isInteger(n) && n >= 0 && n <= 200,
+    'an integer from 0 to 200',
+  );
+  if (!historyMessages.ok) return historyMessages;
+  const historyChars = readNumber(
+    env,
+    'CHAT_HISTORY_MAX_CHARS',
+    DEFAULT_HISTORY_BOUNDS.maxChars,
+    (n) => Number.isInteger(n) && n >= 0,
+    'a non-negative integer',
+  );
+  if (!historyChars.ok) return historyChars;
+
   const thinkingRaw = read(env, 'CLAUDE_THINKING') ?? CONFIG_DEFAULTS.thinking;
   if (thinkingRaw !== 'disabled' && thinkingRaw !== 'adaptive') {
     return err(new ConfigError('CLAUDE_THINKING must be "disabled" or "adaptive"'));
@@ -163,6 +183,7 @@ export function loadLlmConfig(env: Env = process.env): Result<LlmConfig, ConfigE
     timeoutMs: timeoutMs.value,
     retries: retries.value,
     thinking,
+    history: { maxMessages: historyMessages.value, maxChars: historyChars.value },
     caps: { dailyUsd: daily.value, monthlyUsd: monthly.value, warnFraction: warn.value },
     pricing,
   });

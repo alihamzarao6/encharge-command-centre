@@ -113,6 +113,11 @@ supabase migration new <name>
 npm run staff -- help   # admin user management (add-user / deactivate / reset-password / bootstrap)
 npm run chat -- "hi"    # one real chat turn through the server-side path (needs a stack + key in env)
 npm run voice           # voice conformance over recorded fixtures (CI mode); `-- record` re-records live, `-- live "<brief>"` one generation
+npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
+npm run web:build       # static build → web/dist
+npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits
+npm run test:e2e        # browser suite at 375 / 768 / 1280 in installed Chrome, scripted backend
+npm run functions:bundle  # esbuild the Edge Function → supabase/functions/chat/index.ts (gitignored)
 npm run n8n:export
 npm run n8n:validate
 ```

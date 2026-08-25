@@ -110,6 +110,29 @@ describe('loadLlmConfig', () => {
   });
 });
 
+describe('conversation history bounds (TASKS 2.6.2a)', () => {
+  it('defaults to 20 messages / 24,000 chars and accepts overrides', () => {
+    const base = loadLlmConfig(BASE_ENV);
+    expect(base.ok && base.value.history).toEqual({ maxMessages: 20, maxChars: 24_000 });
+    const custom = loadLlmConfig({
+      ...BASE_ENV,
+      CHAT_HISTORY_MAX_MESSAGES: '0',
+      CHAT_HISTORY_MAX_CHARS: '100',
+    });
+    expect(custom.ok && custom.value.history).toEqual({ maxMessages: 0, maxChars: 100 });
+  });
+
+  it.each([
+    ['CHAT_HISTORY_MAX_MESSAGES', '-1'],
+    ['CHAT_HISTORY_MAX_MESSAGES', '201'],
+    ['CHAT_HISTORY_MAX_MESSAGES', '1.5'],
+    ['CHAT_HISTORY_MAX_CHARS', '-5'],
+  ])('rejects %s=%s', (name, value) => {
+    const result = loadLlmConfig({ ...BASE_ENV, [name]: value });
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe('pricing', () => {
   const sonnet = {
     inputPerMTok: 3,

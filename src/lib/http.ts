@@ -79,8 +79,23 @@ export type BreakerState =
   | { readonly state: 'open'; readonly openedAt: number; readonly reopensAt: number }
   | { readonly state: 'half_open'; readonly trialInFlight: boolean };
 
+/** A response whose body has NOT been read: the caller streams it. */
+export interface OpenResponse {
+  readonly status: number;
+  readonly headers: Headers;
+  readonly url: string;
+  readonly body: ReadableStream<Uint8Array> | null;
+}
+
 export interface HttpClient {
   request(url: string, options?: HttpRequestOptions): Promise<Result<HttpResponse, HttpError>>;
+  /**
+   * One attempt, headers only under the timeout, body left unread for streaming. Never
+   * retried here (a streamed POST is non-idempotent by nature); the breaker still admits and
+   * counts it. A non-2xx answer reads its body and comes back as HttpStatusError exactly as
+   * `request` would, so a caller's envelope-based retry policy works unchanged.
+   */
+  open(url: string, options?: HttpRequestOptions): Promise<Result<OpenResponse, HttpError>>;
   getBreakerState(origin: string): BreakerState;
 }
 
@@ -302,6 +317,59 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     );
   };
 
+  const open = async (
+    url: string,
+    requestOptions: HttpRequestOptions = {},
+  ): Promise<Result<OpenResponse, HttpError>> => {
+    const method = (requestOptions.method ?? 'GET').toUpperCase();
+    const deadlineMs = requestOptions.timeoutMs ?? timeoutMs;
+    const origin = originOf(url);
+    const safeUrl = redactedUrl(url);
+    const denied = admit(origin);
+    if (denied !== null) {
+      return err(denied);
+    }
+    const outcome = await attemptOnce(
+      url,
+      {
+        method,
+        ...(requestOptions.headers === undefined ? {} : { headers: requestOptions.headers }),
+        ...(requestOptions.body === undefined ? {} : { body: requestOptions.body }),
+      },
+      deadlineMs,
+    );
+    if (!outcome.ok) {
+      recordFailure(origin);
+      return err(outcome.error);
+    }
+    const response = outcome.value;
+    if (response.ok) {
+      recordSuccess(origin);
+      return ok({
+        status: response.status,
+        headers: response.headers,
+        url: response.url || url,
+        body: response.body,
+      });
+    }
+    const bodyText = await readBody(response);
+    const failure = new HttpStatusError(
+      `${method} ${safeUrl} responded ${response.status}`,
+      response.status,
+      {
+        context: {
+          method,
+          url: safeUrl,
+          attempt: 1,
+          bodySnippet: bodyText.slice(0, 500),
+          retryAfter: response.headers.get('retry-after'),
+        },
+      },
+    );
+    if (failure.retryable) recordFailure(origin);
+    return err(failure);
+  };
+
   const retryDelayMs = (attempt: number, retryAfterHeader: string | null): number => {
     const fromHeader = parseRetryAfterMs(retryAfterHeader, now);
     if (fromHeader !== null) {
@@ -329,7 +397,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     }
   };
 
-  return { request, getBreakerState };
+  return { request, open, getBreakerState };
 }
 
 /** Parse a response body as JSON without throwing. */

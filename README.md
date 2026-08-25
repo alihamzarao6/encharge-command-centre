@@ -48,9 +48,10 @@ pre-rebrand business name.
 ├── n8n/workflows/            # exported workflow JSON — the repo is the source of truth (Stage 3)
 ├── src/
 │   ├── lib/                  # all business logic, pure and unit-tested (logger, errors, http …)
-│   └── functions/            # Edge Functions
+│   └── functions/            # Edge Function sources (bundled by `npm run functions:bundle`)
+├── web/                      # the dashboard — Vite + React, static output in web/dist (Stage 2 part 6)
 ├── tests/
-│   ├── unit/  integration/  workflows/  security/
+│   ├── unit/  integration/  workflows/  security/  e2e/ (browser, scripted Supabase)
 │   └── fixtures/             # recorded API responses, voice fixtures, adversarial pages
 ├── scripts/                  # replay, migration helpers, deletion requests
 ├── .githooks/pre-commit      # gitleaks secret scan — fail-closed
@@ -117,6 +118,8 @@ npm run typecheck && npm run lint && npm test
 supabase start            # local Postgres + Studio (Stage 2 part 2 onwards)
 supabase db reset         # rebuild schema + seed from zero
 npm run test:regress      # required before any stage sign-off
+npm run web:dev           # the dashboard at http://127.0.0.1:5173 (VITE_SUPABASE_* in .env)
+npm run test:e2e          # browser suite in installed Chrome, no stack needed
 ```
 
 ---

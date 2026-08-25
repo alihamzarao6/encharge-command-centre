@@ -13,6 +13,7 @@ project; it is the deliverable.
 | Unit | Pure functions in `src/lib/` | < 5s total | Every save, every commit |
 | Contract | External API adapters vs recorded fixtures | < 20s | Every commit |
 | Integration | Real local database, seeded | < 2 min | Pre-push, CI |
+| Browser | The built web app in Chrome at 375 / 768 / 1280 against a scripted Supabase (`tests/e2e/`) | < 2 min | Every commit (CI `browser` job) |
 | Workflow | n8n workflow JSON executed with test payloads | < 5 min | Pre-phase-signoff |
 | Regression | Everything + golden set + security suite | < 10 min | **Before every phase sign-off** |
 
@@ -182,6 +183,17 @@ Red CI blocks merge. No exceptions, no "will fix after".
 (`n8n:validate`) arrives in Stage 3 with the first workflow, in the same commit as the thing
 it tests. The coverage gate is enforced by vitest's `thresholds` (80 lines / 75 branches /
 80 functions / 80 statements), so a drop below the floor is a non-zero exit, not a warning.
+
+*Status 25 Aug 2026 (Stage 2 part 6):* the `checks` job also builds the web app and runs
+`npm run web:check` — a grep of the REAL build output for key shapes (`sk-ant-…`,
+`sb_secret_…`, any JWT whose payload claims `service_role`), the real key values when the
+build environment has them, and 24 sentences of the voice prompt plus its version tag; one
+hit fails the job. It bundles the Edge Function (`npm run functions:bundle`) so a broken
+import fails CI, not the deploy. A third job, `browser`, runs `tests/e2e/` in Chrome at the
+three widths against `tests/e2e/mock.ts` (scripted GoTrue, PostgREST and chat endpoint — no
+stack, no key, no spend): the eight Part C assertions of FND-250 that need a browser, and the
+screenshots under `docs/assets/stage-2/` as an artefact. Unit tests for the browser's pure
+libraries (`web/src/lib/`) live in `tests/unit/web/` and count toward coverage.
 
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →

@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240, voice and brand prompt layer) is staged, NOT committed** — `src/lib/voice/` (rules with sources / prompt + version + hash / conformance checks / fixture schemas), 24 prompts + 24 live-recorded responses in `tests/fixtures/voice/`, `npm run voice`, `docs/VOICE.md`; `CLAUDE_THINKING=disabled` default in the LLM layer (D39). Reviewer reads the FND-240 report → push → CI proves the suite on fixtures → **part 6** — chat interface, responsive, deployed |
+| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240) and part 6 (FND-250, chat interface) are staged, NOT committed** — `web/` dashboard, history in the turn (2.6.2a), Edge Function bundling (2.6.3), browser suite + screenshots, bundle grep in CI. Reviewer reads the FND-250 report → push → CI (`checks` + `integration` + new `browser` job) → **deploy** (RUNBOOK §1a: `supabase db push` → `supabase functions deploy chat` → `vercel deploy --prod` → `CHAT_ALLOWED_ORIGIN`; **blocked on Supabase CLI credentials**, see the 25 Aug review entry) → record the URL (2.6.5) → **part 7** — end-to-end test and Stage 2 acceptance |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
+| Last regression run | **Local 25 Aug (part 6, uncommitted): typecheck + lint clean; unit 712/712, coverage 94.87% lines / 90.69% branches; browser 48/48 at 375 / 768 / 1280; `web:check` 0 hits; security 6/6 with 20 stack-dependent skipped, integration 21 skipped (no Docker).** **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -90,6 +90,93 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-08-25 — [FND-250 review] Copy strips Note:, streaming built, deploy target → Vercel; deploy blocked on Supabase CLI credentials
+
+**Did:** (1) `web/src/lib/notes.ts` — Copy on a reply copies the copy, never a trailing
+`Note:` line (the same rule as `conformance.stripNotes`, asserted equal in a test); notes
+render under the reply in an amber strip labelled "Note". (2) Streaming end to end:
+`src/lib/sse.ts` (runtime-neutral parser + reader, shared by Deno and the browser),
+`src/lib/llm/stream.ts` (Anthropic event reducer), `http.open()` (one attempt, header
+timeout, body left for streaming, breaker kept), `client.stream()` sharing every gate with
+`complete()` through `prepare()` / `settleFailure()` / `recordCompleted()`,
+`handleChatTurnStream` over the same `prepareTurn` / `finishTurn` as the JSON path, the Edge
+Function answering `Accept: text/event-stream` (a refusal before the first token is still a
+real-status JSON answer; after `start` it is a 200 stream ending in `done` or `error` with
+the JSON path's status/body + `partialText`), `streamTurn` in the browser with a JSON
+fallback whenever the response is not an event stream. (3) RUNBOOK §1a, `.env.example`,
+`vercel.json` → Vercel.
+**Review items, each covered:** one `api_usage` row per turn with wire token counts
+(`stream.test.ts` "bills from message_start + message_delta"); a stream that dies mid-reply
+→ `chat.turn:partial` row + partial text in the error context, shown "Incomplete reply — not
+saved" with Retry (unit + browser); the cap refuses before `http.open` (unit); an empty
+streamed reply → 502 `EMPTY_REPLY`, no bubble (unit + browser); Copy renders only on
+`status: 'saved'` (browser: none while streaming, none on a failed turn).
+**Decided:** Vercel over Cloudflare Pages (reviewer's call). Streaming retries only an error
+envelope BEFORE the stream, like the JSON path; an Anthropic `error` event mid-stream is
+never retried (would double-bill). The browser does not auto-resend on a dropped stream —
+that is a Retry tap — because the server may have billed and saved nothing.
+**Measured:** typecheck + lint clean; unit **712/712**, coverage **94.87 % lines / 90.69 %
+branches**; browser **48/48** at three widths; `web:check` 0 hits; web bundle 628 kB /
+180 kB gzip; Edge bundle 2,653 lines.
+**Deploy — BLOCKED at step 1 (migrations).** The live project is
+`mxdfptqdshdgdszizlbo` (Sydney, "ross@enchargecapital.com's Project", ACTIVE_HEALTHY, PG
+17.6) and `list_migrations` returns **none applied**. Applying them needs the Supabase CLI
+(`supabase link` + `supabase db push`; the MCP is forbidden for schema by CLAUDE.md §4), and
+the CLI on this machine has no access token; `.env` has no `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_DB_URL`. Needed from the reviewer:
+`SUPABASE_ACCESS_TOKEN` (or `supabase login` interactively), the database password (for
+`link` / `db push`), and the service role key (for the function's secrets). The anon key and
+URL are public and already known. Vercel CLI is logged in as `alihamzarao6`; nothing was
+created there because the order was migrations → function → web.
+
+### 2026-08-25 — [FND-250 · Stage 2 part 6] Chat interface, responsive, deployable — staged, NOT committed
+
+**Did:** `web/` — Vite + React 19 + TS strict, static output (`web/dist`, 624 kB / 178 kB gzip;
+supabase-js is most of it). Login (email + password against part 3; wrong password and
+unknown email say the same thing; a GoTrue-banned account says "deactivated"; a valid session
+whose `app_users` row is not readable under RLS is signed out with the same message).
+Dashboard shell: Assistant live; Memory / Content / Ads as labelled "Stage 3 / Stage 5 · not
+yet built" pages, bottom tab bar on a phone, sidebar from 768px. Assistant: conversation list
+(sheet on a phone), thread, composer at 16px, copy on every bubble with a legacy fallback,
+failed bubbles with the reason + Retry that resends the same text, 401 mid-turn keeps the
+draft across login (`sessionStorage`), progress bubble with elapsed seconds and a "longer
+pieces take 15–20 s" line after 8 s. Server: `ConversationStore.recentMessages` +
+`boundHistory` (2.6.2a; `CHAT_HISTORY_MAX_MESSAGES` 20 / `CHAT_HISTORY_MAX_CHARS` 24,000,
+newest wins, request always starts with a user turn), `EMPTY_REPLY` 502 before anything is
+saved, title from the first message. Edge Function source → `src/functions/chat/`;
+`npm run functions:bundle` (esbuild, supabase-js / zod external via `deno.json`) writes the
+gitignored entrypoint; `[functions.chat] enabled = true`. `scripts/check-bundle.ts` →
+`npm run web:check`. `tests/e2e/` (Playwright on the installed Chrome, scripted Supabase,
+375 / 768 / 1280) → screenshots in `docs/assets/stage-2/`; `tests/unit/web/`. CI: web build +
+bundle grep + function bundle in `checks`, bundle before `supabase start` in `integration`,
+new `browser` job. Docs: TASKS 2.6.x, RUNBOOK §1 + §1a deploy, TESTING §1/§8, SECURITY §2,
+README, CLAUDE §5, `.env.example`.
+**Decided (Part A):** (1) Vite + React, static, on **Cloudflare Pages** — $0, no card, client-
+owned account, one command; the chat path stays on the Supabase Edge Function. (2) A shell
+that reads as a dashboard with one live section and three visibly not-yet sections, never a
+dead link. (3) **No streaming yet** — honest progress; a 10 s wait on a phone is a pulsing
+"Writing… 10s" bubble under his own message, and streaming is the first thing to add.
+(4) esbuild bundle over Deno sloppy-imports: verifiable here (the bundle builds, has two
+external imports and no key shape), no generated file in git, one config line.
+**Surprised by:** React 19 types have no global `JSX`; supabase-js collapses every query to
+`never` if the `Database` type is an `interface` or its rows are interfaces (must be type
+aliases); Playwright's iPhone descriptors are WebKit and cannot run on the `chrome` channel;
+at 768 the grid's `1fr` column let the body grow 20 px past the viewport until
+`minmax(0, 1fr)` — the horizontal-scroll assertion caught it.
+**Measured:** typecheck + lint clean; unit **671/671**, coverage **94.77 % lines / 92.54 %
+branches** (web libs now counted); browser **36/36** at three widths; `web:check` 0 hits
+(3 files, 24 voice probes + version tag, key shapes; real key values absent on this machine
+so shape-only); tap → own message on screen 117 / 132 / 183 ms at 375 / 768 / 1280 (mocked
+backend; the real wait is Claude's, 3–20 s, shown as elapsed seconds). Edge bundle 2,078
+lines. `docs/CLIENT-CONTEXT.md` blob `0ef1fd32…` identical to HEAD.
+**Not verified (no Docker, no Supabase credentials, no Cloudflare account here):** the
+function under the Deno edge runtime (`process.stdout` in the logger relies on Deno 2's
+`process` global), `supabase start` with the bundle, the deploy itself, a real login and a
+real turn from a phone, cross-device persistence (part 7). Unlock: project ref + keys, or
+Docker.
+**Open:** 2.6.5 URL in RUNBOOK §1 — on deploy. Streaming; bundle size (Preact or lazy
+supabase-js); conversation rename/delete; "Sign out" wording confirmed with Ross.
 
 ### 2026-08-25 — [FND-240 · Stage 2 part 5] Voice and brand prompt layer — staged, NOT committed
 **Did:** `src/lib/voice/`: `rules.ts` (32 rules as data, each with a `source` — §1/§9/§10/§11,

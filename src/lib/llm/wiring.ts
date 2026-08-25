@@ -47,5 +47,6 @@ export function createChatDeps(env: Env, log: Logger): Result<ChatDeps, ConfigEr
     claude,
     conversations: supabaseConversationStore(service),
     log,
+    history: llm.value.history,
   });
 }

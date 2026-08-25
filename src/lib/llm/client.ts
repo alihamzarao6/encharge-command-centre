@@ -1,5 +1,6 @@
 /**
- * Claude wrapper (Stage 2 part 4). One entry point — `complete()` — that:
+ * Claude wrapper (Stage 2 part 4; streaming added in part 6). Two entry points that share
+ * every gate — `complete()` and `stream()` — each of which:
  *
  *   1. prices the call (unknown model → refused, cannot cap what cannot be priced);
  *   2. reads spend-to-date for the UTC day and month; if the store cannot answer, the call
@@ -15,11 +16,16 @@
  *      and unconfirmed failures (timeout / transport / unparseable 200), the last as the
  *      worst-case reservation so the cap counts money we cannot see.
  *
+ * `stream()` differs only after the headers arrive: it reads server-sent events, forwards
+ * each text delta to the caller, and bills from the wire — input and cache tokens from
+ * `message_start`, output tokens from `message_delta` — so a streamed turn produces the
+ * same single api_usage row as a completed one. A stream that dies mid-reply records what
+ * it consumed as `<operation>:partial` (real input figures, output estimated from the
+ * text received) and returns the partial text in the error's context, so the caller can
+ * show it and say so. One row per turn, always.
+ *
  * The API key is set as one request header and appears nowhere else — not in the returned
  * value, not in any error, not in any log field (the logger also redacts it by pattern).
- *
- * Streaming: not built. The request builder, response parser and usage recorder are
- * separate functions so a `stream()` sibling reuses them; only SSE parsing would be new.
  */
 import {
   HttpStatusError,
@@ -35,6 +41,7 @@ import {
 } from '../errors.js';
 import { parseJsonBody, parseRetryAfterMs, type HttpClient, type HttpResponse } from '../http.js';
 import { redactString, type Logger } from '../logger.js';
+import { readSse } from '../sse.js';
 import type { LlmConfig, ThinkingMode } from './config.js';
 import { ModelRefusalError, RateLimitedError, SpendCapError, type SpendWindow } from './errors.js';
 import {
@@ -48,6 +55,13 @@ import {
 import type { SystemBlock } from './prompt.js';
 import { parseErrorEnvelope, parseMessageResponse } from './response.js';
 import { checkSpendCap, utcDayStart, utcMonthStart, type SpentSoFar } from './spend.js';
+import {
+  INITIAL_STREAM_STATE,
+  applyAnthropicEvent,
+  finalUsage,
+  partialUsage,
+  type StreamState,
+} from './stream.js';
 
 export interface ChatMessage {
   readonly role: 'user' | 'assistant';
@@ -138,8 +152,18 @@ export interface ClaudeClientDeps {
   readonly random?: () => number;
 }
 
+/** Called with each text delta as it arrives; must not throw. */
+export type TextDeltaSink = (delta: string) => void;
+
 export interface ClaudeClient {
   complete(request: CompletionRequest): Promise<Result<Completion, LlmError>>;
+  /**
+   * Same contract as `complete`, delivering text as it is generated. On an interrupted
+   * stream the error carries `context.partialText` (what arrived) and the usage consumed
+   * has been recorded. Optional so a test double or a runtime without streams can omit it;
+   * callers fall back to `complete`.
+   */
+  stream?(request: CompletionRequest, onText: TextDeltaSink): Promise<Result<Completion, LlmError>>;
 }
 
 const RETRY_BASE_DELAY_MS = 500;
@@ -166,6 +190,7 @@ interface RequestBody {
     readonly cache_control?: { readonly type: 'ephemeral' };
   }[];
   readonly messages: readonly ChatMessage[];
+  readonly stream?: true;
 }
 
 export function buildRequestBody(
@@ -174,6 +199,7 @@ export function buildRequestBody(
   system: readonly SystemBlock[],
   messages: readonly ChatMessage[],
   thinking: ThinkingMode,
+  stream = false,
 ): RequestBody {
   return {
     model,
@@ -185,6 +211,7 @@ export function buildRequestBody(
         : { type: 'text', text: block.text },
     ),
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    ...(stream ? { stream: true as const } : {}),
   };
 }
 
@@ -210,6 +237,16 @@ export function loggingAlerter(log: Logger): Alerter {
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
+}
+
+/** Everything both entry points settle before a request leaves the process. */
+interface Prepared {
+  readonly model: string;
+  readonly maxTokens: number;
+  readonly pricing: ModelPricing;
+  readonly chars: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly reservation: UsageRecord;
 }
 
 export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
@@ -254,7 +291,8 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
     return Math.round(cap / 2 + random() * (cap / 2));
   };
 
-  const complete = async (request: CompletionRequest): Promise<Result<Completion, LlmError>> => {
+  // --- steps 1–3: price, read spend, check the cap — before anything leaves ---------------
+  const prepare = async (request: CompletionRequest): Promise<Result<Prepared, LlmError>> => {
     const model = request.route === 'fast' ? config.models.fast : config.models.default;
     const maxTokens = request.maxTokens ?? config.maxTokens;
     const priced = pricingFor(config.pricing, model);
@@ -268,7 +306,6 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
     const chars = inputChars(request.system, request.messages);
     const estimateUsd = estimateWorstCaseUsd(pricing, chars, maxTokens);
 
-    // --- cap: check, refuse, alert — before anything leaves the process -----------------
     const spent = await readSpent();
     if (!spent.ok) {
       log.error('spend-to-date unavailable; refusing call (fail closed)', {
@@ -300,95 +337,166 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
       await alert.notify({ kind: 'cap_warning', window, spentUsd, capUsd });
     }
 
-    // --- the call -----------------------------------------------------------------------
-    const body = JSON.stringify(
-      buildRequestBody(model, maxTokens, request.system, request.messages, config.thinking),
-    );
-    const headers = buildHeaders(config);
-    const reservation: UsageRecord = {
-      provider: 'anthropic',
-      operation: `${request.operation}:unconfirmed`,
+    return ok({
       model,
-      inputTokens: estimateInputTokens(chars),
-      outputTokens: maxTokens,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      costUsd: estimateUsd,
+      maxTokens,
+      pricing,
+      chars,
+      headers: buildHeaders(config),
+      reservation: {
+        provider: 'anthropic',
+        operation: `${request.operation}:unconfirmed`,
+        model,
+        inputTokens: estimateInputTokens(chars),
+        outputTokens: maxTokens,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: estimateUsd,
+        userId: request.userId,
+        conversationId: request.conversationId,
+      },
+    });
+  };
+
+  /**
+   * What to do with a failed attempt. `retry` = sleep then try again (the envelope proved
+   * nothing was billed); `fail` = give up with this error (a reservation is recorded when
+   * the request may have been billed).
+   */
+  const settleFailure = async (
+    error: HttpStatusError | TimeoutError | NetworkError | CircuitOpenError,
+    attempt: number,
+    maxAttempts: number,
+    prepared: Prepared,
+  ): Promise<{ readonly retry: true } | { readonly retry: false; readonly error: LlmError }> => {
+    if (error instanceof HttpStatusError) {
+      const snippet = error.context['bodySnippet'];
+      const info = parseErrorEnvelope(typeof snippet === 'string' ? snippet : '');
+      const retryAfter = error.context['retryAfter'];
+      const retryAfterHeader = typeof retryAfter === 'string' ? retryAfter : null;
+      if (isRetryableStatus(error.status) && attempt < maxAttempts) {
+        // An error envelope is not billed — this is the only retry the wrapper makes.
+        const delay = retryDelay(attempt, retryAfterHeader);
+        log.warn('anthropic transient error; retrying', {
+          status: error.status,
+          apiErrorType: info?.type ?? null,
+          attempt,
+          delayMs: delay,
+        });
+        await sleep(delay);
+        return { retry: true };
+      }
+      if (error.status === 429) {
+        const retryAfterMs = parseRetryAfterMs(retryAfterHeader, () => now().getTime());
+        log.warn('anthropic rate limited', { attempt, retryAfterMs });
+        return {
+          retry: false,
+          error: new RateLimitedError(retryAfterMs, { context: { attempts: attempt } }),
+        };
+      }
+      log.error('anthropic error response', {
+        status: error.status,
+        apiErrorType: info?.type ?? null,
+        apiErrorMessage: info?.message ?? null,
+        attempt,
+      });
+      return {
+        retry: false,
+        error: new HttpStatusError(
+          `Anthropic responded ${error.status}${info === null ? '' : ` (${info.type}: ${info.message})`}`,
+          error.status,
+          { context: { apiErrorType: info?.type ?? null, attempts: attempt } },
+        ),
+      };
+    }
+    if (error.code === 'CIRCUIT_OPEN') {
+      // Nothing was sent.
+      log.warn('anthropic circuit open; call not attempted', { error });
+      return { retry: false, error };
+    }
+    // TIMEOUT or NETWORK after the request left: it may have been billed. Record the
+    // reservation, do not retry. The transport error is re-issued with a redacted message
+    // and no cause: whatever fetch threw is not allowed to carry request material (the
+    // header object) to a caller.
+    log.error('anthropic call failed after send; recording reservation, not retrying', {
+      code: error.code,
+      attempt,
+    });
+    await record(prepared.reservation);
+    return {
+      retry: false,
+      error:
+        error.code === 'TIMEOUT'
+          ? new TimeoutError(redactString(error.message), config.timeoutMs, {
+              context: { attempts: attempt },
+            })
+          : new NetworkError(redactString(error.message), { context: { attempts: attempt } }),
+    };
+  };
+
+  const recordCompleted = async (
+    request: CompletionRequest,
+    prepared: Prepared,
+    model: string,
+    tokenUsage: TokenUsage,
+    stopReason: string | null,
+    attempts: number,
+    requestId: string | null,
+    streamed: boolean,
+  ): Promise<number> => {
+    const cost = costUsd(prepared.pricing, tokenUsage);
+    await record({
+      provider: 'anthropic',
+      operation: request.operation,
+      model,
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      cacheReadTokens: tokenUsage.cacheReadTokens,
+      cacheWriteTokens: tokenUsage.cacheWriteTokens,
+      costUsd: cost,
       userId: request.userId,
       conversationId: request.conversationId,
-    };
+    });
+    // Field names avoid the word "token": the logger redacts any key containing it.
+    log.info('anthropic call completed', {
+      model,
+      stopReason,
+      usage: {
+        in: tokenUsage.inputTokens,
+        out: tokenUsage.outputTokens,
+        cacheRead: tokenUsage.cacheReadTokens,
+        cacheWrite: tokenUsage.cacheWriteTokens,
+      },
+      costUsd: cost,
+      attempts,
+      requestId,
+      streamed,
+    });
+    return cost;
+  };
+
+  const complete = async (request: CompletionRequest): Promise<Result<Completion, LlmError>> => {
+    const prepared = await prepare(request);
+    if (!prepared.ok) return prepared;
+    const p = prepared.value;
+    const body = JSON.stringify(
+      buildRequestBody(p.model, p.maxTokens, request.system, request.messages, config.thinking),
+    );
 
     const maxAttempts = 1 + config.retries;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const response = await http.request(url, {
         method: 'POST',
-        headers,
+        headers: p.headers,
         body,
         idempotent: false,
         timeoutMs: config.timeoutMs,
       });
-
       if (!response.ok) {
-        const error = response.error;
-        if (error instanceof HttpStatusError) {
-          const snippet = error.context['bodySnippet'];
-          const info = parseErrorEnvelope(typeof snippet === 'string' ? snippet : '');
-          const retryAfter = error.context['retryAfter'];
-          const retryAfterHeader = typeof retryAfter === 'string' ? retryAfter : null;
-          if (isRetryableStatus(error.status) && attempt < maxAttempts) {
-            // An error envelope is not billed — this is the only retry the wrapper makes.
-            const delay = retryDelay(attempt, retryAfterHeader);
-            log.warn('anthropic transient error; retrying', {
-              status: error.status,
-              apiErrorType: info?.type ?? null,
-              attempt,
-              delayMs: delay,
-            });
-            await sleep(delay);
-            continue;
-          }
-          if (error.status === 429) {
-            const retryAfterMs = parseRetryAfterMs(retryAfterHeader, () => now().getTime());
-            log.warn('anthropic rate limited', { attempt, retryAfterMs });
-            return err(new RateLimitedError(retryAfterMs, { context: { attempts: attempt } }));
-          }
-          log.error('anthropic error response', {
-            status: error.status,
-            apiErrorType: info?.type ?? null,
-            apiErrorMessage: info?.message ?? null,
-            attempt,
-          });
-          return err(
-            new HttpStatusError(
-              `Anthropic responded ${error.status}${info === null ? '' : ` (${info.type}: ${info.message})`}`,
-              error.status,
-              { context: { apiErrorType: info?.type ?? null, attempts: attempt } },
-            ),
-          );
-        }
-        if (error.code === 'CIRCUIT_OPEN') {
-          // Nothing was sent.
-          log.warn('anthropic circuit open; call not attempted', { error });
-          return err(error);
-        }
-        // TIMEOUT or NETWORK after the request left: it may have been billed. Record the
-        // reservation, do not retry. The transport error is re-issued with a redacted
-        // message and no cause: whatever fetch threw is not allowed to carry request
-        // material (the header object) to a caller.
-        log.error('anthropic call failed after send; recording reservation, not retrying', {
-          code: error.code,
-          attempt,
-        });
-        await record(reservation);
-        return err(
-          error.code === 'TIMEOUT'
-            ? new TimeoutError(redactString(error.message), config.timeoutMs, {
-                context: { attempts: attempt },
-              })
-            : new NetworkError(redactString(error.message), { context: { attempts: attempt } }),
-        );
+        const settled = await settleFailure(response.error, attempt, maxAttempts, p);
+        if (settled.retry) continue;
+        return err(settled.error);
       }
-
       return finishSuccess(response.value, attempt);
     }
 
@@ -401,45 +509,29 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
     ): Promise<Result<Completion, LlmError>> {
       const json = parseJsonBody(http200);
       if (!json.ok) {
-        await record(reservation);
+        await record(p.reservation);
         return err(json.error);
       }
       const parsed = parseMessageResponse(json.value);
       if (!parsed.ok) {
-        await record(reservation);
+        await record(p.reservation);
         log.error('anthropic 200 with unparseable body; reservation recorded', {
           error: parsed.error,
         });
         return err(parsed.error);
       }
       const message = parsed.value;
-      const cost = costUsd(pricing, message.usage);
-      await record({
-        provider: 'anthropic',
-        operation: request.operation,
-        model: message.model,
-        inputTokens: message.usage.inputTokens,
-        outputTokens: message.usage.outputTokens,
-        cacheReadTokens: message.usage.cacheReadTokens,
-        cacheWriteTokens: message.usage.cacheWriteTokens,
-        costUsd: cost,
-        userId: request.userId,
-        conversationId: request.conversationId,
-      });
-      // Field names avoid the word "token": the logger redacts any key containing it.
-      log.info('anthropic call completed', {
-        model: message.model,
-        stopReason: message.stopReason,
-        usage: {
-          in: message.usage.inputTokens,
-          out: message.usage.outputTokens,
-          cacheRead: message.usage.cacheReadTokens,
-          cacheWrite: message.usage.cacheWriteTokens,
-        },
-        costUsd: cost,
+      const requestId = http200.headers.get('request-id');
+      const cost = await recordCompleted(
+        request,
+        p,
+        message.model,
+        message.usage,
+        message.stopReason,
         attempts,
-        requestId: http200.headers.get('request-id'),
-      });
+        requestId,
+        false,
+      );
       if (message.stopReason === 'refusal') {
         return err(new ModelRefusalError(message.refusalCategory, { context: { costUsd: cost } }));
       }
@@ -449,13 +541,157 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
         stopReason: message.stopReason,
         usage: message.usage,
         costUsd: cost,
-        requestId: http200.headers.get('request-id'),
+        requestId,
         attempts,
       });
     }
   };
 
-  return { complete };
+  const stream = async (
+    request: CompletionRequest,
+    onText: TextDeltaSink,
+  ): Promise<Result<Completion, LlmError>> => {
+    const prepared = await prepare(request);
+    if (!prepared.ok) return prepared;
+    const p = prepared.value;
+    const body = JSON.stringify(
+      buildRequestBody(
+        p.model,
+        p.maxTokens,
+        request.system,
+        request.messages,
+        config.thinking,
+        true,
+      ),
+    );
+
+    const maxAttempts = 1 + config.retries;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const opened = await http.open(url, {
+        method: 'POST',
+        headers: { ...p.headers, accept: 'text/event-stream' },
+        body,
+        timeoutMs: config.timeoutMs,
+      });
+      if (!opened.ok) {
+        const settled = await settleFailure(opened.error, attempt, maxAttempts, p);
+        if (settled.retry) continue;
+        return err(settled.error);
+      }
+      return consume(opened.value.body, opened.value.headers.get('request-id'), attempt);
+    }
+    return err(new ValidationError('stream loop exited without a result'));
+
+    async function consume(
+      stream: ReadableStream<Uint8Array> | null,
+      requestId: string | null,
+      attempts: number,
+    ): Promise<Result<Completion, LlmError>> {
+      if (stream === null) {
+        await record(p.reservation);
+        return err(new ValidationError('Anthropic 200 with no body'));
+      }
+      let state: StreamState = INITIAL_STREAM_STATE;
+      let ignored = 0;
+      const outcome = await readSse(stream, {
+        idleTimeoutMs: config.timeoutMs,
+        onEvent: (event) => {
+          const step = applyAnthropicEvent(state, event);
+          state = step.state;
+          if (step.ignored) ignored += 1;
+          if (step.textDelta !== '') onText(step.textDelta);
+          // Stop reading on the API's own error or once the message is complete.
+          return state.apiError === null && !state.complete ? undefined : false;
+        },
+      });
+      if (ignored > 0) {
+        log.warn('anthropic stream: events ignored', { ignored });
+      }
+
+      const usage = finalUsage(state);
+      const model = state.model ?? p.model;
+      if (
+        outcome.kind !== 'transport' &&
+        outcome.kind !== 'idle_timeout' &&
+        state.apiError === null &&
+        state.complete &&
+        usage !== null
+      ) {
+        const cost = await recordCompleted(
+          request,
+          p,
+          model,
+          usage,
+          state.stopReason,
+          attempts,
+          requestId ?? state.requestId,
+          true,
+        );
+        if (state.stopReason === 'refusal') {
+          return err(new ModelRefusalError(state.refusalCategory, { context: { costUsd: cost } }));
+        }
+        return ok({
+          text: state.text,
+          model,
+          stopReason: state.stopReason,
+          usage,
+          costUsd: cost,
+          requestId: requestId ?? state.requestId,
+          attempts,
+        });
+      }
+
+      // Interrupted: record what was consumed, hand back what arrived.
+      const consumed = partialUsage(state, p.reservation.inputTokens);
+      const cost = costUsd(p.pricing, consumed);
+      await record({
+        ...p.reservation,
+        operation: `${request.operation}:partial`,
+        model,
+        inputTokens: consumed.inputTokens,
+        outputTokens: consumed.outputTokens,
+        cacheReadTokens: consumed.cacheReadTokens,
+        cacheWriteTokens: consumed.cacheWriteTokens,
+        costUsd: cost,
+      });
+      const context = {
+        attempts,
+        partialText: state.text,
+        partialChars: state.text.length,
+        outcome: outcome.kind,
+        costUsd: cost,
+      };
+      log.error('anthropic stream interrupted; partial usage recorded', {
+        outcome: outcome.kind,
+        apiErrorType: state.apiError?.type ?? null,
+        partialChars: state.text.length,
+        complete: state.complete,
+        hadFinalUsage: usage !== null,
+      });
+      if (state.apiError !== null) {
+        return err(
+          new HttpStatusError(
+            `Anthropic stream error (${state.apiError.type}: ${state.apiError.message})`,
+            state.apiError.type === 'overloaded_error' ? 529 : 502,
+            { context: { ...context, apiErrorType: state.apiError.type } },
+          ),
+        );
+      }
+      if (outcome.kind === 'idle_timeout') {
+        return err(new TimeoutError('Anthropic stream went silent', outcome.idleMs, { context }));
+      }
+      return err(
+        new NetworkError(
+          outcome.kind === 'transport'
+            ? redactString(`Anthropic stream failed: ${outcome.error.message}`)
+            : 'Anthropic stream ended before the message completed',
+          { context },
+        ),
+      );
+    }
+  };
+
+  return { complete, stream };
 }
 
 function defaultSleep(ms: number): Promise<void> {

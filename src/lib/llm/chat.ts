@@ -9,17 +9,25 @@
  *   2. validate the input (message length, conversation id shape);
  *   3. resolve or create the conversation — a user may continue a workspace-scoped
  *      conversation or their own private one, never another user's private one;
- *   4. call Claude (client.ts owns the cap, the retries and the api_usage row);
- *   5. write the user turn and the assistant turn to `messages` and touch the conversation.
+ *   4. load the earlier turns of THIS conversation (bounded, oldest first — TASKS 2.6.2a,
+ *      part 6) so the second message remembers the first;
+ *   5. call Claude (client.ts owns the cap, the retries and the api_usage row);
+ *   6. write the user turn and the assistant turn to `messages` and touch the conversation.
  *
- * Deliberately NOT done here (Stage 3 owns memory; part 6 owns the interface): loading
- * earlier turns of the conversation into the request, semantic recall, streaming.
- * A turn is the message the user just sent plus the system prompt — nothing else.
+ * Deliberately NOT done here (Stage 3 owns memory): semantic recall, durable facts, anything
+ * from another conversation. The request is the system prompt, the recent turns of the
+ * current conversation, and the message the user just sent — nothing else. History is
+ * uncached input; the voice prefix stays the cached part.
+ *
+ * An empty reply is an error, not a turn. Part 5 found Sonnet 5 spending the whole output
+ * budget on adaptive thinking and returning no text (D39); the metered call is recorded by
+ * client.ts, but nothing is saved to `messages` and the caller is told, so the interface
+ * never renders a blank bubble.
  */
 import { ensureError, type AppError, type Result } from '../errors.js';
 import type { Logger } from '../logger.js';
 import { verifyStaffAccess, type StaffIdentity, type VerifyDeps } from '../auth/verify.js';
-import type { ClaudeClient, LlmError } from './client.js';
+import type { ClaudeClient, Completion, CompletionRequest, LlmError } from './client.js';
 import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
 
@@ -27,8 +35,28 @@ export interface ConversationRow {
   readonly id: string;
   readonly userId: string;
   readonly scope: 'user' | 'workspace';
+  readonly title: string | null;
   readonly deletedAt: string | null;
 }
+
+/** One earlier turn of the current conversation, as sent back to Claude. */
+export interface HistoryMessage {
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+}
+
+/**
+ * How much of the current conversation rides along with a turn. Both bounds apply; the
+ * newest messages win. Characters, not tokens: the point is a hard ceiling on uncached
+ * input that an operator can reason about, and the model's own context limit is far above
+ * either default.
+ */
+export interface HistoryBounds {
+  readonly maxMessages: number;
+  readonly maxChars: number;
+}
+
+export const DEFAULT_HISTORY_BOUNDS: HistoryBounds = { maxMessages: 20, maxChars: 24_000 };
 
 export interface AppendTurnInput {
   readonly conversation: ConversationRow;
@@ -49,6 +77,11 @@ export interface AppendedTurn {
 export interface ConversationStore {
   get(conversationId: string): Promise<Result<ConversationRow | null>>;
   create(userId: string): Promise<Result<ConversationRow>>;
+  /**
+   * The last `limit` user/assistant messages of one conversation, OLDEST FIRST, content
+   * only. Tool rows and null content are excluded at the source.
+   */
+  recentMessages(conversationId: string, limit: number): Promise<Result<readonly HistoryMessage[]>>;
   appendTurn(input: AppendTurnInput): Promise<Result<AppendedTurn>>;
 }
 
@@ -59,6 +92,7 @@ export interface ChatDeps {
   readonly log: Logger;
   readonly systemBlocks?: () => readonly SystemBlock[];
   readonly maxMessageChars?: number;
+  readonly history?: HistoryBounds;
 }
 
 export interface ChatTurnInput {
@@ -79,6 +113,31 @@ export interface ChatReply {
 }
 
 export type ChatErrorStatus = 400 | 401 | 402 | 403 | 404 | 422 | 429 | 500 | 502 | 503 | 504;
+
+/**
+ * Apply the bounds to a history list (oldest first) and return what Claude will see.
+ * Keeps the newest messages; then drops any leading assistant messages so the request
+ * starts with a user turn, which the Messages API requires.
+ */
+export function boundHistory(
+  history: readonly HistoryMessage[],
+  bounds: HistoryBounds,
+): readonly HistoryMessage[] {
+  const kept: HistoryMessage[] = [];
+  let chars = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const item = history[i];
+    if (item === undefined) continue;
+    if (kept.length >= bounds.maxMessages) break;
+    if (chars + item.content.length > bounds.maxChars) break;
+    chars += item.content.length;
+    kept.unshift(item);
+  }
+  while (kept.length > 0 && kept[0]?.role !== 'user') {
+    kept.shift();
+  }
+  return kept;
+}
 
 export interface ChatErrorBody {
   readonly error: {
@@ -188,30 +247,66 @@ export async function handleChatTurn(
   }
 }
 
+/** Everything settled before Claude is called: who, which conversation, what came before. */
+interface PreparedTurn {
+  readonly user: StaffIdentity;
+  readonly conversation: ConversationRow;
+  readonly history: readonly HistoryMessage[];
+  readonly message: string;
+}
+
+type Prepared =
+  | { readonly ok: true; readonly value: PreparedTurn }
+  | { readonly ok: false; readonly result: ChatTurnResult };
+
+function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
+  return {
+    route: 'default',
+    system: (deps.systemBlocks ?? buildSystemBlocks)(),
+    messages: [...prepared.history, { role: 'user', content: prepared.message }],
+    operation: 'chat.turn',
+    userId: prepared.user.userId,
+    conversationId: prepared.conversation.id,
+  };
+}
+
 async function turn(deps: ChatDeps, input: ChatTurnInput): Promise<ChatTurnResult> {
+  const prepared = await prepareTurn(deps, input);
+  if (!prepared.ok) return prepared.result;
+
+  // 5. Claude — the cap, the retries and the api_usage row live in client.ts.
+  const completion = await deps.claude.complete(completionRequest(prepared.value, deps));
+  if (!completion.ok) {
+    return mapLlmError(completion.error);
+  }
+  return finishTurn(deps, prepared.value, completion.value);
+}
+
+async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepared> {
+  const refuse = (result: ChatTurnResult): Prepared => ({ ok: false, result });
   const log = deps.log.child({ component: 'chat' });
 
   // 1. Who is asking — before anything else costs anything.
   const access = await verifyStaffAccess(deps.verify, input.token);
   if (!access.ok) {
     log.error('caller verification unavailable', { error: access.error });
-    return unavailable(access.error);
+    return refuse(unavailable(access.error));
   }
   if (access.value.kind === 'unauthenticated') {
-    return failure(401, 'UNAUTHENTICATED', 'Sign in to continue.');
+    return refuse(failure(401, 'UNAUTHENTICATED', 'Sign in to continue.'));
   }
   if (access.value.kind === 'forbidden') {
-    return failure(403, 'FORBIDDEN', 'This account does not have access.');
+    return refuse(failure(403, 'FORBIDDEN', 'This account does not have access.'));
   }
   const user: StaffIdentity = access.value.user;
 
   // 2. The input.
   const maxChars = deps.maxMessageChars ?? DEFAULT_MAX_MESSAGE_CHARS;
   if (typeof input.message !== 'string' || input.message.trim() === '') {
-    return failure(400, 'BAD_REQUEST', 'message must be a non-empty string.');
+    return refuse(failure(400, 'BAD_REQUEST', 'message must be a non-empty string.'));
   }
   if (input.message.length > maxChars) {
-    return failure(400, 'BAD_REQUEST', `message must be at most ${maxChars} characters.`);
+    return refuse(failure(400, 'BAD_REQUEST', `message must be at most ${maxChars} characters.`));
   }
   const message = input.message;
   if (
@@ -219,7 +314,7 @@ async function turn(deps: ChatDeps, input: ChatTurnInput): Promise<ChatTurnResul
     input.conversationId !== null &&
     (typeof input.conversationId !== 'string' || !UUID.test(input.conversationId))
   ) {
-    return failure(400, 'BAD_REQUEST', 'conversationId must be a UUID.');
+    return refuse(failure(400, 'BAD_REQUEST', 'conversationId must be a UUID.'));
   }
   const requestedConversationId =
     typeof input.conversationId === 'string' ? input.conversationId : null;
@@ -230,14 +325,14 @@ async function turn(deps: ChatDeps, input: ChatTurnInput): Promise<ChatTurnResul
     const created = await deps.conversations.create(user.userId);
     if (!created.ok) {
       log.error('conversation create failed', { error: created.error });
-      return unavailable(created.error);
+      return refuse(unavailable(created.error));
     }
     conversation = created.value;
   } else {
     const found = await deps.conversations.get(requestedConversationId);
     if (!found.ok) {
       log.error('conversation read failed', { error: found.error });
-      return unavailable(found.error);
+      return refuse(unavailable(found.error));
     }
     const row = found.value;
     const visible =
@@ -246,27 +341,51 @@ async function turn(deps: ChatDeps, input: ChatTurnInput): Promise<ChatTurnResul
       (row.scope === 'workspace' || row.userId === user.userId);
     if (!visible) {
       // Same answer for "does not exist" and "not yours": no existence oracle.
-      return failure(404, 'NOT_FOUND', 'Conversation not found.');
+      return refuse(failure(404, 'NOT_FOUND', 'Conversation not found.'));
     }
     conversation = row;
   }
 
-  // 4. Claude — the cap, the retries and the api_usage row live in client.ts.
-  const system = (deps.systemBlocks ?? buildSystemBlocks)();
-  const completion = await deps.claude.complete({
-    route: 'default',
-    system,
-    messages: [{ role: 'user', content: message }],
-    operation: 'chat.turn',
-    userId: user.userId,
-    conversationId: conversation.id,
-  });
-  if (!completion.ok) {
-    return mapLlmError(completion.error);
+  // 4. What came before, in THIS conversation only. A conversation created a moment ago
+  //    has nothing to load, and is not asked.
+  const bounds = deps.history ?? DEFAULT_HISTORY_BOUNDS;
+  let history: readonly HistoryMessage[] = [];
+  if (requestedConversationId !== null && bounds.maxMessages > 0) {
+    const recent = await deps.conversations.recentMessages(conversation.id, bounds.maxMessages);
+    if (!recent.ok) {
+      log.error('conversation history read failed', { error: recent.error });
+      return refuse(unavailable(recent.error));
+    }
+    history = boundHistory(recent.value, bounds);
   }
-  const reply = completion.value;
 
-  // 5. The turn, recorded.
+  return { ok: true, value: { user, conversation, history, message } };
+}
+
+/** Step 6: refuse an empty reply, record the turn, answer. Shared by both paths. */
+async function finishTurn(
+  deps: ChatDeps,
+  prepared: PreparedTurn,
+  reply: Completion,
+): Promise<ChatTurnResult> {
+  const log = deps.log.child({ component: 'chat' });
+  const { conversation, message } = prepared;
+  if (reply.text.trim() === '') {
+    // Metered (client.ts recorded the usage) but not a turn. Saying so precisely matters:
+    // the user's message is not lost, and nothing blank is ever stored or shown.
+    log.error('empty reply from Claude', {
+      model: reply.model,
+      stopReason: reply.stopReason,
+      outputTokens: reply.usage.outputTokens,
+    });
+    return failure(
+      502,
+      'EMPTY_REPLY',
+      'The assistant returned an empty reply. Nothing was saved. Please try again.',
+      true,
+    );
+  }
+
   const appended = await deps.conversations.appendTurn({
     conversation,
     userContent: message,
@@ -301,4 +420,92 @@ async function turn(deps: ChatDeps, input: ChatTurnInput): Promise<ChatTurnResul
       costUsd: reply.costUsd,
     },
   };
+}
+
+// ---------------------------------------------------------------------------------------
+// Streaming (part 6). Same gates, same record, same answer — delivered as events.
+// ---------------------------------------------------------------------------------------
+
+export type ChatStreamEvent =
+  /** The turn was admitted: the conversation it belongs to (new or existing). */
+  | { readonly type: 'start'; readonly conversationId: string }
+  | { readonly type: 'delta'; readonly text: string }
+  | { readonly type: 'done'; readonly reply: ChatReply }
+  /**
+   * The same status/body the JSON path would answer with, plus whatever text had already
+   * arrived, so the interface can show it and say it is incomplete. Nothing was saved.
+   */
+  | {
+      readonly type: 'error';
+      readonly status: ChatErrorStatus;
+      readonly body: ChatErrorBody;
+      readonly partialText: string;
+    };
+
+export type ChatStreamSink = (event: ChatStreamEvent) => void;
+
+const INTERNAL: ChatErrorBody = {
+  error: { code: 'INTERNAL', message: 'Internal error.', retryable: false },
+};
+
+/**
+ * One chat turn, streamed. Emits `start` once admitted, `delta` per text piece, then exactly
+ * one of `done` / `error`. Falls back to `complete` (one `delta` with the whole reply) when
+ * the client cannot stream. Never throws.
+ */
+export async function handleChatTurnStream(
+  deps: ChatDeps,
+  input: ChatTurnInput,
+  emit: ChatStreamSink,
+): Promise<void> {
+  let partial = '';
+  try {
+    const prepared = await prepareTurn(deps, input);
+    if (!prepared.ok) {
+      if (prepared.result.status !== 200) {
+        emit({
+          type: 'error',
+          status: prepared.result.status,
+          body: prepared.result.body,
+          partialText: '',
+        });
+      }
+      return;
+    }
+    emit({ type: 'start', conversationId: prepared.value.conversation.id });
+
+    const request = completionRequest(prepared.value, deps);
+    const onText = (delta: string): void => {
+      partial += delta;
+      emit({ type: 'delta', text: delta });
+    };
+    let completion: Result<Completion, LlmError>;
+    if (deps.claude.stream === undefined) {
+      completion = await deps.claude.complete(request);
+      if (completion.ok && completion.value.text !== '') onText(completion.value.text);
+    } else {
+      completion = await deps.claude.stream(request, onText);
+    }
+
+    if (!completion.ok) {
+      const mapped = mapLlmError(completion.error);
+      const fromError = completion.error.context['partialText'];
+      emit({
+        type: 'error',
+        status: mapped.status === 200 ? 500 : mapped.status,
+        body: mapped.status === 200 ? INTERNAL : mapped.body,
+        partialText: typeof fromError === 'string' ? fromError : partial,
+      });
+      return;
+    }
+    const finished = await finishTurn(deps, prepared.value, completion.value);
+    if (finished.status === 200) {
+      emit({ type: 'done', reply: finished.body });
+    } else {
+      emit({ type: 'error', status: finished.status, body: finished.body, partialText: partial });
+    }
+  } catch (caught: unknown) {
+    deps.log.error('chat stream threw', { error: ensureError(caught) });
+    emit({ type: 'error', status: 500, body: INTERNAL, partialText: partial });
+  }
 }

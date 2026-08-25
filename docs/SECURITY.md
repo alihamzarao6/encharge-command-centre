@@ -45,7 +45,12 @@ relevant under Scope v3, not less: Stage 4 reads live websites.
   stage here is designed against. **Verified, not asserted:** Stage 2 acceptance includes a
   test that greps the built client assets for `sk-ant-` and asserts zero hits, and a browser
   check that no request from the page goes to `api.anthropic.com`
-  (`PHASE-ACCEPTANCE.md`, Stage 2).
+  (`PHASE-ACCEPTANCE.md`, Stage 2). **Live since 25 Aug (part 6):** `npm run web:check`
+  (`scripts/check-bundle.ts`) greps `web/dist` for Anthropic / Supabase-secret / service-role
+  JWT shapes, the real key values when present in the build environment, and 24 sentences of
+  the voice prompt — in CI on every push; `tests/e2e/mock.ts` counts and refuses any request
+  from the page to `api.anthropic.com`. The browser holds the anon key only; every read is
+  under RLS as the signed-in user and the only write path is the Edge Function.
 - n8n credentials use n8n's encrypted credential store — **never** hardcoded in node
   parameters, because node parameters are exported to `n8n/workflows/*.json` and committed.
 - `N8N_ENCRYPTION_KEY` set explicitly and backed up. Losing it means losing every credential.

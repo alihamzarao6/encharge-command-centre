@@ -61,6 +61,7 @@ function llmConfig(dailyUsd: number): LlmConfig {
     timeoutMs: 5_000,
     retries: 0,
     thinking: 'disabled',
+    history: { maxMessages: 20, maxChars: 24_000 },
     caps: { dailyUsd, monthlyUsd: 1_000, warnFraction: 0.8 },
     pricing: DEFAULT_PRICING,
   };

@@ -621,3 +621,67 @@ describe('helpers', () => {
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 });
+
+describe('open() — one attempt, headers under the timeout, body left for streaming', () => {
+  it('returns the unread body on 2xx and counts a success on the breaker', async () => {
+    const fetchImpl: FetchLike = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start: (c) => {
+              c.enqueue(new TextEncoder().encode('hi'));
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          },
+        ),
+      );
+    const client = createHttpClient({ fetch: fetchImpl, timeoutMs: 1_000, retries: 3 });
+    const result = await client.open('https://api.example.com/v1', { method: 'POST', body: '{}' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.status).toBe(200);
+    expect(await new Response(result.value.body).text()).toBe('hi');
+    expect(client.getBreakerState('https://api.example.com')).toEqual({
+      state: 'closed',
+      consecutiveFailures: 0,
+    });
+  });
+
+  it('a non-2xx reads the body into an HttpStatusError and never retries', async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = () => {
+      calls += 1;
+      return Promise.resolve(new Response('{"type":"error"}', { status: 529 }));
+    };
+    const client = createHttpClient({ fetch: fetchImpl, timeoutMs: 1_000, retries: 3 });
+    const result = await client.open('https://api.example.com/v1', { method: 'POST' });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error.code).toBe('HTTP_STATUS');
+    expect(result.error.context['bodySnippet']).toBe('{"type":"error"}');
+    expect(calls).toBe(1);
+  });
+
+  it('respects the breaker and the header timeout', async () => {
+    const hang: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'));
+        });
+      });
+    const client = createHttpClient({
+      fetch: hang,
+      timeoutMs: 20,
+      retries: 0,
+      breaker: { failureThreshold: 1, resetTimeoutMs: 60_000 },
+    });
+    const first = await client.open('https://api.example.com/v1', { method: 'POST' });
+    expect(!first.ok && first.error.code).toBe('TIMEOUT');
+    const second = await client.open('https://api.example.com/v1', { method: 'POST' });
+    expect(!second.ok && second.error.code).toBe('CIRCUIT_OPEN');
+  });
+});

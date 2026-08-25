@@ -59,6 +59,21 @@ jobs:
       - name: Unit tests with coverage gate (80% lines / 75% branches — vitest fails below)
         run: npm run test:unit
 
+      # Stage 2 part 6 (FND-250): the browser bundle must carry no service role key, no
+      # Anthropic key and no fragment of the voice prompt (SECURITY §2, TASKS 2.6.3). The
+      # values are placeholders — the check is on shapes and on the voice sentences.
+      - name: Build the web app
+        run: npm run web:build
+        env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+
+      - name: Grep the built bundle for secrets and the voice prompt
+        run: npm run web:check
+
+      - name: Bundle the Edge Function (esbuild) — the deployable entrypoint must build
+        run: npm run functions:bundle
+
       - name: Coverage summary
         if: always()
         run: |
@@ -101,6 +116,9 @@ jobs:
         with:
           version: 2.115.0
 
+      - name: Bundle the Edge Function so the stack can load it (TASKS 2.6.3)
+        run: npm run functions:bundle
+
       - name: Start Supabase local stack
         run: supabase start
 
@@ -123,3 +141,40 @@ jobs:
 
       - name: 'Security suite (RLS: anon zero rows, allowlist, memory scoping)'
         run: npm run test:security
+
+  # Stage 2 part 6 (FND-250): the interface, in a real browser, at 375 / 768 / 1280, against
+  # a scripted Supabase (tests/e2e/mock.ts) — no stack, no key, no spend. Proves the
+  # error states (402, empty reply, 401 mid-turn, deactivated), copy-to-clipboard and the
+  # no-horizontal-scroll rule; refreshes the screenshots as an artefact.
+  browser:
+    name: web build · playwright at 375 / 768 / 1280
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 24 (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Chrome for Playwright (the suite runs on the `chrome` channel)
+        run: npx playwright install --with-deps chrome
+
+      - name: Browser suite
+        run: npm run test:e2e
+
+      - name: Upload screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-2-screenshots
+          path: |
+            docs/assets/stage-2/*.png
+            tests/e2e/.output/**/trace.zip
+          if-no-files-found: ignore

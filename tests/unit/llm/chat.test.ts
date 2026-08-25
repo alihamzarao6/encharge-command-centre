@@ -22,6 +22,10 @@ import {
   type ChatDeps,
   type ConversationRow,
   type ConversationStore,
+  type HistoryMessage,
+  boundHistory,
+  handleChatTurnStream,
+  type ChatStreamEvent,
 } from '../../../src/lib/llm/chat.js';
 import type {
   ClaudeClient,
@@ -83,9 +87,12 @@ function fakeClaude(
 interface FakeStore extends ConversationStore {
   readonly created: string[];
   readonly appended: unknown[];
+  readonly historyReads: { conversationId: string; limit: number }[];
   existing: ConversationRow | null;
+  history: HistoryMessage[];
   failCreate: AppError | null;
   failGet: AppError | null;
+  failHistory: AppError | null;
   failAppend: AppError | null;
 }
 
@@ -93,17 +100,26 @@ function fakeStore(existing: ConversationRow | null = null): FakeStore {
   const store: FakeStore = {
     created: [],
     appended: [],
+    historyReads: [],
     existing,
+    history: [],
     failCreate: null,
     failGet: null,
+    failHistory: null,
     failAppend: null,
     get: () => Promise.resolve(store.failGet === null ? ok(store.existing) : err(store.failGet)),
     create: (userId) => {
       store.created.push(userId);
       return Promise.resolve(
         store.failCreate === null
-          ? ok({ id: CONV_ID, userId, scope: 'workspace' as const, deletedAt: null })
+          ? ok({ id: CONV_ID, userId, scope: 'workspace' as const, title: null, deletedAt: null })
           : err(store.failCreate),
+      );
+    },
+    recentMessages: (conversationId, limit) => {
+      store.historyReads.push({ conversationId, limit });
+      return Promise.resolve(
+        store.failHistory === null ? ok(store.history.slice(-limit)) : err(store.failHistory),
       );
     },
     appendTurn: (input) => {
@@ -232,7 +248,13 @@ describe('the turn', () => {
     expect(call?.system[0]?.cache).toBe(true);
     expect(d.conversations.appended).toEqual([
       {
-        conversation: { id: CONV_ID, userId: USER_ID, scope: 'workspace', deletedAt: null },
+        conversation: {
+          id: CONV_ID,
+          userId: USER_ID,
+          scope: 'workspace',
+          title: null,
+          deletedAt: null,
+        },
         userContent: 'hello',
         assistant: {
           content: 'a reply',
@@ -250,6 +272,7 @@ describe('the turn', () => {
         id: CONV_ID,
         userId: OTHER_ID,
         scope: 'workspace',
+        title: null,
         deletedAt: null,
       }),
     });
@@ -261,7 +284,7 @@ describe('the turn', () => {
   it.each([
     [
       "another user's private conversation",
-      { id: CONV_ID, userId: OTHER_ID, scope: 'user' as const, deletedAt: null },
+      { id: CONV_ID, userId: OTHER_ID, scope: 'user' as const, title: null, deletedAt: null },
     ],
     [
       'a deleted conversation',
@@ -269,6 +292,7 @@ describe('the turn', () => {
         id: CONV_ID,
         userId: USER_ID,
         scope: 'workspace' as const,
+        title: null,
         deletedAt: '2026-08-01T00:00:00Z',
       },
     ],
@@ -282,7 +306,13 @@ describe('the turn', () => {
 
   it('own private conversation is fine', async () => {
     const d = deps({
-      conversations: fakeStore({ id: CONV_ID, userId: USER_ID, scope: 'user', deletedAt: null }),
+      conversations: fakeStore({
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'user',
+        title: null,
+        deletedAt: null,
+      }),
     });
     const result = await handleChatTurn(d, { token: 't', message: 'hi', conversationId: CONV_ID });
     expect(result.status).toBe(200);
@@ -368,5 +398,262 @@ describe('Claude failures rendered for the caller', () => {
       error: { retryable: true },
     });
     expect(mapLlmError(new AppError('FORBIDDEN', 'x')).status).toBe(500);
+  });
+});
+
+const EXISTING: ConversationRow = {
+  id: CONV_ID,
+  userId: USER_ID,
+  scope: 'workspace',
+  title: 'first',
+  deletedAt: null,
+};
+
+describe('conversation history — TASKS 2.6.2a, Part C item 4', () => {
+  it('a new conversation is not asked for history; the request is the one message', async () => {
+    const d = deps();
+    await handleChatTurn(d, { token: 't', message: 'first' });
+    expect(d.conversations.historyReads).toHaveLength(0);
+    expect(d.claude.calls[0]?.messages).toEqual([{ role: 'user', content: 'first' }]);
+  });
+
+  it('the second message carries the first turn, oldest first, then the new message', async () => {
+    const d = deps({ conversations: fakeStore(EXISTING) });
+    d.conversations.history = [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'a reply' },
+    ];
+    const result = await handleChatTurn(d, {
+      token: 't',
+      message: 'second',
+      conversationId: CONV_ID,
+    });
+    expect(result.status).toBe(200);
+    expect(d.conversations.historyReads).toEqual([{ conversationId: CONV_ID, limit: 20 }]);
+    expect(d.claude.calls[0]?.messages).toEqual([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'a reply' },
+      { role: 'user', content: 'second' },
+    ]);
+    // Only the new message is written; history is read, never re-saved.
+    expect(d.conversations.appended).toHaveLength(1);
+  });
+
+  it('the bound is passed to the store and applied to the request', async () => {
+    const d = deps({
+      conversations: fakeStore(EXISTING),
+      history: { maxMessages: 2, maxChars: 1e6 },
+    });
+    d.conversations.history = [
+      { role: 'user', content: 'u1' },
+      { role: 'assistant', content: 'a1' },
+      { role: 'user', content: 'u2' },
+      { role: 'assistant', content: 'a2' },
+    ];
+    await handleChatTurn(d, { token: 't', message: 'u3', conversationId: CONV_ID });
+    expect(d.conversations.historyReads[0]?.limit).toBe(2);
+    expect(d.claude.calls[0]?.messages).toEqual([
+      { role: 'user', content: 'u2' },
+      { role: 'assistant', content: 'a2' },
+      { role: 'user', content: 'u3' },
+    ]);
+  });
+
+  it('maxMessages 0 disables history without touching the store', async () => {
+    const d = deps({
+      conversations: fakeStore(EXISTING),
+      history: { maxMessages: 0, maxChars: 0 },
+    });
+    d.conversations.history = [{ role: 'user', content: 'u1' }];
+    await handleChatTurn(d, { token: 't', message: 'u2', conversationId: CONV_ID });
+    expect(d.conversations.historyReads).toHaveLength(0);
+    expect(d.claude.calls[0]?.messages).toEqual([{ role: 'user', content: 'u2' }]);
+  });
+
+  it('a history read failure → 503 and no Claude call', async () => {
+    const d = deps({ conversations: fakeStore(EXISTING) });
+    d.conversations.failHistory = infraError();
+    const result = await handleChatTurn(d, { token: 't', message: 'x', conversationId: CONV_ID });
+    expect(result.status).toBe(503);
+    expect(d.claude.calls).toHaveLength(0);
+  });
+});
+
+describe('boundHistory', () => {
+  const h: HistoryMessage[] = [
+    { role: 'user', content: 'aaaa' },
+    { role: 'assistant', content: 'bbbb' },
+    { role: 'user', content: 'cccc' },
+    { role: 'assistant', content: 'dddd' },
+  ];
+
+  it('keeps the newest messages under the message bound', () => {
+    expect(boundHistory(h, { maxMessages: 2, maxChars: 1e6 })).toEqual(h.slice(2));
+    // An odd bound lands on an assistant message, which is then dropped from the front.
+    expect(boundHistory(h, { maxMessages: 3, maxChars: 1e6 })).toEqual(h.slice(2));
+  });
+
+  it('keeps the newest messages under the character bound', () => {
+    expect(boundHistory(h, { maxMessages: 100, maxChars: 8 })).toEqual(h.slice(2));
+    expect(boundHistory(h, { maxMessages: 100, maxChars: 7 })).toEqual([]);
+  });
+
+  it('drops leading assistant messages so the request starts with a user turn', () => {
+    expect(boundHistory(h, { maxMessages: 1, maxChars: 1e6 })).toEqual([]);
+    expect(boundHistory(h.slice(1), { maxMessages: 100, maxChars: 1e6 })).toEqual(h.slice(2));
+  });
+
+  it('is identity when everything fits', () => {
+    expect(boundHistory(h, { maxMessages: 4, maxChars: 16 })).toEqual(h);
+    expect(boundHistory([], { maxMessages: 4, maxChars: 16 })).toEqual([]);
+  });
+});
+
+describe('an empty reply — Part C item 6', () => {
+  it.each(['', '   ', '\n\t'])(
+    'reply %j → 502 EMPTY_REPLY, retryable, nothing saved',
+    async (text) => {
+      const d = deps({ claude: fakeClaude(ok({ ...COMPLETION, text })) });
+      const result = await handleChatTurn(d, { token: 't', message: 'hi' });
+      expect(result.status).toBe(502);
+      expect(result.body).toEqual({
+        error: {
+          code: 'EMPTY_REPLY',
+          message: 'The assistant returned an empty reply. Nothing was saved. Please try again.',
+          retryable: true,
+        },
+      });
+      expect(d.conversations.appended).toHaveLength(0);
+    },
+  );
+});
+
+describe('handleChatTurnStream — the streamed turn', () => {
+  function streamingClaude(
+    deltas: readonly string[],
+    outcome: Result<Completion, LlmError> = ok({ ...COMPLETION, text: deltas.join('') }),
+  ): ClaudeClient & { calls: CompletionRequest[] } {
+    const calls: CompletionRequest[] = [];
+    return {
+      calls,
+      complete: () => Promise.reject(new Error('complete must not be used when stream exists')),
+      stream: (request, onText) => {
+        calls.push(request);
+        for (const d of deltas) onText(d);
+        return Promise.resolve(outcome);
+      },
+    };
+  }
+
+  async function collect(
+    d: ChatDeps,
+    input: { token: string | null; message: unknown; conversationId?: unknown },
+  ): Promise<ChatStreamEvent[]> {
+    const events: ChatStreamEvent[] = [];
+    await handleChatTurnStream(d, input, (e) => events.push(e));
+    return events;
+  }
+
+  it('start → deltas → done, and the turn is saved once with the full text', async () => {
+    const claude = streamingClaude(['Hel', 'lo']);
+    const d = deps({ claude: claude as unknown as ChatDeps['claude'] });
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.map((e) => e.type)).toEqual(['start', 'delta', 'delta', 'done']);
+    expect(events[0]).toEqual({ type: 'start', conversationId: CONV_ID });
+    expect(events[3]).toMatchObject({
+      type: 'done',
+      reply: { reply: 'Hello', conversationId: CONV_ID },
+    });
+    expect(d.conversations.appended).toHaveLength(1);
+    expect(d.conversations.appended[0]).toMatchObject({ assistant: { content: 'Hello' } });
+    expect(claude.calls[0]?.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  it('a refusal before Claude (401 / 403 / cap) is a single error event with its real status', async () => {
+    const unauth = await collect(deps(), { token: null, message: 'hi' });
+    expect(unauth).toEqual([
+      {
+        type: 'error',
+        status: 401,
+        body: {
+          error: { code: 'UNAUTHENTICATED', message: 'Sign in to continue.', retryable: false },
+        },
+        partialText: '',
+      },
+    ]);
+    const capped = streamingClaude([], err(new SpendCapError('month', 50, 50, 0.01)));
+    const d = deps({ claude: capped as unknown as ChatDeps['claude'] });
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.map((e) => e.type)).toEqual(['start', 'error']);
+    expect(events[1]).toMatchObject({
+      type: 'error',
+      status: 402,
+      body: { error: { code: 'SPEND_CAP' } },
+    });
+    expect(d.conversations.appended).toHaveLength(0);
+  });
+
+  it('a stream that dies mid-reply → error with the partial text, nothing saved', async () => {
+    const interrupted = streamingClaude(
+      ['Half a ', 'post'],
+      err(new NetworkError('Anthropic stream failed', { context: { partialText: 'Half a post' } })),
+    );
+    const d = deps({ claude: interrupted as unknown as ChatDeps['claude'] });
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.map((e) => e.type)).toEqual(['start', 'delta', 'delta', 'error']);
+    expect(events[3]).toMatchObject({
+      type: 'error',
+      status: 503,
+      body: { error: { code: 'NETWORK', retryable: true } },
+      partialText: 'Half a post',
+    });
+    expect(d.conversations.appended).toHaveLength(0);
+  });
+
+  it('an empty streamed reply → EMPTY_REPLY error, nothing saved', async () => {
+    const empty = streamingClaude([], ok({ ...COMPLETION, text: '  ' }));
+    const d = deps({ claude: empty as unknown as ChatDeps['claude'] });
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.map((e) => e.type)).toEqual(['start', 'error']);
+    expect(events[1]).toMatchObject({
+      type: 'error',
+      status: 502,
+      body: { error: { code: 'EMPTY_REPLY' } },
+    });
+    expect(d.conversations.appended).toHaveLength(0);
+  });
+
+  it('a client without stream() falls back to complete(): one delta with the whole reply', async () => {
+    const d = deps();
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.map((e) => e.type)).toEqual(['start', 'delta', 'done']);
+    expect(events[1]).toEqual({ type: 'delta', text: 'a reply' });
+    expect(d.claude.calls).toHaveLength(1);
+  });
+
+  it('a save failure after a complete stream → TURN_NOT_SAVED with the full text as partial', async () => {
+    const d = deps({ claude: streamingClaude(['done text']) as unknown as ChatDeps['claude'] });
+    d.conversations.failAppend = infraError();
+    const events = await collect(d, { token: 't', message: 'hi' });
+    expect(events.at(-1)).toMatchObject({
+      type: 'error',
+      status: 503,
+      body: { error: { code: 'TURN_NOT_SAVED' } },
+      partialText: 'done text',
+    });
+  });
+
+  it('never throws: a sink that throws becomes an error event', async () => {
+    const d = deps({ claude: streamingClaude(['x']) as unknown as ChatDeps['claude'] });
+    const events: ChatStreamEvent[] = [];
+    let first = true;
+    await handleChatTurnStream(d, { token: 't', message: 'hi' }, (e) => {
+      events.push(e);
+      if (first && e.type === 'delta') {
+        first = false;
+        throw new Error('sink broke');
+      }
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'error', status: 500 });
   });
 });
