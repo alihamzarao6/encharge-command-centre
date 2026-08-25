@@ -23,7 +23,7 @@ kept in full.
 | AI | Anthropic Console | client | Claude API — **key is server-side only, never in a browser (R18, SECURITY §2)** |
 | Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — account still to be created) |
 | Chat / dashboard | Static web app (`web/`) on **Vercel** — **https://fundd-command-centre.vercel.app** (project `fundd-command-centre`, scope `alihamzarao6s-projects` until handover; deployed 25 Aug 2026) | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
-| Chat endpoint | Supabase Edge Function `chat` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/chat** (project `mxdfptqdshdgdszizlbo`, Sydney; deployed 25 Aug 2026, **secrets pending — Owner/Admin only**, see §1a) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
+| Chat endpoint | Supabase Edge Function `chat` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/chat** (project `mxdfptqdshdgdszizlbo`, Sydney; deployed 25 Aug 2026, secrets set, first live turn proven the same day) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
 | Internal surface | Notion | client | Internal working surface; eight databases exist (MEMORY 10 Aug) |
 | CRM | GoHighLevel, white-labelled at `app.enchargecapital.com` (stays through the rebrand, D25) | client | Finance Pipeline, ten custom fields, five workflows (Stage 1) |
 | Ads / pixel | Meta — Refi Pixel + Conversions API | client | `Lead` event server-side from the FUNDD funnel (Stage 1, D31) |
@@ -46,12 +46,14 @@ the GHL field map — `db push` does not run the seed) → `npm run staff -- boo
 developer` (one-time password handed over out of band) → `npm run functions:bundle` +
 `supabase functions deploy chat --no-verify-jwt` → real `npm run web:build` + `npm run
 web:check` (0 hits, with the real key values present in the environment) → `vercel link` /
-`vercel env add` × 2 / `vercel deploy --prod`. **Stopped at `supabase secrets set`:** the
-Management API answers "Your account does not have the necessary privileges" — secrets need
-an organisation **Owner or Admin**, and the developer account is a project-level member of
-Ross's organisation. Until an Owner runs the `secrets set` line below (or sets the same
-names in Dashboard → Edge Functions → Secrets), the function answers `500 CONFIG` and the
-browser shows "Couldn't reach the assistant" (the CORS origin is one of those secrets).
+`vercel env add` × 2 / `vercel deploy --prod`. **Secrets:** the first attempt at `supabase secrets set` was refused — secrets need an
+organisation **Owner or Admin**, and the developer account was a project-level member.
+Ross granted Admin; the five secrets went in (`ANTHROPIC_API_KEY`, both caps,
+`CLAUDE_THINKING`, `CHAT_ALLOWED_ORIGIN`), and the function answered `401` to an anonymous
+call and named the Vercel origin in its CORS headers without a redeploy. First live turn
+from the deployed app: reply in voice after 9.1 s, one `api_usage` row (`chat.turn`,
+cache write 3,017 / input 21 / output 210, $0.01453), one conversation titled from its
+first message, two `messages` rows.
 
 **The Edge Function** (Supabase — the client's project; nothing to pay):
 

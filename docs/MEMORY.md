@@ -21,7 +21,7 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
 | Active stage | **Stage 2 — Foundations + AI trained on voice** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240) and part 6 (FND-250, chat interface) are staged, NOT committed** — `web/` dashboard, history in the turn (2.6.2a), Edge Function bundling (2.6.3), browser suite + screenshots, bundle grep in CI. Reviewer reads the FND-250 report → push → CI (`checks` + `integration` + new `browser` job) → **deploy** (RUNBOOK §1a: `supabase db push` → `supabase functions deploy chat` → `vercel deploy --prod` → `CHAT_ALLOWED_ORIGIN`; **deployed; function secrets need an org Owner/Admin — Ross**, see the 25 Aug review entry) → record the URL (2.6.5) → **part 7** — end-to-end test and Stage 2 acceptance |
+| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240) and part 6 (FND-250, chat interface) are staged, NOT committed** — `web/` dashboard, history in the turn (2.6.2a), Edge Function bundling (2.6.3), browser suite + screenshots, bundle grep in CI. Reviewer reads the FND-250 report → push → CI (`checks` + `integration` + new `browser` job) → **deploy** (RUNBOOK §1a: `supabase db push` → `supabase functions deploy chat` → `vercel deploy --prod` → `CHAT_ALLOWED_ORIGIN`; **deployed and proven live — first turn in voice, one `api_usage` row**, see the 25 Aug review entry) → record the URL (2.6.5) → **part 7** — end-to-end test and Stage 2 acceptance |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
 | Last regression run | **Local 25 Aug (part 6, uncommitted): typecheck + lint clean; unit 712/712, coverage 94.87% lines / 90.69% branches; browser 48/48 at 375 / 768 / 1280; `web:check` 0 hits; security 6/6 with 20 stack-dependent skipped, integration 21 skipped (no Docker).** **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
 | Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
@@ -130,13 +130,18 @@ headless Chrome at 375: wrong password → "The email or password is incorrect."
 empty state; session survives reload; 0 requests to anthropic.com; hosts contacted = the
 Vercel origin + the Supabase project only. Deployed bundle: only an `anon`-role JWT, 0
 key shapes, no voice tag.
-**Still blocked — needs Ross (organisation Owner/Admin):** `supabase secrets set` refuses
-the developer account ("does not have the necessary privileges"; `orgs list` is empty for
-it). Without `ANTHROPIC_API_KEY`, the caps, `CLAUDE_THINKING` and `CHAT_ALLOWED_ORIGIN` the
-function answers `500 CONFIG` and the browser shows "Couldn't reach the assistant" (CORS).
-Exact line in RUNBOOK §1a. `bootstrap ross` not run — his one-time password must be handed
-over out of band by whoever runs it. Note for the platform: `SUPABASE_*` secret names are
-reserved and auto-injected — our config reads exactly those names, so nothing to set there.
+**Unblocked the same day:** Ross made the developer account an organisation Admin;
+`supabase secrets set` then succeeded (5 names; `SUPABASE_*` are reserved and auto-injected,
+which is exactly what config.ts reads). Anonymous POST → `401`; OPTIONS from the Vercel
+origin → `Access-Control-Allow-Origin: https://fundd-command-centre.vercel.app`; no redeploy
+needed. **First live turn from the deployed app** (headless Chrome, 375): reply in voice
+after **9.1 s**; `api_usage` has exactly one row — `chat.turn`, claude-sonnet-5, cache
+write 3,017 (the voice prefix), input 21, output 210, **$0.01453**; one conversation titled
+"Write a two-line Facebook post about offset accounts" with 2 messages. PHASE-ACCEPTANCE
+items 4 (401 / gets through), 5 (one row per turn), 6 (no key in the bundle, no request to
+anthropic.com) and 10 (opens, logs in, replies — at 375, headless; Ross's own phone is the
+part-7 demo) have live evidence. The database password was offered but not needed and was
+not stored. `bootstrap ross` still not run.
 
 ### 2026-08-25 — [FND-250 · Stage 2 part 6] Chat interface, responsive, deployable — staged, NOT committed
 
