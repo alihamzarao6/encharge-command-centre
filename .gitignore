@@ -20,3 +20,7 @@ tests/fixtures/**/*.local.json
 
 # dangling junction into another checkout; the real skill lives in .agents/
 .claude/skills/
+.vercel/
+
+.vercel
+.env*

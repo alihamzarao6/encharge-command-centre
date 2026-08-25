@@ -22,8 +22,8 @@ kept in full.
 | Database | Supabase (Sydney) | client | Source of truth — confirmed platform (D24) |
 | AI | Anthropic Console | client | Claude API — **key is server-side only, never in a browser (R18, SECURITY §2)** |
 | Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — account still to be created) |
-| Chat / dashboard | Static web app (`web/`) on **Vercel** (project `fundd-command-centre`, account `alihamzarao6` until handover) — URL: _to be recorded at deploy, see §1a_ | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
-| Chat endpoint | Supabase Edge Function `chat` (`src/functions/chat`, bundled by `npm run functions:bundle`) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
+| Chat / dashboard | Static web app (`web/`) on **Vercel** — **https://fundd-command-centre.vercel.app** (project `fundd-command-centre`, scope `alihamzarao6s-projects` until handover; deployed 25 Aug 2026) | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
+| Chat endpoint | Supabase Edge Function `chat` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/chat** (project `mxdfptqdshdgdszizlbo`, Sydney; deployed 25 Aug 2026, **secrets pending — Owner/Admin only**, see §1a) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
 | Internal surface | Notion | client | Internal working surface; eight databases exist (MEMORY 10 Aug) |
 | CRM | GoHighLevel, white-labelled at `app.enchargecapital.com` (stays through the rebrand, D25) | client | Finance Pipeline, ten custom fields, five workflows (Stage 1) |
 | Ads / pixel | Meta — Refi Pixel + Conversions API | client | `Lead` event server-side from the FUNDD funnel (Stage 1, D31) |
@@ -38,14 +38,31 @@ Two deployables, two commands, both from the repo root. Each has been run only a
 this machine allows (no Docker, no project credentials here) — the first live run is the
 reviewer's, and its URL goes in the table above.
 
+**What was actually run on 25 Aug 2026, in order** (all with `SUPABASE_ACCESS_TOKEN` in the
+shell, never in a file): `supabase link --project-ref mxdfptqdshdgdszizlbo` → `supabase db
+push` (9 migrations applied; the token's login role connects without the database password)
+→ `supabase db query --linked -f supabase/seed.sql` (the two fixed-UUID staff identities +
+the GHL field map — `db push` does not run the seed) → `npm run staff -- bootstrap
+developer` (one-time password handed over out of band) → `npm run functions:bundle` +
+`supabase functions deploy chat --no-verify-jwt` → real `npm run web:build` + `npm run
+web:check` (0 hits, with the real key values present in the environment) → `vercel link` /
+`vercel env add` × 2 / `vercel deploy --prod`. **Stopped at `supabase secrets set`:** the
+Management API answers "Your account does not have the necessary privileges" — secrets need
+an organisation **Owner or Admin**, and the developer account is a project-level member of
+Ross's organisation. Until an Owner runs the `secrets set` line below (or sets the same
+names in Dashboard → Edge Functions → Secrets), the function answers `500 CONFIG` and the
+browser shows "Couldn't reach the assistant" (the CORS origin is one of those secrets).
+
 **The Edge Function** (Supabase — the client's project; nothing to pay):
 
 ```bash
 supabase login                              # once
 supabase link --project-ref <ref>           # once
-supabase secrets set ANTHROPIC_API_KEY=... ANTHROPIC_DAILY_SPEND_CAP_USD=5 \
-  ANTHROPIC_MONTHLY_SPEND_CAP_USD=50 SUPABASE_URL=... SUPABASE_ANON_KEY=... \
-  SUPABASE_SERVICE_ROLE_KEY=... CHAT_ALLOWED_ORIGIN=https://<the web app origin>
+# Owner/Admin of the organisation only. SUPABASE_URL / _ANON_KEY / _SERVICE_ROLE_KEY are
+# reserved names that the platform injects into every function — do not set them.
+supabase secrets set --project-ref mxdfptqdshdgdszizlbo ANTHROPIC_API_KEY=... \
+  ANTHROPIC_DAILY_SPEND_CAP_USD=5 ANTHROPIC_MONTHLY_SPEND_CAP_USD=50 CLAUDE_THINKING=disabled \
+  CHAT_ALLOWED_ORIGIN=https://fundd-command-centre.vercel.app
 npm run functions:bundle                    # writes supabase/functions/chat/index.ts (gitignored)
 supabase functions deploy chat --no-verify-jwt
 ```
