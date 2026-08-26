@@ -151,6 +151,11 @@ describe.skipIf(env === null)('Claude layer against a real stack', () => {
   afterAll(async () => {
     for (const user of created) {
       await db.query(`delete from public.api_usage where user_id = $1`, [user.id]);
+      // No memory hook is wired here, but the order is children-first regardless.
+      await db.query(
+        `delete from public.memory_chunks where conversation_id in (select id from public.conversations where user_id = $1)`,
+        [user.id],
+      );
       await db.query(
         `delete from public.messages where conversation_id in (select id from public.conversations where user_id = $1)`,
         [user.id],
