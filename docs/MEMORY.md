@@ -160,7 +160,33 @@ carries a header** — `Conversation: <title>` / `Date: <Perth date of the range
 message>` — above the note (`embeddingText`); the `summary` column stays the note alone.
 `ConversationRef` and `TurnSavedEvent` carry `title`. Pushed after: typecheck + lint clean,
 unit + security green (counts in §1).
-**Next:** CI → `db push` + function deploy → part 2 (facts + retrieval).
+**Deployed, 26 Aug (Voyage key arrived):** pre-flight on the live project — 0 chunks,
+`btree_gist` available, pgvector **0.8.2**, 4 live conversations / 10 messages / 4,085
+chars. `db push --dry-run` listed exactly `20260826010000`; applied; `migration list`
+local = remote. Live catalog: HNSW index (reported as `vector_cosine_ops`, unqualified —
+the CI #18 form), `memory_chunks_no_overlap` (contype x), `memory_chunks_turn_range_valid`,
+`turn_range` NOT NULL. Function bundled (3,627 lines, 0 key shapes) and deployed;
+`VOYAGE_API_KEY` set as a function secret from `.env` (46 chars, never printed; secrets
+list: ANTHROPIC_API_KEY, CHAT_ALLOWED_ORIGIN, VOYAGE_API_KEY).
+**First real Voyage response** (scratch script, in-memory ledger): 200, top-level keys
+`object/data/model/usage`, item keys `object/embedding/index/**text**`, 1,024 dims, all
+finite, norm 1.0000 (unit-normalised), `usage.total_tokens` 39, $0.000002. **One shape
+difference from the fixture: each item carries a `text` key echoing the input.** Zod's
+`z.object` strips unknown keys, so the adapter parsed it unchanged; the fixture is left
+as-is (documented here) rather than edited to add a field nothing reads.
+**`npm run memory -- flush 7180fb1a…`** (the 4-message "Write a Meta ad, and add a note…"
+conversation): planned `[1,5)`, inserted — Haiku 867 in / 116 out **$0.001447**, Voyage
+135 tokens **$0.000008**; stored chunk `a411a18b…`: `turn_range [1,5)`, workspace, dev
+user, **vector_dims 1024, norm 1.0000**, 511-char note (Meta ad "Renting Their Dream",
+40+ lenders, shortened on request). `api_usage` for that conversation: the two Stage 2
+`chat.turn` rows + `memory.summarise` + `memory.embed`. **Second flush: planned [], spent
+nothing** — the constraint-as-idempotency-key holds live. Memory adds **$0.001455** to a
+conversation that cost $0.011977 in turns (+12%).
+**Catch-up NOT run.** The other three live conversations (2 / 2 / 2 messages, 2,212 chars
+total) would cost ≈ 3 × ($0.0013 Haiku + $0.00001 Voyage) ≈ **$0.004** via
+`npm run memory -- sweep`; two are > 24 h idle now, the third becomes eligible at
+22:29 UTC 26 Aug. Left for the reviewer's call.
+**Next:** part 2 (facts + retrieval).
 
 ### 2026-08-25 — [FND-250 review] Copy strips Note:, streaming built, deploy target → Vercel; deploy blocked on Supabase CLI credentials
 
