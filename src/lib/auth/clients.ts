@@ -80,6 +80,19 @@ type MessagesRow = {
   created_at: string;
 };
 
+// Stage 3 part 1: memory_chunks (src/lib/memory/chunks.ts). The vector travels as its
+// text form ('[0.1,…]') and the range as Postgres text ('[1,11)') — PostgREST casts both.
+type MemoryChunksRow = {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  scope: string;
+  summary: string;
+  embedding: string | null;
+  turn_range: string;
+  created_at: string;
+};
+
 type AuditLogInsert = {
   actor: string;
   action: string;
@@ -119,6 +132,13 @@ export type Database = {
         Insert: Pick<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'> &
           Partial<Omit<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'>>;
         Update: Partial<MessagesRow>;
+        Relationships: [];
+      };
+      memory_chunks: {
+        Row: MemoryChunksRow;
+        Insert: Omit<MemoryChunksRow, 'id' | 'created_at'> &
+          Partial<Pick<MemoryChunksRow, 'id' | 'created_at'>>;
+        Update: Partial<MemoryChunksRow>;
         Relationships: [];
       };
     };

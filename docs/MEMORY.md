@@ -19,12 +19,12 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug). Six delivery stages, not five phases. The B2B outbound lead-research engine is **out of scope** — see D23 |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
-| Active stage | **Stage 2 — Foundations + AI trained on voice** |
+| Active stage | **Stage 3 — Memory + dashboard** (client approved the start after using the deployed Stage 2 app; Stage 2 part 7 acceptance evidence is recorded, sign-off/payment 2 still to be confirmed in writing). **Part 1 of 5 (FND-300, embeddings + summarisation) is staged, NOT committed — see the 26 Aug entry** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240) and part 6 (FND-250, chat interface) are staged, NOT committed** — `web/` dashboard, history in the turn (2.6.2a), Edge Function bundling (2.6.3), browser suite + screenshots, bundle grep in CI. Reviewer reads the FND-250 report → push → CI (`checks` + `integration` + new `browser` job) → **deploy** (RUNBOOK §1a: `supabase db push` → `supabase functions deploy chat` → `vercel deploy --prod` → `CHAT_ALLOWED_ORIGIN`; **deployed and proven live — first turn in voice, one `api_usage` row**, see the 25 Aug review entry) → record the URL (2.6.5) → **part 7** — end-to-end test and Stage 2 acceptance |
+| Next task | **Stage 3 part 1 (FND-300) awaits review** — reviewer reads the report → push → CI (`integration` job runs `db reset` from zero with the new migration, `memory.test.ts`, the extended RLS/schema suites) → `supabase db push` + `supabase functions deploy chat` → **`supabase secrets set VOYAGE_API_KEY=…` once the client's key arrives (R5)** → part 2 (durable facts + retrieval). *Stage 2 history:* **Parts 1–4 are pushed and green** (CI run 32790242804). **Part 5 (FND-240) and part 6 (FND-250, chat interface) are staged, NOT committed** — `web/` dashboard, history in the turn (2.6.2a), Edge Function bundling (2.6.3), browser suite + screenshots, bundle grep in CI. Reviewer reads the FND-250 report → push → CI (`checks` + `integration` + new `browser` job) → **deploy** (RUNBOOK §1a: `supabase db push` → `supabase functions deploy chat` → `vercel deploy --prod` → `CHAT_ALLOWED_ORIGIN`; **deployed and proven live — first turn in voice, one `api_usage` row**, see the 25 Aug review entry) → record the URL (2.6.5) → **part 7** — end-to-end test and Stage 2 acceptance |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local 25 Aug (part 6, uncommitted): typecheck + lint clean; unit 712/712, coverage 94.87% lines / 90.69% branches; browser 48/48 at 375 / 768 / 1280; `web:check` 0 hits; security 6/6 with 20 stack-dependent skipped, integration 21 skipped (no Docker).** **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
-| Known broken | Supabase project is **ACTIVE_HEALTHY** (found unpaused 24 Aug, runs Postgres 17.6) but its **schema is still empty** — migrations are written and validated, not yet applied (apply via CLI on push/credentials, never via MCP). Notion databases exist but hold no rows and have no views |
+| Last regression run | **Local 26 Aug (Stage 3 part 1, uncommitted): typecheck + lint clean; unit + security 825/825 with 21 stack-dependent skipped (no Docker), coverage 94.56% lines / 90.3% branches / 94.89% functions; voice conformance 291/291 untouched at v2026-08-25.4; `web:check` 0 hits with real values present; Edge bundle 3,542 lines, 0 key shapes; integration suite (incl. new `memory.test.ts`) skipped locally — CI.** **Local 25 Aug (part 6, uncommitted): typecheck + lint clean; unit 712/712, coverage 94.87% lines / 90.69% branches; browser 48/48 at 375 / 768 / 1280; `web:check` 0 hits; security 6/6 with 20 stack-dependent skipped, integration 21 skipped (no Docker).** **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
+| Known broken | Supabase project **ACTIVE_HEALTHY**, Postgres 17.6, **9 migrations applied 25 Aug**; the **10th (`20260826010000_memory_chunks_stage3`) is written and unit-validated but not yet applied — `supabase db push` after review**. Voyage key not yet received (R5): the deployed chat will log `memory layer disabled` per invocation until `supabase secrets set VOYAGE_API_KEY`. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
 ---
@@ -74,6 +74,9 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D38** | **The voice prompt is code — `src/lib/voice/rules.ts`, every rule carrying its CLIENT-CONTEXT section — versioned by `VOICE_PROMPT_VERSION` + a content hash that the conformance fixtures pin to. Refining the voice is a commit, not a runtime edit** | The brief's ideal was "refinable without a redeploy, like the model". A prompt edited outside the repo cannot be traced to a client source, proven by the suite, reviewed or reverted — the same reasoning as D18 for schema. The runtime seam for *live* refinement exists (`buildVoiceSystemBlocks({ belowBreakpoint })`, uncached, capped) and is where Stage 3 workspace memory facts land: "train it as I go" becomes facts below the breakpoint, not edits to the traced prefix. `docs/VOICE.md` §3 | 25 Aug |
 | **D39** | **Extended thinking is OFF by default on every Claude call (`CLAUDE_THINKING=disabled`, config.ts); the request always sends the field explicitly** | Sonnet 5 thinks *adaptively when the field is omitted*, bills it as output and counts it against `max_tokens`: at 1,024 the first voice recording returned **empty** replies (1,023 thinking tokens, no text) and truncated posts, and cost twice as much. Part 4 sent no field and would have saved an empty assistant turn. Copywriting with no tools gains nothing from reasoning; turning it on is a priced, per-route decision | 25 Aug |
 | **D37** | **`review_queue.entity_type` check constraint is `('consumer_lead','web_fact','content_draft')`** | All three producers are already named in binding docs: a lead the sync could not place (RUNBOOK §3), a stored website fact below confidence (Stage 4, SCHEMA §2a), a generated draft that failed the voice/review check (Stage 5, SCHEMA §5 names `content_draft`). The constraint's job is rejecting typos and parked-era values (`org`, `contact`), not tracking which stage is live — an unused value costs nothing, widening a check on a live queue is a migration. Validated: `'org'` is refused with a check_violation | 24 Aug |
+| **D40** | **Summarisation trigger: after each saved turn, every complete window of 10 uncovered messages becomes one chunk; an uncovered tail (≥ 2 messages) whose newest settled message is older than 24 h becomes one smaller chunk on the next turn or from the sweep; at most 3 chunks per trigger; `npm run memory -- flush` forces the whole tail.** Chunk = 10 messages (5 exchanges), `turn_range` = half-open range over 1-based message ordinals, tiled with no gaps; overlap refused by an exclusion constraint | Per-turn summarisation burns a Haiku + Voyage call on every message and re-summarises the same text; per-conversation-only never fires while a conversation is open and leaves a 5-message conversation as no memory at all. Size windows give constant cost per N messages with the live end still in the verbatim history window (20 messages); the idle rule means nothing said is lost after a day. Ten messages is half the history window — an episode, not a wall. The constraint, not the code, is the idempotency key | 26 Aug |
+| **D41** | **The summariser is Haiku 4.5 (`route: 'fast'`) with its own plain system prompt — never the voice prefix. Voyage has its OWN caps (0.50/day, 5/month by default), checked before the summary is paid for; the client's ceiling is the sum ($50 + $5). Memory scope is the conversation's (trigger): a private conversation yields a private chunk** | Measured: $0.00212 per chunk on Haiku vs $0.0064 on Sonnet for a task that is compression, not writing. The voice prefix would cost 3,017 cached tokens per chunk and push the note into copy register; a note must be dense and third-person. A shared cap would mean widening every `spentSince('anthropic')` read for a provider that cannot reach $50 by honest use; a small own cap trips sooner on the only real risk (a loop). Scope: "one brain" (D33) holds for summaries exactly as for messages, and the existing parent-sync trigger already enforces it | 26 Aug |
+| **D42** | **`memory_chunks.embedding` is indexed with HNSW, not ivfflat (migration `20260826010000`)** — supersedes the part-2 `ivfflat` line in SCHEMA §4 | ivfflat computes centroids from the rows present at `create index`; created on an empty table (as part 2 did) it is untrained, and pgvector says to build it only once data exists and rebuild as it grows — a chore that would sit in the RUNBOOK unrun. HNSW has no training step, better recall at the same speed, and suits a table that grows one conversation at a time; build cost is irrelevant at thousands of rows | 26 Aug |
 
 ---
 
@@ -90,6 +93,74 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-08-26 — [FND-300 · Stage 3 part 1] Embeddings and conversation summarisation — staged, NOT committed
+
+**Did:** `src/lib/memory/` — `config.ts` (sole reader of `VOYAGE_API_KEY`; Voyage + policy
+knobs, all with defaults except the key), `embed.ts` (Voyage `voyage-3` 1024-d adapter:
+cap before HTTP with `checkBudget`, timeout, idempotent retries via `http.ts`, Zod on the
+reply, dimension check before the column ever sees a vector, `api_usage` row per call under
+`provider = 'voyage'`), `summarise.ts` (Haiku on `route: 'fast'`, own system prompt,
+delimited transcript labelled as data, validated, one retry with the reason), `policy.ts`
+(pure: size windows + idle tail + force; int4range parse/format), `chunks.ts` (supabase-js
+store: coverage, ordinal window, insert with `23P01 → exists`, idle list), `trigger.ts`
+(`summariseConversation`, the after-turn hook that never rejects, the sweep). `chat.ts`
+gains optional `afterTurn` / `waitUntil`, scheduled after `appendTurn` on both paths and
+awaited by nobody; the Edge Function passes `EdgeRuntime.waitUntil`; `wiring.ts` wires the
+hook only when the key is present and otherwise warns per invocation. `UsageRecord.provider`
+widened to `'anthropic' | 'voyage'`. Logger redacts the `pa-` key shape. Migration
+`20260826010000_memory_chunks_stage3.sql` (D40, D42): `btree_gist`, `turn_range not null` +
+valid, `memory_chunks_no_overlap` exclusion, ivfflat → HNSW. `scripts/memory.ts` →
+`npm run memory -- flush | sweep | preview`. Fixtures: `tests/fixtures/voyage/*` (fixture
+vector — no real Voyage output exists yet), `tests/fixtures/anthropic/summary-ok.json`
+(a **recorded Haiku summary** of a synthetic ten-message transcript, 915 in / 241 out).
+Docs: SCHEMA §4, SECURITY §8, TESTING §3e/§4, RUNBOOK §1/§3/§4, TASKS 3.1/3.2.x,
+PHASE-ACCEPTANCE Stage 3 evidence, CLAUDE §5, `.env.example`.
+**Decided:** D40 (trigger + chunk), D41 (Haiku, own caps, scope), D42 (HNSW). No key ⇒
+memory off with a loud warning, chat unaffected — the key is a client deliverable that may
+arrive after this ships, and refusing every turn for it would be the wrong failure. A
+rejected summary is retried once then left uncovered for the next trigger — not routed to
+`review_queue` (D37 has no entity type for it, and the source messages are intact). A later
+range is never written while an earlier one failed, because coverage is "highest bound
+written" and the gap would never be revisited.
+**Measured:** typecheck + lint clean; unit + security **825/825, 21 stack-dependent
+skipped**, coverage **94.56 % lines / 90.3 % branches / 94.89 % functions**; voice
+conformance 291/291 untouched; `web:check` 0 hits with the real service-role and Anthropic
+values present; a `pa-`/voyage grep of `web/dist` → 0 files; Edge bundle 3,542 lines, 0 key
+shapes. Two live Haiku summaries of synthetic transcripts (`npm run memory -- preview`):
+**$0.00212** (915/241) and **$0.001872** (782/218) — specific, third-person, every
+correction and preference kept. Per chunk ≈ $0.0021 + $0.0000127 Voyage ≈ **$0.00043 per
+turn** (+18 % on the $0.0023 placeholder turn, +8 % on the $0.0055 warm voice turn); Sonnet
+would be 3×. `docs/CLIENT-CONTEXT.md` blob `0ef1fd32…` identical to HEAD.
+**Not verified here (no Docker, no Voyage key):** `supabase db reset` from zero with the
+10th migration, `memory.test.ts`, the extended `rls.test.ts` / `schema.test.ts`, the
+`EdgeRuntime.waitUntil` path under the Deno runtime, and any real Voyage response — the
+fixture vector is synthetic. Unlock: CI's integration job for the first four; the client's
+key for the last (then `supabase secrets set VOYAGE_API_KEY`, one real turn past ten
+messages, and one `npm run memory -- flush`).
+**Surprised by:** supabase-js `.range()` sends `offset`/`limit` query params, not a `Range`
+header (a unit assertion caught the assumption); the Part-2 ivfflat was built on an empty
+table, which is exactly the case pgvector warns against; the "exactly one reader" secrets
+test also catches a *comment* naming the variable, which is the right strictness.
+**Review (same day), two changes before push:** (1) **Access decisions are not memory** —
+the live summary of transcript B had recorded "the user's daughter Mia … should receive the
+same treatment as the user for draft requests" into what would be a workspace chunk. The
+prompt now records what was discussed/decided/preferred about the work only, never who may
+do what; `ACCESS_PATTERNS` in `summarise.ts` rejects such a sentence in code (rule 13, one
+retry with the reason; if the retry still carries a claim the sentence is stripped and the rest
+stored — `stripAccessClaims`), tested on that exact sentence, on Haiku's own rephrasing
+("her requests should be treated identically to the user's" — which the first pattern set
+missed, found by re-running live) and on five work-level sentences that must pass. Live,
+transcript B: attempt 1 rejected with the reason ("same treatment"), attempt 2 reads "Mia was
+mentioned as someone now helping with the page" — a mention, no standing; /usr/bin/bash.0038 for the
+two calls. Found on the way: Zod 4's function-form refine message was not applied (the model
+saw "Invalid input"), so the access check is a plain function after the schema.
+(2) **The embedded text
+carries a header** — `Conversation: <title>` / `Date: <Perth date of the range's newest
+message>` — above the note (`embeddingText`); the `summary` column stays the note alone.
+`ConversationRef` and `TurnSavedEvent` carry `title`. Pushed after: typecheck + lint clean,
+unit + security green (counts in §1).
+**Next:** CI → `db push` + function deploy → part 2 (facts + retrieval).
 
 ### 2026-08-25 — [FND-250 review] Copy strips Note:, streaming built, deploy target → Vercel; deploy blocked on Supabase CLI credentials
 

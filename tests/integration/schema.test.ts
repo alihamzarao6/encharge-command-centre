@@ -219,6 +219,66 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
     expect(after.rows[0]?.scope).toBe('user');
   });
 
+  it('memory_chunks (Stage 3 part 1): no overlapping ranges, a mandatory valid range, HNSW on the embedding', async () => {
+    const conv = await db.query<{ id: string }>(
+      `insert into public.conversations (user_id, scope, title)
+       values ($1, 'workspace', $2) returning id`,
+      [ROSS, `schema-test-${RUN} chunks`],
+    );
+    const convId = conv.rows[0]?.id ?? '';
+    const vector = `[${Array.from({ length: 1024 }, (_, i) => (i === 0 ? '1' : '0')).join(',')}]`;
+    const insert = (range: string): Promise<unknown> =>
+      db.query(
+        `insert into public.memory_chunks (conversation_id, user_id, scope, summary, embedding, turn_range)
+         values ($1, $2, 'workspace', $3, $4::vector, $5::int4range)`,
+        [convId, ROSS, `schema-test-${RUN} chunk ${range}`, vector, range],
+      );
+
+    await insert('[1,11)');
+    // The same range, an overlapping one, and a sub-range: all refused by the constraint.
+    await expect(insert('[1,11)')).rejects.toThrow(/memory_chunks_no_overlap/);
+    await expect(insert('[5,15)')).rejects.toThrow(/memory_chunks_no_overlap/);
+    await expect(insert('[3,4)')).rejects.toThrow(/memory_chunks_no_overlap/);
+    // The next tile is fine.
+    await insert('[11,21)');
+    // No pointer, an empty pointer, a pointer starting at 0: refused.
+    await expect(
+      db.query(
+        `insert into public.memory_chunks (conversation_id, user_id, scope, summary, embedding)
+         values ($1, $2, 'workspace', 'no range', $3::vector)`,
+        [convId, ROSS, vector],
+      ),
+    ).rejects.toThrow(/null value in column "turn_range"/);
+    await expect(insert('[30,30)')).rejects.toThrow(/memory_chunks_turn_range_valid/);
+    await expect(insert('[0,5)')).rejects.toThrow(/memory_chunks_turn_range_valid/);
+
+    const stored = await db.query<{ turn_range: string; dims: number }>(
+      `select turn_range::text, vector_dims(embedding) as dims
+       from public.memory_chunks where conversation_id = $1 order by lower(turn_range)`,
+      [convId],
+    );
+    expect(stored.rows).toStrictEqual([
+      { turn_range: '[1,11)', dims: 1024 },
+      { turn_range: '[11,21)', dims: 1024 },
+    ]);
+
+    const index = await db.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes
+       where schemaname = 'public' and indexname = 'memory_chunks_embedding_idx'`,
+    );
+    expect(index.rows[0]?.indexdef).toMatch(
+      /USING hnsw \(embedding extensions\.vector_cosine_ops\)/,
+    );
+    expect(index.rows[0]?.indexdef).not.toMatch(/ivfflat/);
+
+    const ext = await db.query<{ extname: string }>(
+      `select extname from pg_extension where extname = 'btree_gist'`,
+    );
+    expect(ext.rows).toStrictEqual([{ extname: 'btree_gist' }]);
+
+    await db.query(`delete from public.memory_chunks where conversation_id = $1`, [convId]);
+  });
+
   it('memory_facts refuses a second live value for the same key', async () => {
     const key = `schema_test_dup_${RUN}`;
     await db.query(

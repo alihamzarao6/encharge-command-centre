@@ -291,11 +291,40 @@ created_at`
 `user_id` and `scope` are denormalised from the conversation so the RLS policy is a column
 check, not a join. A trigger keeps them equal to the parent's.
 
-### memory_chunks — semantic memory (populated from Stage 3)
+### memory_chunks — semantic memory (written from Stage 3 part 1, FND-300)
 `id · conversation_id FK · user_id not null · scope not null · summary not null ·
-embedding vector(1024) · turn_range int4range · created_at`
-Index: `ivfflat (embedding vector_cosine_ops)`. Embeddings are Voyage `voyage-3`, 1024
-dimensions (R5 — account still to be created, needed before Stage 3, not before Stage 2).
+embedding vector(1024) · turn_range int4range not null · created_at`
+
+A chunk is **a summary plus a pointer**, never a second copy of the messages. Written by
+`src/lib/memory/` (26 Aug 2026, migration `20260826010000_memory_chunks_stage3.sql`):
+
+- **`turn_range`** is a half-open `[lo, hi)` over **1-based message ordinals** of the
+  conversation in `(created_at, id)` order — every row counts, tool rows included, so an
+  ordinal never moves. `not null`, `lo >= 1`, non-empty (`memory_chunks_turn_range_valid`).
+  Chunks tile a conversation from ordinal 1: the next chunk always starts at the highest
+  `hi` written so far. One chunk = **10 messages** (five exchanges) by default
+  (`MEMORY_CHUNK_MESSAGES`), or a shorter idle tail — the policy is `src/lib/memory/policy.ts`.
+- **`memory_chunks_no_overlap`** — `exclude using gist (conversation_id with =, turn_range
+  with &&)` (needs `btree_gist`). The idempotency key: two writers racing on the same range
+  cannot both land, and a re-run of the same summarisation is refused by the database
+  (`23P01`), which the store reports as `exists`.
+- **Index: `hnsw (embedding vector_cosine_ops)`** — replaces the part-2 `ivfflat`. ivfflat
+  computes its centroids from the rows present at `create index`; built on an empty table it
+  is untrained and pgvector says to create it only once data exists and rebuild as it grows.
+  HNSW needs no training, gives better recall for the same query time, and suits a table
+  that grows one conversation at a time. Retrieval (part 2) queries with `<=>`.
+- `user_id` / `scope` are the parent conversation's (trigger, as for `messages`): a chunk of
+  a private conversation is private, a scope flip cascades, and the RLS policy needs no join.
+
+**What is embedded** is the note under a two-line header — `Conversation: <title>` and
+`Date: <Perth calendar date of the range's newest message>` (`embeddingText`,
+`src/lib/memory/summarise.ts`) — so part 2's retrieval can match on what a conversation
+was called and when, not only on the note's words. `summary` stores the note alone; the
+header is reproducible from `conversations.title` and the range's messages.
+
+Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document` (R5 — the key is
+still to arrive; without it the chat runs and no chunk is written). Cost per chunk is in
+`SECURITY.md` §8.
 
 ### memory_facts — structured memory (populated from Stage 3)
 `id · user_id not null · scope not null · key · value · confidence · source_message_id ·

@@ -5,23 +5,70 @@
  *
  * The environment is passed in, never read implicitly: on Deno it is Deno.env, on Node it
  * is process.env, and in tests it is a literal.
+ *
+ * Stage 3 part 1: the memory hook is wired when — and only when — the Voyage key is set
+ * (config.ts is its only reader).
+ * Without it the chat works exactly as in Stage 2 and every invocation logs a warning, so
+ * "memory is off" is visible in the function logs rather than silent. A PRESENT but
+ * malformed memory configuration is a CONFIG error like any other: the operator set it and
+ * got it wrong, and a wrong cap must not be guessed at.
  */
 import {
   createServiceClient,
   loadSupabaseAuthConfig,
   supabaseVerifyDeps,
+  type ServiceClient,
 } from '../auth/clients.js';
 import { ok, type ConfigError, type Result } from '../errors.js';
 import { createHttpClient } from '../http.js';
 import type { Logger } from '../logger.js';
+import { supabaseChunkStore } from '../memory/chunks.js';
+import {
+  MEMORY_DISABLED_WARNING,
+  hasVoyageKey,
+  loadMemoryConfig,
+  type MemoryConfig,
+} from '../memory/config.js';
+import { createVoyageEmbedder } from '../memory/embed.js';
+import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
 import type { ChatDeps } from './chat.js';
-import { createClaudeClient } from './client.js';
+import { createClaudeClient, type ClaudeClient } from './client.js';
 import { loadLlmConfig } from './config.js';
 import { supabaseConversationStore, supabaseUsageStore } from './store.js';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-export function createChatDeps(env: Env, log: Logger): Result<ChatDeps, ConfigError> {
+/** The memory layer's dependencies from one service client and the shared Claude client. */
+export function createMemoryDeps(
+  config: MemoryConfig,
+  service: ServiceClient,
+  claude: ClaudeClient,
+  log: Logger,
+): MemoryDeps {
+  const http = createHttpClient({
+    timeoutMs: config.voyage.timeoutMs,
+    retries: config.voyage.retries,
+    logger: log,
+  });
+  return {
+    claude,
+    embedder: createVoyageEmbedder({
+      config: config.voyage,
+      http,
+      usage: supabaseUsageStore(service),
+      log,
+    }),
+    chunks: supabaseChunkStore(service),
+    policy: config.policy,
+    log,
+  };
+}
+
+export function createChatDeps(
+  env: Env,
+  log: Logger,
+  waitUntil?: (work: Promise<void>) => void,
+): Result<ChatDeps, ConfigError> {
   const supabase = loadSupabaseAuthConfig(env);
   if (!supabase.ok) return supabase;
   const llm = loadLlmConfig(env);
@@ -42,11 +89,22 @@ export function createChatDeps(env: Env, log: Logger): Result<ChatDeps, ConfigEr
     log,
   });
 
+  let afterTurn: ChatDeps['afterTurn'];
+  if (hasVoyageKey(env)) {
+    const memory = loadMemoryConfig(env);
+    if (!memory.ok) return memory;
+    afterTurn = createAfterTurnHook(createMemoryDeps(memory.value, service, claude, log));
+  } else {
+    log.warn(MEMORY_DISABLED_WARNING);
+  }
+
   return ok({
     verify: supabaseVerifyDeps(service),
     claude,
     conversations: supabaseConversationStore(service),
     log,
     history: llm.value.history,
+    ...(afterTurn === undefined ? {} : { afterTurn }),
+    ...(waitUntil === undefined ? {} : { waitUntil }),
   });
 }

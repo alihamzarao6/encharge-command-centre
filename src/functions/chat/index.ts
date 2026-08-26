@@ -65,7 +65,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'POST only.' } });
   }
 
-  const deps = createChatDeps(Deno.env.toObject(), logger);
+  // Stage 3: memory summarisation runs after the reply is sent. EdgeRuntime.waitUntil keeps
+  // the isolate alive for it; without it (local `supabase functions serve` on an older
+  // runtime) the promise still runs, just without the lifetime guarantee.
+  const waitUntil =
+    typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function'
+      ? (work: Promise<void>): void => {
+          EdgeRuntime.waitUntil(work);
+        }
+      : undefined;
+  const deps = createChatDeps(Deno.env.toObject(), logger, waitUntil);
   if (!deps.ok) {
     // Config errors name the missing VARIABLE, never a value.
     logger.error('chat function misconfigured', { error: deps.error });

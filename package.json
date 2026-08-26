@@ -2,7 +2,7 @@
   "name": "encharge-command-centre",
   "version": "0.1.0",
   "private": true,
-  "description": "AI assistant for Encharge Capital / Fundd \u2014 voice-trained, persistent memory, website reading, content generation, dashboard over GoHighLevel and Meta",
+  "description": "AI assistant for Encharge Capital / Fundd — voice-trained, persistent memory, website reading, content generation, dashboard over GoHighLevel and Meta",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -26,7 +26,8 @@
     "web:build": "vite build --config web/vite.config.ts",
     "web:preview": "vite preview --config web/vite.config.ts",
     "web:check": "tsx scripts/check-bundle.ts",
-    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts"
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "memory": "tsx scripts/memory.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

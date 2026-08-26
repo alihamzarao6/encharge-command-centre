@@ -1,0 +1,30 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "id": "msg_01FixtureSummaryStage3Part1",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "The user is a mortgage broker at a small Australian brokerage serving tradies in Perth. The brokerage is rebranding from Encharge Capital to Fundd in October and the user wants the assistant to stop using Encharge in any posts or ad copy going forward; the Fundd name should appear only in the page name, not in post text itself. The user prefers plain language suited to tradies and dislikes commitments like \"fifteen-minute\" promises in copy. The brokerage uses the term \"Discovery Sessions\" (not \"chats\") for client consultations. The assistant drafted a Facebook post about offset accounts that the user approved after removing the fifteen-minute line and adding a Discovery Session call-to-action. The user requested two additional post angles on offsets for later in the month. The assistant provided an invoice-cycle angle and a BAS/tax-time angle. The user wants to use the BAS angle but is parking the invoice angle because a competitor already runs similar messaging. The assistant should draft the BAS angle post at the same length as the first approved post when the user is ready."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 915,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 241,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

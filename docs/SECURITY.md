@@ -296,6 +296,45 @@ thinks adaptively when the field is omitted, bills it as output and counts it ag
 doubled the cost of a copy turn. Copywriting with no tools gains nothing from it. Turning it
 on is a deliberate, priced decision per route, not a default.
 
+**Memory layer (Stage 3 part 1, 26 Aug 2026).** Two more metered calls exist, both off the
+reply's critical path:
+
+- **Summarisation** goes through the same Claude client on the `fast` route (Haiku 4.5,
+  `operation = 'memory.summarise'`) and is therefore under the **Anthropic** caps above.
+- **Embedding** goes to Voyage AI (`src/lib/memory/embed.ts`, `provider = 'voyage'`,
+  `operation = 'memory.embed'`) under **its own caps** — `VOYAGE_DAILY_SPEND_CAP_USD`
+  (default 0.50) and `VOYAGE_MONTHLY_SPEND_CAP_USD` (default 5), same UTC windows, same
+  `spent + worst case of this call` check, same fail-closed rule, same ledger. Own caps
+  rather than a share of the $50 because Voyage at $0.06 per million tokens cannot reach
+  $50 by honest use — its only failure mode is a runaway loop, and a small cap trips on
+  that far sooner than a shared large one. **The client's hard ceiling is the sum: $50 + $5.**
+  The Voyage cap is checked **before** the summary is paid for (`checkBudget`), so a tripped
+  Voyage cap costs nothing at all. Voyage's key is read by exactly one module
+  (`src/lib/memory/config.ts`, asserted by `tests/security/voyage-key.test.ts`), sent as one
+  `Authorization` header, and redacted by the logger by key name and by the `pa-` shape.
+- **Access decisions are not memory** (review, 26 Aug). A chunk is workspace-readable and
+  can be replayed by retrieval weeks later, so a note must never record who may do what,
+  who has permission, or who should be treated as whom — that lives in `app_users`. The
+  summariser prompt forbids it and `validateSummary` rejects it by pattern
+  (`ACCESS_PATTERNS`, `src/lib/memory/summarise.ts`), sending the model back once with the
+  reason; if the retry still carries one, the offending sentence(s) are stripped and the
+  rest stored (`stripAccessClaims`) — otherwise a transcript that keeps producing the
+  sentence would pay two Haiku calls per turn forever and never be stored. Tested on the
+  sentence that prompted the rule ("…should receive the same treatment as the user for
+  draft requests") and on Haiku's own rephrasing of it ("…treated identically to the
+  user's").
+- Embeddings are idempotent, so `http.ts` retries them (default 2) with backoff and jitter;
+  a retried timeout can at worst bill the same ~200 tokens twice (≈ $0.00001). Timeouts and
+  transport failures after send are recorded as `memory.embed:unconfirmed` reservations.
+
+**What memory costs (measured 26 Aug 2026, Haiku 4.5, a ten-message conversation):** the
+summary was 915 input + 241 output tokens = 915 × $1/M + 241 × $5/M = **$0.00212**; its
+embedding was 212 tokens × $0.06/M = **$0.0000127**. One chunk ≈ **$0.0021 per 10 messages
+(5 turns)** ≈ **$0.00043 per turn** — +18% on the $0.0023 placeholder turn, +8% on the
+$0.0055 warm voice turn. Sonnet would have been 915 × $3/M + 241 × $15/M = $0.0064 per
+chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 chunks ≈
+**$0.13/month**; at 1,000 turns, ~$0.43/month. Voyage is ~0.6% of that.
+
 ---
 
 ## 9. Third-party tokens

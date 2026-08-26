@@ -21,7 +21,7 @@ kept in full.
 | n8n | Railway | client | Orchestration (from Stage 3) |
 | Database | Supabase (Sydney) | client | Source of truth — confirmed platform (D24) |
 | AI | Anthropic Console | client | Claude API — **key is server-side only, never in a browser (R18, SECURITY §2)** |
-| Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — account still to be created) |
+| Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — **account still to be created; the code is built and tested against fixtures, the key is the only thing missing**). Read by `src/lib/memory/config.ts` only; own spend caps (SECURITY §8). Without `VOYAGE_API_KEY` in the function's secrets the chat runs normally and every invocation logs `memory layer disabled` |
 | Chat / dashboard | Static web app (`web/`) on **Vercel** — **https://fundd-command-centre.vercel.app** (project `fundd-command-centre`, scope `alihamzarao6s-projects` until handover; deployed 25 Aug 2026) | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
 | Chat endpoint | Supabase Edge Function `chat` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/chat** (project `mxdfptqdshdgdszizlbo`, Sydney; deployed 25 Aug 2026, secrets set, first live turn proven the same day) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
 | Internal surface | Notion | client | Internal working surface; eight databases exist (MEMORY 10 Aug) |
@@ -201,6 +201,33 @@ paid tier, which is a client cost decision.
 
 ---
 
+### Memory is not summarising (Stage 3 part 1)
+
+Chunks are written by the chat function **after** each reply, off the critical path, so a
+failure never shows in the interface — it shows in the function logs and as an absence of
+`memory_chunks` rows. In order:
+
+1. `supabase functions logs chat` — look for `memory layer disabled` (no `VOYAGE_API_KEY`
+   secret), `voyage spend cap reached` (raise `VOYAGE_*_SPEND_CAP_USD` or wait for the UTC
+   window), `summary rejected by validation` (Haiku output refused twice — the range is
+   retried on the next turn; a persistent rejection means the prompt in
+   `src/lib/memory/summarise.ts` needs a look), `embed failed` / `voyage error response`
+   (the Voyage side; a 401 is the key).
+2. Nothing wrong but no chunk? The policy needs **10 uncovered messages**, or a tail older
+   than **24 h** revisited by a new turn or the sweep. A short live conversation is not
+   summarised yet, by design.
+3. **Force it:** `npm run memory -- flush <conversationId>` summarises the whole uncovered
+   tail of that conversation now (needs the server env in `.env`). `npm run memory -- sweep`
+   does the idle rule across conversations — what a schedule will call from part 5.
+4. To read what a note looks like without a database: `npm run memory -- preview
+   <transcript.json>` (`[{ "role": "user"|"assistant", "content": "…" }]`).
+
+Every chunk written costs one Haiku call and one Voyage call, both in `api_usage`
+(`memory.summarise`, `memory.embed`). A re-run of a covered range costs nothing and writes
+nothing — the database refuses the overlap.
+
+---
+
 ## 4. Key rotation
 
 Per key: generate new → update in Railway / Supabase Vault → redeploy or restart n8n → verify
@@ -221,6 +248,12 @@ server environment of the chat endpoint; after rotating, confirm no `sk-ant-` st
 in any deployed client asset (the Stage 2 acceptance check). R18 — the client's previous
 prototype published a key in page source; if that key has still not been confirmed revoked,
 do it now, it is independent of everything else.
+
+The Voyage key (Stage 3) is rotated at dash.voyageai.com → API keys. It lives only in the
+chat function's secrets (`supabase secrets set VOYAGE_API_KEY=…`, re-read on the next
+invocation, no redeploy) and in the developer's `.env` for the `npm run memory` runner. After
+rotating, confirm no `pa-` key shape exists in any deployed client asset — the same grep as
+for the Anthropic key; `tests/security/voyage-key.test.ts` runs it on source and fixtures.
 
 The Meta Conversions API token is scoped to Refi Pixel only (D31). Where it is configured
 and how to regenerate it is recorded at Stage 6 handover.

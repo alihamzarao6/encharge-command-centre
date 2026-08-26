@@ -97,6 +97,17 @@ before Stage 2 sign-off. 100% on the recorded set is the gate. Full detail: `doc
 Fixtures are recorded real responses committed to the repo, so the suite runs offline and
 deterministically. Re-record deliberately, in a dedicated commit, never as a side effect.
 
+**e. Memory layer (Stage 3 part 1).** `tests/unit/memory/` — the chunking policy as
+arithmetic (`policy.test.ts`), the Voyage adapter over scripted fetches
+(`tests/fixtures/voyage/`: a 1024-d fixture vector, a two-input reply, wrong dimensions,
+429, 401), the summariser's prompt/validation/retry, the supabase-js chunk store over
+PostgREST-shaped stubs, and the trigger end to end with the real Claude client and the real
+Voyage adapter over fixtures (`tests/fixtures/anthropic/summary-ok.json` is a **recorded
+Haiku summary** of a synthetic transcript — 915 in / 241 out — so the cost assertions are
+real numbers). `tests/unit/llm/chat-memory.test.ts` proves the hook cannot change a reply.
+`npm run memory -- preview <transcript.json>` summarises a transcript live to read what a
+note looks like before trusting it.
+
 ---
 
 ## 4. Integration tests
@@ -108,7 +119,16 @@ npm run test:int
 
 Coverage required:
 - Migrations replay from zero into a working schema
-- RLS suite (SECURITY.md section 6) across every table
+- RLS suite (SECURITY.md section 6) across every table — including `memory_chunks`: a chunk
+  under a workspace conversation is read by every allowlisted user with the parent's
+  ownership, a chunk under a private conversation only by its owner, none by an outsider
+- **Memory layer (`tests/integration/memory.test.ts`, Stage 3 part 1):** ten messages →
+  exactly one chunk with `turn_range [1,11)`; the same run again → still one, no fetch, no
+  new `api_usage` row; the stored vector is 1,024-d with a non-zero norm; one `voyage` and
+  one `anthropic` row per chunk with the fixture's tokens and the arithmetic's cost; Voyage
+  cap 0 → nothing fetched or written; a broken Voyage behind `handleChatTurn` still answers
+  200 and saves the turn. `schema.test.ts` proves the no-overlap constraint, the mandatory
+  valid range and the HNSW index
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL

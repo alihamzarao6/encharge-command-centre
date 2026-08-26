@@ -159,6 +159,22 @@ from Scope v3 and the 09 Aug Phase 4 criteria that survive:*
 - n8n on Railway with Postgres backing, encrypted credentials, HMAC-verified webhooks.
 - Voyage AI account created (client responsibility, R5).
 
+**Part 1 (FND-300, 26 Aug 2026) evidence, code level — the eight Part C assertions:**
+(1) ten messages → exactly one chunk, `turn_range [1,11)` — `trigger.test.ts` "1." and
+`memory.test.ts` "1."; (2) re-run → no second chunk, nothing spent — "2." and "2b." (the
+constraint path) in both; (3) 1,024 dimensions, non-zero — "3." in both (`vector_dims` /
+`vector_norm` on the stored row in the integration suite); (4) one `voyage` and one
+`anthropic` `api_usage` row per chunk, tokens from the wire, cost from the arithmetic — "4."
+in both; (5) Voyage cap 0 → no HTTP and no Haiku call — "Part C 5" in `trigger.test.ts`,
+`embed.test.ts`, "5." in `memory.test.ts`; (6) chunk readable only by an allowlisted user,
+workspace/private per the parent — `rls.test.ts` 4, 4b, 5; (7) the key in no log line,
+error, response or client file — `embed.test.ts` "Part C item 7", `trigger.test.ts`,
+`voyage-key.test.ts`, `web:check` + a `pa-` grep of `web/dist` (0 files); (8) a failing
+summarisation never changes the reply — `chat-memory.test.ts` (reject / throw / slow /
+not-saved / streaming), `memory.test.ts` "8." (broken Voyage behind `handleChatTurn` → 200).
+Items marked `memory.test.ts` / `rls.test.ts` / `schema.test.ts` need a stack and were
+**not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence.
+
 ---
 
 ## Stage 4 — Website reading and storage · Payment 4 of 5 (198)

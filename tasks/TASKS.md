@@ -148,8 +148,13 @@ their first real run (CI on push, or credentials).*
 
 *Outline — detailed at Stage 3 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 3.*
 
-- [ ] 3.1 *(P0.11)* Voyage AI account + key (R5)
-- [ ] 3.2 *(was 4.1–4.4)* `src/lib/memory/` — facts (append-only, supersede, `user` / `workspace` scope isolation), chunks (summarise + embed via Voyage), retrieve (last N verbatim + vector top-k + current facts, token-budgeted); Voyage adapter + contract tests
+- [!] 3.1 *(P0.11)* Voyage AI account + key (R5) — **asked of the client 26 Aug; the adapter is complete and fixture-tested, the live call is the only thing waiting** (FND-300)
+- [~] 3.2 *(was 4.1–4.4)* `src/lib/memory/` — in five parts (FND-300 → FND-340):
+  - [x] 3.2.1 **Part 1 (FND-300, 26 Aug, staged not committed) — embeddings + conversation summarisation.** `config.ts` (sole `VOYAGE_API_KEY` reader; own caps 0.50/day, 5/month), `embed.ts` (Voyage `voyage-3` 1024-d: cap before HTTP, timeout, idempotent retries, Zod, `api_usage` row per call), `summarise.ts` (Haiku, no voice prompt, delimited transcript, validated, one retry), `policy.ts` (10-message windows + 24 h idle tail, pure), `chunks.ts` (store; overlap → `exists`), `trigger.ts` (after-turn hook, sweep, flush). Migration `20260826010000`: `turn_range not null` + valid, `exclude … (conversation_id =, turn_range &&)`, ivfflat → HNSW. `chat.ts` gains `afterTurn` / `waitUntil`; the Edge Function passes `EdgeRuntime.waitUntil`. `npm run memory -- flush | sweep | preview`. Tests: unit (policy, config, embed, summarise, chunks, trigger, chat-memory, wiring, redaction), security (`voyage-key`, RLS on `memory_chunks`), integration (`memory.test.ts`, schema constraint + HNSW). Acceptance evidence in MEMORY.md 26 Aug. **Not verified here: `db reset` from zero and the stack suites (no Docker) — CI; a live embedding (no key)**
+  - [ ] 3.2.2 Part 2 — durable facts (`memory_facts`, append-only + supersede) and retrieval (last N verbatim + vector top-k over `memory_chunks` + current facts, token-budgeted) wired into the turn
+  - [ ] 3.2.3 Part 3 — Memory page: see, edit, delete
+  - [ ] 3.2.4 Part 4 — Users page and conversation management (with 3.11a)
+  - [ ] 3.2.5 Part 5 — end-to-end test, cost measurement, the idle-tail sweep on a schedule, acceptance, deploy
 - [ ] 3.3 *(was 4.14–4.15)* Memory continuity test across sessions **and devices**; token-budget test
 - [ ] 3.4 *(was 4.5–4.9)* Tool registry: whitelisted, typed, read/write flag; **two-turn confirmation on writes** (D9); every execution → `audit_log`; confirmation-flow test. Tools revised for Scope v3 — no `run_research_batch`
 - [ ] 3.5 Dashboard (D29): conversations, cost rollup, review queue, tasks — mobile-first, 375 / 768 / 1280

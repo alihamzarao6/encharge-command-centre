@@ -70,6 +70,8 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     factWorkspaceA: '',
     factPrivateA: '',
     factPrivateB: '',
+    chunkWorkspaceA: '',
+    chunkPrivateA: '',
   };
 
   async function createUser(label: string, allowlisted: boolean): Promise<TestUser> {
@@ -138,11 +140,34 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     fixtureIds.factWorkspaceA = facts.rows[0]?.id ?? '';
     fixtureIds.factPrivateA = facts.rows[1]?.id ?? '';
     fixtureIds.factPrivateB = facts.rows[2]?.id ?? '';
+
+    // Stage 3 part 1: one chunk under each conversation. user_id/scope are written wrong
+    // on purpose (B, 'user' / A, 'workspace') — the parent-sync trigger must overwrite them
+    // with the conversation's, which is what makes the RLS outcome below the parent's.
+    const chunks = await db.query<{ id: string }>(
+      `insert into public.memory_chunks (conversation_id, user_id, scope, summary, embedding, turn_range)
+       values ($1, $3, 'user', $4, $6::vector, '[1,3)'),
+              ($2, $3, 'workspace', $5, $6::vector, '[1,3)')
+       returning id`,
+      [
+        fixtureIds.convWorkspaceA,
+        fixtureIds.convPrivateA,
+        userB.id,
+        `rls-ws-chunk-${RUN}`,
+        `rls-private-chunk-${RUN}`,
+        `[${Array.from({ length: 1024 }, (_, i) => (i === 0 ? '1' : '0')).join(',')}]`,
+      ],
+    );
+    fixtureIds.chunkWorkspaceA = chunks.rows[0]?.id ?? '';
+    fixtureIds.chunkPrivateA = chunks.rows[1]?.id ?? '';
   }, 60_000);
 
   afterAll(async () => {
     // Fixture rows first (memory FKs deliberately do not cascade), then the users.
     await db.query(`delete from public.memory_facts where key like $1`, [`rls_%_${RUN}`]);
+    await db.query(`delete from public.memory_chunks where conversation_id = any($1::uuid[])`, [
+      [fixtureIds.convWorkspaceA, fixtureIds.convPrivateA].filter((s) => s !== ''),
+    ]);
     await db.query(`delete from public.messages where conversation_id = any($1::uuid[])`, [
       [fixtureIds.convWorkspaceA, fixtureIds.convPrivateA].filter((s) => s !== ''),
     ]);
@@ -258,6 +283,27 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       .eq('id', fixtureIds.factWorkspaceA);
     expect(fact.error).toBeNull();
     expect(extractIds(fact.data)).toContain(fixtureIds.factWorkspaceA);
+
+    // Stage 3: the chunk under the workspace conversation, too — and its ownership is the
+    // conversation's, whatever the insert claimed (trigger), so the policy sees workspace.
+    const chunk = await userB.client
+      .from('memory_chunks')
+      .select('id, user_id, scope')
+      .eq('id', fixtureIds.chunkWorkspaceA);
+    expect(chunk.error).toBeNull();
+    expect(chunk.data).toEqual([
+      { id: fixtureIds.chunkWorkspaceA, user_id: userA.id, scope: 'workspace' },
+    ]);
+  });
+
+  it("4b. an allowlisted user never reads a chunk's embedding or summary of a private conversation; the outsider reads no chunk at all", async () => {
+    const outsiderRead = await outsider.client.from('memory_chunks').select('id');
+    expect(extractIds(outsiderRead.data)).toStrictEqual([]);
+    const privateFromB = await userB.client
+      .from('memory_chunks')
+      .select('id, summary')
+      .eq('id', fixtureIds.chunkPrivateA);
+    expect(privateFromB.data).toStrictEqual([]);
   });
 
   it("5. a user cannot read another user's user-scoped rows, but reads their own", async () => {
@@ -293,6 +339,21 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       .select('id')
       .eq('id', fixtureIds.factPrivateB);
     expect(extractIds(ownFact.data)).toContain(fixtureIds.factPrivateB);
+
+    // Stage 3: the private conversation's chunk follows the same rule — B sees nothing,
+    // A (the owner) sees it, with the trigger-corrected ownership.
+    const chunkFromB = await userB.client
+      .from('memory_chunks')
+      .select('id')
+      .eq('id', fixtureIds.chunkPrivateA);
+    expect(extractIds(chunkFromB.data)).toStrictEqual([]);
+    const ownChunk = await userA.client
+      .from('memory_chunks')
+      .select('id, user_id, scope')
+      .eq('id', fixtureIds.chunkPrivateA);
+    expect(ownChunk.data).toEqual([
+      { id: fixtureIds.chunkPrivateA, user_id: userA.id, scope: 'user' },
+    ]);
   });
 
   it('6a. no insert/update/delete policy exists for authenticated (or anon) on any table', async () => {

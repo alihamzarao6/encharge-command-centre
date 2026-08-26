@@ -93,6 +93,31 @@ export interface ChatDeps {
   readonly systemBlocks?: () => readonly SystemBlock[];
   readonly maxMessageChars?: number;
   readonly history?: HistoryBounds;
+  /**
+   * Stage 3 memory: runs after a turn is in `messages`, OFF the reply's path. It is
+   * awaited by nobody here — its promise goes to `waitUntil` — and whatever it does or
+   * fails to do cannot change the answer the user gets. Absent = no memory (no Voyage key).
+   */
+  readonly afterTurn?: (event: TurnSavedEvent) => Promise<void>;
+  /**
+   * Keeps background work alive after the response is sent: `EdgeRuntime.waitUntil` on
+   * Supabase, nothing on Node (the process outlives the promise anyway). Default: the
+   * promise is left to run, with rejections caught and logged.
+   */
+  readonly waitUntil?: (work: Promise<void>) => void;
+}
+
+export interface TurnSavedEvent {
+  readonly conversation: {
+    readonly id: string;
+    readonly userId: string;
+    readonly scope: 'user' | 'workspace';
+    readonly title: string | null;
+  };
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+  /** Rows the turn appended to `messages` — a user message and an assistant message. */
+  readonly messagesAppended: number;
 }
 
 export interface ChatTurnInput {
@@ -362,6 +387,35 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
   return { ok: true, value: { user, conversation, history, message } };
 }
 
+/**
+ * Step 7 (Stage 3): hand the saved turn to the memory hook without waiting for it. A hook
+ * that throws synchronously, rejects, or takes a minute changes nothing about the reply —
+ * the error is logged with ids only and the turn stays saved.
+ */
+function scheduleAfterTurn(deps: ChatDeps, event: TurnSavedEvent): void {
+  if (deps.afterTurn === undefined) return;
+  const log = deps.log.child({ component: 'chat' });
+  let work: Promise<void>;
+  try {
+    work = deps.afterTurn(event);
+  } catch (caught: unknown) {
+    log.error('afterTurn hook threw', {
+      conversationId: event.conversation.id,
+      error: ensureError(caught),
+    });
+    return;
+  }
+  const guarded = work.catch((caught: unknown) => {
+    log.error('afterTurn hook rejected', {
+      conversationId: event.conversation.id,
+      error: ensureError(caught),
+    });
+  });
+  if (deps.waitUntil !== undefined) {
+    deps.waitUntil(guarded);
+  }
+}
+
 /** Step 6: refuse an empty reply, record the turn, answer. Shared by both paths. */
 async function finishTurn(
   deps: ChatDeps,
@@ -406,6 +460,18 @@ async function finishTurn(
       true,
     );
   }
+
+  scheduleAfterTurn(deps, {
+    conversation: {
+      id: conversation.id,
+      userId: conversation.userId,
+      scope: conversation.scope,
+      title: conversation.title,
+    },
+    userMessageId: appended.value.userMessageId,
+    assistantMessageId: appended.value.assistantMessageId,
+    messagesAppended: 2,
+  });
 
   return {
     status: 200,

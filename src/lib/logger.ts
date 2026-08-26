@@ -65,6 +65,7 @@ const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, // JWT (Supabase keys)
   /\b(?:secret|ntn)_[A-Za-z0-9]{16,}\b/g, // Notion
   /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, // Authorization header values
+  /\bpa-[A-Za-z0-9_-]{16,}/g, // Voyage AI (Stage 3 memory layer)
 ];
 
 const MAX_DEPTH = 8;

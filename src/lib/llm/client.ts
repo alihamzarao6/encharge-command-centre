@@ -103,8 +103,11 @@ export type LlmError =
   | ConfigError
   | AppError;
 
+/** Providers whose spend is metered through the same ledger and capped per provider. */
+export type MeteredProvider = 'anthropic' | 'voyage';
+
 export interface UsageRecord {
-  readonly provider: 'anthropic';
+  readonly provider: MeteredProvider;
   readonly operation: string;
   readonly model: string;
   readonly inputTokens: number;
@@ -118,7 +121,7 @@ export interface UsageRecord {
 
 export interface UsageStore {
   /** Sum of cost_usd for the provider since `since` (inclusive). */
-  spentSince(provider: 'anthropic', since: Date): Promise<Result<number>>;
+  spentSince(provider: MeteredProvider, since: Date): Promise<Result<number>>;
   record(row: UsageRecord): Promise<Result<void>>;
 }
 
