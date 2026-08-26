@@ -278,7 +278,8 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
        where schemaname = 'public' and indexname = 'memory_chunks_embedding_idx'`,
     );
     expect(index.rows[0]?.indexdef).toMatch(
-      /USING hnsw \(embedding extensions\.vector_cosine_ops\)/,
+      // Postgres drops the schema qualifier when `extensions` is on the search_path (CI #18).
+      /USING hnsw \(embedding (extensions\.)?vector_cosine_ops\)/,
     );
     expect(index.rows[0]?.indexdef).not.toMatch(/ivfflat/);
 
