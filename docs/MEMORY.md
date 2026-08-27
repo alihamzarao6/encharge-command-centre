@@ -205,6 +205,17 @@ to admit 0.35 would admit "Write me an ad" (0.39). What would actually move this
 richer audience line (the model naming the *people*, e.g. "young renters in Perth wanting
 to buy") — the prompt now gives such examples — and more than one chunk per subject; part 5
 measures recall rate on real volume before anything else is tuned.
+**Pushed and deployed, 27 Aug:** commits `a67d9f0` (part 2) and `f005b05` (audience +
+access allowlist) on `main`; `supabase db push` applied `20260827010000` and
+`20260827020000` (migration list local = remote through the 12th); `npm run
+functions:bundle` (4,442 lines, 0 key shapes) + `supabase functions deploy chat`. **First
+recall through the real function** (`npm run memory -- recall "Write me a Meta ad about
+renting versus buying"` as the dev account): the live chunk at **0.57**, block 1,304 chars
+≈ 435 tokens, `degraded: []`, 2.4 s end to end from this machine (Voyage cold). The one
+pre-existing chunk still has `audience = null` — deleting it to re-flush was refused by the
+tool permission layer; to bring it in line: `delete from memory_chunks where id =
+'a411a18b-…'` then `npm run memory -- flush 7180fb1a-…` (≈ $0.002). No fact was stored
+live: a workspace fact is shown to the client on every turn and should be his to state.
 `tests/unit/memory/audience.test.ts` covers the split, the guards, the header, the recalled
 line and the trigger over the recorded answer. **Found on the way:** the live Meta-ad
 summary was being REJECTED on its first attempt by part 1's access check — "an independent

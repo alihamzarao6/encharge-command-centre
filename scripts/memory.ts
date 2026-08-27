@@ -231,8 +231,7 @@ async function recall(args: readonly string[]): Promise<void> {
   const at = args.indexOf('--conversation');
   const conversationId = at === -1 ? null : (args[at + 1] ?? null);
   if (conversationId !== null && !UUID.test(conversationId)) fail('--conversation needs a UUID');
-  const message = args
-    .filter((_, i) => i !== at && i !== at + 1)
+  const message = (at === -1 ? args : args.filter((_, i) => i !== at && i !== at + 1))
     .join(' ')
     .trim();
   if (message === '') fail('usage: npm run memory -- recall "<message>" [--conversation <id>]');
