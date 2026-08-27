@@ -110,6 +110,31 @@ interface SystemBlockWire {
   readonly text: string;
 }
 
+/**
+ * A WORKSPACE note is one note for the business — since D54 its identity is the key alone,
+ * across the whole table. Two integration files that both write one are therefore two files
+ * pretending to be the same workspace, and the recorded extractor answers they share
+ * (`fact-ok`) would land on the same key with the same wording. `vitest.config.ts` stops
+ * them running at the same time; this makes them disjoint even so, by run-scoping the topic
+ * and the value in the recorded envelope before it is served. Same technique as
+ * `capture.test.ts`'s `textStep()`: a real recorded Haiku response with its text replaced,
+ * so the extractor, the guards and the key format are all still the real thing.
+ */
+const SCOPE_SUFFIX = RUN.slice(0, 6);
+
+function scopedFactAnswer(name: string): string {
+  const envelope = JSON.parse(fixture('anthropic', name)) as {
+    content: { type: string; text: string }[];
+  };
+  const block = envelope.content[0];
+  if (block !== undefined) {
+    block.text = block.text
+      .replace(/"topic":\s*"([^"]+)"/, `"topic": "$1 ${SCOPE_SUFFIX}"`)
+      .replace(/(Rule of One framework and ends with a direct CTA)/, `$1 (${SCOPE_SUFFIX})`);
+  }
+  return JSON.stringify(envelope);
+}
+
 describe.skipIf(env === null)('the memory page against a real stack', () => {
   const db = new pg.Client({
     connectionString: env?.dbUrl ?? 'postgresql://stack-not-running.invalid/postgres',
@@ -130,12 +155,10 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
     seen.push({ url, body });
     if (url.startsWith('https://anthropic.test')) {
       const parsed = JSON.parse(body === '' ? '{}' : body) as { model?: string };
-      const name =
-        typeof parsed.model === 'string' && parsed.model.includes('haiku')
-          ? haikuAnswer
-          : 'messages-ok';
+      const isHaiku = typeof parsed.model === 'string' && parsed.model.includes('haiku');
+      const name = isHaiku ? haikuAnswer : 'messages-ok';
       return Promise.resolve(
-        new Response(fixture('anthropic', name), {
+        new Response(isHaiku ? scopedFactAnswer(name) : fixture('anthropic', name), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
@@ -224,7 +247,8 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
   let earlierConversationId = '';
   let chunkId = '';
   let factId = '';
-  const NOTE = 'Finance content uses the Rule of One framework and ends with a direct CTA.';
+  const KEY = `writing:finance-content-framework-${SCOPE_SUFFIX}`;
+  const NOTE = `Finance content uses the Rule of One framework and ends with a direct CTA (${SCOPE_SUFFIX}).`;
   const CHUNK_MARKER = `PAGE-CHUNK-${RUN}`;
 
   beforeAll(async () => {
@@ -298,9 +322,10 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
       [userId],
     );
     await db.query(`delete from public.api_usage where user_id = $1`, [userId]);
-    await db.query(`update public.memory_facts set superseded_by = null where user_id = $1`, [
-      userId,
-    ]);
+    // Delete without nulling `superseded_by` first. The self-FK is NO ACTION, so a single
+    // DELETE that removes a whole chain is checked at end of statement and passes — whereas
+    // nulling the chain first makes two rows live under one key at once, which since D54 the
+    // partial unique index refuses. (`recall.test.ts` has always deleted this way.)
     await db.query(`delete from public.memory_facts where user_id = $1`, [userId]);
     await db.query(
       `delete from public.memory_chunks where conversation_id in (select id from public.conversations where user_id = $1)`,
@@ -311,9 +336,6 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
       [userId],
     );
     await db.query(`delete from public.conversations where user_id = $1`, [userId]);
-    await db.query(`update public.memory_facts set superseded_by = null where user_id = $1`, [
-      teammateId,
-    ]);
     await db.query(`delete from public.memory_facts where user_id = $1`, [teammateId]);
     await db.query(`delete from public.app_users where user_id = any($1::uuid[])`, [
       [userId, teammateId].filter((id) => id !== ''),
@@ -334,7 +356,7 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
     expect(added.body).toMatchObject({
       action: 'add',
       outcome: 'saved',
-      key: 'writing:finance-content-framework',
+      key: KEY,
       value: NOTE,
       replaced: false,
     });
@@ -359,7 +381,7 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
     expect(rows.rows[0]).toMatchObject({
       id: factId,
       scope: 'workspace',
-      key: 'writing:finance-content-framework',
+      key: KEY,
       value: NOTE,
       source_message_id: null,
       superseded_by: null,
@@ -413,16 +435,15 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
     expect(edited.body).toMatchObject({
       action: 'edit',
       outcome: 'saved',
-      key: 'writing:finance-content-framework',
+      key: KEY,
       value: reworded,
       replaced: true,
     });
 
     const rows = await db.query<{ id: string; value: string; superseded_by: string | null }>(
       `select id, value, superseded_by from public.memory_facts
-       where user_id = $1 and key = 'writing:finance-content-framework'
-       order by created_at`,
-      [userId],
+       where key = $1 order by created_at`,
+      [KEY],
     );
     // Three rows, ONE live: the forgotten original, the restored copy it did not replace,
     // and the rewording that superseded that copy.
@@ -546,7 +567,9 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
     // The gap this closes: before migration 20260827040000, `upsert_memory_fact` matched on
     // (user_id, scope, key), so a second person's version of the same note inserted a SECOND
     // live row and the model was handed both on every turn, contradicting itself.
-    const key = 'writing:teammate-note';
+    // Run-scoped like every other key this file writes: a workspace note's identity is now
+    // global to the table (D54), so a hardcoded one is a collision waiting for a neighbour.
+    const key = `writing:teammate-note-${SCOPE_SUFFIX}`;
     const theirs = await db.query<{ id: string }>(
       `insert into public.memory_facts (user_id, scope, key, value)
        values ($1, 'workspace', $2, 'Posts open with a question.') returning id`,
@@ -593,7 +616,6 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
          (select id from public.memory_facts where key = $1)`,
       [key],
     );
-    await db.query(`update public.memory_facts set superseded_by = null where key = $1`, [key]);
     await db.query(`delete from public.memory_facts where key = $1`, [key]);
   });
 

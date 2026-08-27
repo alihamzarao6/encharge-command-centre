@@ -107,7 +107,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
-### 2026-08-27 — [FND-320 · Stage 3 part 3] The Memory page — staged, NOT committed
+### 2026-08-27 — [FND-320 · Stage 3 part 3] The Memory page — deployed; pushed after one red CI
 
 **Did:** the Memory tab stops saying "Stage 3" and becomes the place the client can see,
 correct and remove what the assistant knows. `src/lib/memory/access.ts` (the ONE removal
@@ -175,6 +175,26 @@ loading `vite.config.ts`, so setting it inside the config is too late), and `web
 fails on any React development-only string. Proven both ways: the dev bundle sitting in
 `web/dist` failed the check with 3 hits, and `npm run web:build` with `.env` present and
 `NODE_ENV` unset now produces 442.81 kB and logs `nodeEnv: production`.
+
+(4) **D54 broke two integration files that had never interacted.** First CI on the branch
+went red: 8 failures across `memory-page.test.ts` and `recall.test.ts`, from ONE cause. Both
+files write a workspace fact from the same recorded extractor answer (`fact-ok` →
+`writing:finance-content-framework`), and vitest runs test files in parallel against the one
+shared stack. While a workspace note's identity was `(user_id, scope, key)` each file's
+fixture user had its own namespace and they never touched; now the key is global, so the
+second file's `add` found the first file's row and returned `unchanged` instead of
+`inserted` — which left `factId` empty and cascaded into three 400s and an empty audit list —
+while `recall.test.ts`'s `memory.facts` count went 2 → 3 because `currentFacts` returns
+**every** workspace fact regardless of author (it always did; nothing had ever exercised it
+from two files). This is the standing rule — never assert on a whole-table count when files
+share a stack — arriving in a new shape: with one workspace, two concurrent files are two
+files pretending to BE it. Fixed three ways: `fileParallelism: false` **when a real database
+is in the environment** (unit suite untouched); this file's extractor answer run-scoped in
+the fetch stub so its key and value can never collide with a neighbour's, whatever the order;
+and the fixture cleanup no longer nulls `superseded_by` before deleting — nulling a chain
+makes two rows live under one key at once, which the new index correctly refuses. Deleting
+the chain in one statement is fine (the self-FK is NO ACTION, checked at end of statement) and
+is what `recall.test.ts` has always done.
 
 **Measured:** typecheck + lint clean; unit **1018/1018**, coverage **94.54 % lines /
 88.86 % branches / 94.66 % functions**; whole suite 1028 passed + 66 stack-dependent skipped

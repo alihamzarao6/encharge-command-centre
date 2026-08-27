@@ -265,7 +265,16 @@ stack, no key, no spend): the eight Part C assertions of FND-250 that need a bro
 screenshots under `docs/assets/stage-2/` as an artefact. Unit tests for the browser's pure
 libraries (`web/src/lib/`) live in `tests/unit/web/` and count toward coverage.
 
-*Status 27 Aug 2026 (Stage 3 part 3):* `web:check` also greps for the Voyage key (shape and
+*Status 27 Aug 2026 (Stage 3 part 3):* **test files run one at a time when a real Supabase
+stack is in the environment** (`fileParallelism: !stackBacked`, `vitest.config.ts`). They
+share one database, and since D54 a workspace memory fact is unique by `key` across the whole
+table and readable by every allowlisted user — so two concurrent files are two files
+pretending to be the same workspace: they collide on the key and they see each other's notes
+in `currentFacts`. Found the hard way on the first CI of this branch (8 failures, one cause).
+Each stack-backed file also cleans up its own facts, and any file that writes one uses a
+run-scoped key — including the recorded extractor answer, which `memory-page.test.ts`
+run-scopes in its fetch stub. The unit suite is unaffected and still parallel.
+`web:check` also greps for the Voyage key (shape and
 value) and **fails on a React development bundle** — `npm run web:build` forces
 `NODE_ENV=production` (`scripts/build-web.ts`, D55) and this is the assertion that says it
 did. `tests/unit/web/bundleCheck.test.ts` covers the predicate; importing `check-bundle.ts`
