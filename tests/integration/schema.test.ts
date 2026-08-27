@@ -72,7 +72,9 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
   }, 30_000);
 
   afterAll(async () => {
-    await db.query(`delete from public.memory_facts where key like $1`, [`process:schema-test-%-${RUN}`]);
+    await db.query(`delete from public.memory_facts where key like $1`, [
+      `process:schema-test-%-${RUN}`,
+    ]);
     // Children before parents — the memory FKs deliberately do not cascade (SCHEMA §4):
     // chunks and messages under this run's conversations first, then the conversations.
     await db.query(
