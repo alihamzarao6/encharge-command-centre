@@ -25,6 +25,8 @@ const ROOT = join(import.meta.dirname, '..');
 
 export const FUNCTIONS: readonly { readonly name: string; readonly entry: string }[] = [
   { name: 'chat', entry: 'src/functions/chat/index.ts' },
+  // Stage 3 part 3 (FND-320): the memory page's write endpoint.
+  { name: 'memory', entry: 'src/functions/memory/index.ts' },
 ];
 
 const BANNER = [

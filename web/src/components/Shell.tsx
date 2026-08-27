@@ -10,6 +10,7 @@ import { useState, type ReactElement } from 'react';
 import type { PendingDraft } from '../lib/draft.js';
 import type { AppUserRow } from '../lib/supabase.js';
 import { Assistant } from './Assistant.js';
+import { Memory } from './Memory.js';
 import { NotYet } from './NotYet.js';
 
 export type SectionId = 'assistant' | 'memory' | 'content' | 'ads';
@@ -36,7 +37,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'memory',
     label: 'Memory',
-    live: false,
+    live: true,
     stage: 'Stage 3',
     blurb:
       'What the assistant remembers about the business, and the facts it has learned from you — reviewable and correctable.',
@@ -74,7 +75,22 @@ const ICONS: Readonly<Record<SectionId, string>> = {
 
 export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): ReactElement {
   const [section, setSection] = useState<SectionId>('assistant');
+  /**
+   * Set only when the Memory page asks to open the conversation a note came from, and
+   * cleared by any ordinary navigation — otherwise leaving Memory and coming back to the
+   * Assistant later would silently reopen a conversation nobody asked for this time.
+   */
+  const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
   const active = SECTIONS.find((s) => s.id === section) ?? ASSISTANT;
+
+  const goTo = (id: SectionId): void => {
+    setPendingConversationId(null);
+    setSection(id);
+  };
+  const openConversation = (conversationId: string): void => {
+    setPendingConversationId(conversationId);
+    setSection('assistant');
+  };
 
   return (
     <div className="shell">
@@ -112,7 +128,7 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
             className={`nav__item${s.id === section ? ' nav__item--active' : ''}${s.live ? '' : ' nav__item--soon'}`}
             aria-current={s.id === section ? 'page' : undefined}
             onClick={() => {
-              setSection(s.id);
+              goTo(s.id);
             }}
           >
             <span className="nav__icon" aria-hidden="true">
@@ -125,11 +141,22 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
       </nav>
 
       <main className="main">
-        {active.live ? (
-          <Assistant session={session} onSessionExpired={onSessionExpired} />
-        ) : (
-          <NotYet section={active} />
+        {section === 'assistant' && (
+          <Assistant
+            session={session}
+            openConversationId={pendingConversationId}
+            onSessionExpired={onSessionExpired}
+          />
         )}
+        {section === 'memory' && (
+          <Memory
+            session={session}
+            staff={staff}
+            onOpenConversation={openConversation}
+            onSessionExpired={() => onSessionExpired(null)}
+          />
+        )}
+        {!active.live && <NotYet section={active} />}
       </main>
     </div>
   );

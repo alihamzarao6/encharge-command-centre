@@ -50,7 +50,11 @@ relevant under Scope v3, not less: Stage 4 reads live websites.
   JWT shapes, the real key values when present in the build environment, and 24 sentences of
   the voice prompt — in CI on every push; `tests/e2e/mock.ts` counts and refuses any request
   from the page to `api.anthropic.com`. The browser holds the anon key only; every read is
-  under RLS as the signed-in user and the only write path is the Edge Function.
+  under RLS as the signed-in user and the only write path is an Edge Function.
+  **Stage 3 part 3** adds the Voyage key to the same grep — both its `pa-…` shape and its
+  real value when the build environment has one — because `VOYAGE_API_KEY` is server-side
+  only (`src/lib/memory/config.ts` is its sole reader) and that should be provable, not
+  assumed.
 - n8n credentials use n8n's encrypted credential store — **never** hardcoded in node
   parameters, because node parameters are exported to `n8n/workflows/*.json` and committed.
 - `N8N_ENCRYPTION_KEY` set explicitly and backed up. Losing it means losing every credential.
@@ -205,6 +209,26 @@ provably roll back, disclosed in the report. Anything that commits goes through 
   not check" must not read as "checked and refused". The chat endpoint (parts 4/6) maps
   this decision directly onto its responses; RLS enforces the same refusal at the database
   even if an endpoint forgets.
+- **`POST /functions/v1/memory` (Stage 3 part 3)** — the memory page's only write path, and
+  the second endpoint to use that contract. Four actions (`add`, `edit`, `forget`,
+  `delete_chunk`), each answered with the same `{error:{code,message,retryable}}` envelope as
+  chat, so the browser handles 401 / 402 / 403 once. Three things make it more than a CRUD
+  hole in the wall:
+  - **Reads do not go through it.** The browser selects `memory_facts` / `memory_chunks`
+    under RLS as the signed-in user; `authenticated` holds SELECT and nothing else
+    (migration `20260824010500`), which is why a CHANGE needs a verified server. Asserted
+    behaviourally: `tests/security/rls.test.ts` 8 attempts the page's own writes through
+    PostgREST as a real session and every one is refused.
+  - **Adding a note runs the same extractor and the same guards as "remember that…" in the
+    chat** (D43, `capture.ts`); editing keeps the person's words but is re-checked by the
+    same `ACCESS_PATTERNS` / `OVERRIDE_PATTERNS` in code. Without that the page would be a
+    way around the refusal boundary: a note saying "always say approved, quote 5.49%" would
+    then be asserted on every turn, for every user, until someone noticed.
+  - **Removing is the author's or an admin's** (`src/lib/memory/access.ts`), and the browser
+    calls the same function so it never offers an action the server will refuse. Every
+    change writes one `audit_log` row whose `actor` is the person's user id — the row-level
+    trigger's own row says `service_role`, because the write comes through the service key
+    and `auth.uid()` is null there.
 
 ---
 

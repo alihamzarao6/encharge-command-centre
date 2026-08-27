@@ -4,9 +4,16 @@
  * a live key inserts a new row and points the old one's `superseded_by` at it, so the
  * history of what he said is never lost and "current" is one predicate,
  * `superseded_by is null`. The swap is done by the database function `upsert_memory_fact`
- * (migration 20260827010000) in one transaction under a per-key advisory lock — the
- * partial unique index would refuse two live rows for one key, and two callers racing on
- * the same key must end with one live row that supersedes the other, not an error.
+ * (migration 20260827010000) in one transaction under a per-note advisory lock — the
+ * partial unique indexes would refuse two live rows for one note, and two callers racing on
+ * the same note must end with one live row that supersedes the other, not an error.
+ *
+ * IDENTITY IS PER SCOPE (migration 20260827040000, D54): a **workspace** note is unique by
+ * `key` alone, whoever wrote it — the business has one answer, and two people each holding a
+ * live `writing:tone` would mean the model is handed both, every turn, contradicting itself.
+ * A **user** note is unique by `(user_id, key)`. `upsert_memory_fact` locks and looks up by
+ * the same shape, so `userId` on an upsert is the AUTHOR of the new row, not part of the
+ * note's identity at workspace scope.
  *
  * The KEY is `<category>:<slug>` — a controlled category and a free slug (see
  * FACT_CATEGORIES). A wholly free string would let "tone" and "writing style" become two

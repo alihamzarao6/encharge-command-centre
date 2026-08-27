@@ -92,6 +92,11 @@ type MemoryChunksRow = {
   embedding: string | null;
   turn_range: string;
   created_at: string;
+  // Stage 3 part 3: the tombstone a memory-page delete leaves (migration 20260827030000).
+  // The row keeps its turn_range so the range is never re-summarised; everything that made
+  // it memory (summary, audience, embedding) is destroyed by the same update.
+  deleted_at: string | null;
+  deleted_by: string | null;
 };
 
 type AuditLogInsert = {
@@ -151,8 +156,8 @@ export type Database = {
       };
       memory_chunks: {
         Row: MemoryChunksRow;
-        Insert: Omit<MemoryChunksRow, 'id' | 'created_at'> &
-          Partial<Pick<MemoryChunksRow, 'id' | 'created_at'>>;
+        Insert: Omit<MemoryChunksRow, 'id' | 'created_at' | 'deleted_at' | 'deleted_by'> &
+          Partial<Pick<MemoryChunksRow, 'id' | 'created_at' | 'deleted_at' | 'deleted_by'>>;
         Update: Partial<MemoryChunksRow>;
         Relationships: [];
       };

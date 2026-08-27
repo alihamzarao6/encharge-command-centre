@@ -742,6 +742,283 @@ p {
   }
 }
 
+/* ---------- memory (Stage 3 part 3) ---------- */
+
+/*
+ * The page scrolls inside its own box like the thread does, so the header and the tab bar
+ * never move under a thumb. Every note is prose the client wrote or the assistant wrote, so
+ * long unbroken strings (a URL someone pasted) wrap rather than push the layout sideways —
+ * the no-horizontal-scroll rule is checked at 375 in tests/e2e/memory.spec.ts.
+ */
+.mem {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mem__title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.mem__banner {
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  color: #067647;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.mem__banner.notice {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.mem__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mem__tab {
+  min-height: var(--tap);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 8px 8px;
+  border-bottom: 3px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mem__tab--active {
+  color: var(--navy);
+  border-bottom-color: var(--accent);
+}
+
+.mem__count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-2);
+  background: #e6ecf7;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.mem__hint {
+  font-size: 14px;
+}
+
+.mem__warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.mem__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.mem__none {
+  padding: 8px 2px;
+}
+
+.mem__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem__card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mem__card--removed {
+  border-style: dashed;
+  background: #fbfbfd;
+}
+
+.mem__card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mem__topic {
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.mem__chunk-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mem__value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.mem__meta {
+  font-size: 13px;
+}
+
+.mem__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.mem__actions {
+  margin-top: 2px;
+}
+
+.mem__link {
+  font-size: 14px;
+  text-align: left;
+}
+
+.mem__link--danger {
+  color: var(--danger);
+}
+
+.mem__danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.mem__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mem__textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.4;
+  padding: 10px 12px;
+}
+
+.mem__add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.mem__add-open {
+  align-self: stretch;
+}
+
+.mem__history {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.mem__history-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.mem__history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem__history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+}
+
+.mem__history-when {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mem__history-value {
+  overflow-wrap: anywhere;
+}
+
+.mem__history-state {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.mem__removed {
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mem__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mem__empty-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.mem__empty-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* ---------- tablet and up: sidebar nav, docked conversation list ---------- */
 
 @media (min-width: 768px) {
@@ -823,6 +1100,30 @@ p {
   .bubble {
     max-width: min(85%, 720px);
   }
+
+  .mem {
+    padding: 20px 24px;
+  }
+
+  .mem__tabs {
+    grid-template-columns: auto auto;
+    justify-content: start;
+    gap: 24px;
+  }
+
+  .mem__tab {
+    font-size: 15px;
+    padding: 0 4px 8px;
+  }
+
+  .mem__list,
+  .mem__add,
+  .mem__add-open,
+  .mem__empty,
+  .mem__warning,
+  .mem__banner {
+    max-width: 720px;
+  }
 }
 
 @media (min-width: 1280px) {
@@ -840,5 +1141,18 @@ p {
 
   .composer {
     padding: 14px 32px;
+  }
+
+  .mem {
+    padding: 24px 32px;
+  }
+
+  .mem__list,
+  .mem__add,
+  .mem__add-open,
+  .mem__empty,
+  .mem__warning,
+  .mem__banner {
+    max-width: 840px;
   }
 }

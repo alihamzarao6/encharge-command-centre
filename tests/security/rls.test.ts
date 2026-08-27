@@ -13,6 +13,10 @@
  *   5. user A cannot read user B's user-scoped rows (and vice versa)
  *   6. no authenticated insert/update/delete policy exists on any table, and a
  *      behavioural write attempt through PostgREST is refused
+ *   7. the Stage 3 part 2 memory functions are executable by service_role only
+ *   8. the Stage 3 part 3 memory-page writes (forget a note, tombstone a summary, insert or
+ *      delete a fact) are all refused through PostgREST, so the page cannot bypass the
+ *      verified server path
  *
  * All fixtures are synthetic (example.com users, run-scoped keys) and removed afterwards.
  */
@@ -429,6 +433,53 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       p_min_similarity: 0,
     });
     expect(search.error).not.toBeNull();
+  });
+
+  it('8. Stage 3 part 3: a signed-in user cannot change memory through PostgREST — the memory page has to use the server path', async () => {
+    // Part C item 6. The page's own Forget is an UPDATE that self-references superseded_by,
+    // and its Delete is an UPDATE that tombstones a chunk; both are attempted here as the
+    // browser would have to attempt them, and both must fail. `authenticated` holds SELECT
+    // and there is no write policy, so the refusal is the privilege layer, not a constraint.
+    const forget = await userA.client
+      .from('memory_facts')
+      .update({ superseded_by: fixtureIds.factWorkspaceA })
+      .eq('id', fixtureIds.factWorkspaceA);
+    expect(forget.error).not.toBeNull();
+
+    const deleteChunk = await userA.client
+      .from('memory_chunks')
+      .update({ summary: 'gone', embedding: null })
+      .eq('id', fixtureIds.chunkWorkspaceA);
+    expect(deleteChunk.error).not.toBeNull();
+
+    const hardDelete = await userA.client
+      .from('memory_facts')
+      .delete()
+      .eq('id', fixtureIds.factWorkspaceA);
+    expect(hardDelete.error).not.toBeNull();
+
+    const insert = await userA.client
+      .from('memory_facts')
+      .insert({ user_id: userA.id, scope: 'workspace', key: `process:rls-web-${RUN}`, value: 'x' });
+    expect(insert.error).not.toBeNull();
+
+    // Nothing moved: the workspace fact is still live and the chunk still has its summary.
+    const after = await db.query<{ superseded_by: string | null }>(
+      `select superseded_by from public.memory_facts where id = $1`,
+      [fixtureIds.factWorkspaceA],
+    );
+    expect(after.rows[0]?.superseded_by).toBeNull();
+    const chunkAfter = await db.query<{ summary: string; deleted_at: string | null }>(
+      `select summary, deleted_at from public.memory_chunks where id = $1`,
+      [fixtureIds.chunkWorkspaceA],
+    );
+    expect(chunkAfter.rows[0]?.summary).toBe(`rls-ws-chunk-${RUN}`);
+    expect(chunkAfter.rows[0]?.deleted_at).toBeNull();
+    const landed = await db.query<{ n: string }>(
+      `select count(*) as n from public.memory_facts where key = $1`,
+      [`process:rls-web-${RUN}`],
+    );
+    expect(landed.rows[0]?.n).toBe('0');
   });
 
   it('anon policies do not exist at all', async () => {

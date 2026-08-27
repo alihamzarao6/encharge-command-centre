@@ -23,7 +23,7 @@
     "voice": "tsx scripts/voice.ts",
     "functions:bundle": "tsx scripts/bundle-functions.ts",
     "web:dev": "vite --config web/vite.config.ts",
-    "web:build": "vite build --config web/vite.config.ts",
+    "web:build": "tsx scripts/build-web.ts",
     "web:preview": "vite preview --config web/vite.config.ts",
     "web:check": "tsx scripts/check-bundle.ts",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",

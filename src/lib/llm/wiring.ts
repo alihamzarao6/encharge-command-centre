@@ -16,6 +16,7 @@
 import {
   createServiceClient,
   loadSupabaseAuthConfig,
+  supabaseAuditWriter,
   supabaseVerifyDeps,
   type ServiceClient,
 } from '../auth/clients.js';
@@ -31,6 +32,7 @@ import {
 } from '../memory/config.js';
 import { createVoyageEmbedder } from '../memory/embed.js';
 import { supabaseFactStore } from '../memory/facts.js';
+import { supabaseMemoryPageStore, type MemoryPageDeps } from '../memory/page.js';
 import { recallForTurn, supabaseChunkSearch, type RecallDeps } from '../memory/retrieve.js';
 import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
 import type { ChatDeps, TurnMemory } from './chat.js';
@@ -112,6 +114,35 @@ export function createChatDeps(
     ...(afterTurn === undefined ? {} : { afterTurn }),
     ...(memory === undefined ? {} : { memory }),
     ...(waitUntil === undefined ? {} : { waitUntil }),
+  });
+}
+
+/**
+ * Stage 3 part 3: the memory page's write endpoint. Deliberately NOT dependent on the
+ * Voyage key — nothing here embeds anything, so correcting or removing a note keeps working
+ * on a day when memory itself is degraded, which is precisely the day someone wants to.
+ * The Claude side is required: adding a note runs the same extractor as "remember that…".
+ */
+export function createMemoryPageDeps(env: Env, log: Logger): Result<MemoryPageDeps, ConfigError> {
+  const supabase = loadSupabaseAuthConfig(env);
+  if (!supabase.ok) return supabase;
+  const llm = loadLlmConfig(env);
+  if (!llm.ok) return llm;
+
+  const service = createServiceClient(supabase.value);
+  const http = createHttpClient({ timeoutMs: llm.value.timeoutMs, retries: 0, logger: log });
+  return ok({
+    verify: supabaseVerifyDeps(service),
+    claude: createClaudeClient({
+      config: llm.value,
+      http,
+      usage: supabaseUsageStore(service),
+      log,
+    }),
+    facts: supabaseFactStore(service),
+    store: supabaseMemoryPageStore(service),
+    audit: supabaseAuditWriter(service),
+    log,
   });
 }
 

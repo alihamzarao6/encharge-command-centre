@@ -24,6 +24,7 @@ kept in full.
 | Embeddings | Voyage AI | client | Vector memory for the Stage 3 memory layer (R5 — **account still to be created; the code is built and tested against fixtures, the key is the only thing missing**). Read by `src/lib/memory/config.ts` only; own spend caps (SECURITY §8). Without `VOYAGE_API_KEY` in the function's secrets the chat runs normally and every invocation logs `memory layer disabled` |
 | Chat / dashboard | Static web app (`web/`) on **Vercel** — **https://fundd-command-centre.vercel.app** (project `fundd-command-centre`, scope `alihamzarao6s-projects` until handover; deployed 25 Aug 2026) | client | The interface the client talks to — primary surface (D29). Calls only the Supabase Edge Function `chat`; holds only the anon key |
 | Chat endpoint | Supabase Edge Function `chat` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/chat** (project `mxdfptqdshdgdszizlbo`, Sydney; deployed 25 Aug 2026, secrets set, first live turn proven the same day) | client | The one place the Anthropic key is used: verify caller → cap → history → Claude → save |
+| Memory endpoint | Supabase Edge Function `memory` — **https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/memory** (deployed 27 Aug 2026) | client | The memory page's only write path: add / edit / forget a standing note, delete a conversation note. Verifies the caller itself (`verify_jwt` off), writes the `audit_log` row. Reads do NOT go through it — the browser selects `memory_facts` / `memory_chunks` under RLS. Shares `CHAT_ALLOWED_ORIGIN`; needs no Voyage key |
 | Internal surface | Notion | client | Internal working surface; eight databases exist (MEMORY 10 Aug) |
 | CRM | GoHighLevel, white-labelled at `app.enchargecapital.com` (stays through the rebrand, D25) | client | Finance Pipeline, ten custom fields, five workflows (Stage 1) |
 | Ads / pixel | Meta — Refi Pixel + Conversions API | client | `Lead` event server-side from the FUNDD funnel (Stage 1, D31) |
@@ -104,6 +105,38 @@ Supabase in the installed Chrome. **Local run against a stack:** `VITE_SUPABASE_
 **Rollback:** Vercel keeps every deployment — dashboard → Deployments → "Promote to
 Production" on the previous one (or `vercel rollback`); the function: redeploy the previous
 commit.
+
+---
+
+### 1b. Deploying the memory page (Stage 3 part 3)
+
+Same three deployables as §1a, one of them new. In order, from the repo root:
+
+```bash
+supabase db push                 # 20260827030000 (chunk tombstone columns +
+                                 #   match_memory_chunks with `deleted_at is null`)
+                                 # 20260827040000 (workspace facts unique by key — D54;
+                                 #   collapses any live duplicates before the index)
+npm run functions:bundle         # writes BOTH supabase/functions/{chat,memory}/index.ts
+supabase functions deploy memory --no-verify-jwt
+npm run web:build && npm run web:check && vercel deploy --prod
+```
+
+Notes that will otherwise cost an hour:
+
+- The `memory` function reads the **same** `CHAT_ALLOWED_ORIGIN` secret as `chat` — it names
+  the one browser app both serve, so there is no new secret to set. If the page can read
+  memory but every change fails with a network error, that variable is the first thing to
+  check (an unset value means no browser origin is allowed).
+- The function needs `SUPABASE_*` and `ANTHROPIC_*`, and **not** `VOYAGE_API_KEY`: nothing on
+  this path embeds anything, so correcting or removing a note keeps working on a day when
+  memory itself is degraded — which is exactly the day someone wants to.
+- `supabase functions deploy chat` is still needed if the chat function itself changed; part
+  3 did not change it, but `functions:bundle` rewrites both entrypoints, so deploying only
+  `memory` is deliberate, not an oversight.
+- Order matters: deploying the function before `db push` means every Delete answers 500
+  (`deleted_at` does not exist yet). Applying the migration first is harmless — the column
+  is simply unused until the function lands.
 
 ---
 
@@ -248,10 +281,22 @@ naming what failed (`facts`, `embed`, `search`, `capture`, `timeout`, `threw`). 
    function logs carry `fact stored` / `fact not stored` / `fact extraction rejected` with
    ids and reasons. `npm run memory -- remember "<statement>"` stores one by hand through the
    same guards.
-4. **Wrong or stale fact:** until the memory page (part 3), supersede it by saying the new
-   version in a chat ("From now on, …") or with `-- remember`; the old row stays, pointed at
-   the new one. There is no delete before part 3.
-5. **`degraded: ["embed"]` on every turn** → the Voyage side (cap, key, outage) — same
+4. **Wrong or stale note — the client's own path (Stage 3 part 3):** the **Memory** tab in
+   the Command Centre. *You told it* lists every standing note with who added it and when;
+   **Edit** rewords one (the old wording stays under *Earlier wording*), **Forget** takes it
+   out of every future turn and moves it to *Removed notes*, where **Add it back** restores
+   it. *From conversations* lists the automatic summaries; **Delete** there is permanent —
+   the text is destroyed and the range is never re-summarised. Removing is the author's or
+   an admin's. The operator equivalents are `-- facts`, `-- facts --all` and `-- remember`.
+   *A note that reappears after being forgotten was stated again in a chat — check
+   `audit_log` for `MEMORY_FACT_ADDED` after the `MEMORY_FACT_FORGOTTEN`.*
+5. **A memory-page change was refused:** `403 NOT_YOURS` means the caller is neither the
+   author nor an admin (`app_users.is_admin`). `409 ALREADY_REPLACED` means someone else
+   changed that note first — reload. `402 SPEND_CAP` means the Haiku extractor could not be
+   paid for; editing and forgetting still work, only **adding** needs it. `500 AUDIT_FAILED`
+   means the change WAS made but `audit_log` did not record it — investigate the database,
+   do not repeat the change.
+6. **`degraded: ["embed"]` on every turn** → the Voyage side (cap, key, outage) — same
    checks as the section above. `["search"]` → the `match_memory_chunks` function is
    missing or refused (migration `20260827010000` not applied, or a grant changed).
 

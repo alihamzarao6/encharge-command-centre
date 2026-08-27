@@ -21,6 +21,11 @@ import { Thread, type LocalMessage } from './Thread.js';
 
 interface Props {
   readonly session: Session;
+  /**
+   * Stage 3 part 3: a conversation the Memory page asked to open, because a note came from
+   * it. Read once when this section mounts; the shell clears it on any other navigation.
+   */
+  readonly openConversationId?: string | null;
   readonly onSessionExpired: (pending: PendingDraft | null) => Promise<void>;
 }
 
@@ -38,7 +43,7 @@ function nextLocalId(): string {
   return `local-${String(localCounter)}`;
 }
 
-export function Assistant({ session, onSessionExpired }: Props): ReactElement {
+export function Assistant({ session, openConversationId, onSessionExpired }: Props): ReactElement {
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -93,19 +98,26 @@ export function Assistant({ session, onSessionExpired }: Props): ReactElement {
     setThreadState('idle');
   }, []);
 
-  // First load: the list, then a message that was mid-flight when the session expired.
+  // First load: the list, then either the conversation the Memory page asked for or a
+  // message that was mid-flight when the session expired. An explicit request wins; the
+  // unsent draft is left where it is rather than consumed, so it survives for next time.
   useEffect(() => {
     void loadConversations();
-    if (!pendingRestored.current) {
-      pendingRestored.current = true;
-      const pending = takePending(storage());
-      if (pending !== null) {
-        setActiveId(pending.conversationId);
-        setDraft(pending.text);
-        if (pending.conversationId !== null) void loadMessages(pending.conversationId);
-      }
+    if (pendingRestored.current) return;
+    pendingRestored.current = true;
+    if (openConversationId !== undefined && openConversationId !== null) {
+      setActiveId(openConversationId);
+      setDraft(loadDraft(storage(), openConversationId));
+      void loadMessages(openConversationId);
+      return;
     }
-  }, [loadConversations, loadMessages]);
+    const pending = takePending(storage());
+    if (pending !== null) {
+      setActiveId(pending.conversationId);
+      setDraft(pending.text);
+      if (pending.conversationId !== null) void loadMessages(pending.conversationId);
+    }
+  }, [loadConversations, loadMessages, openConversationId]);
 
   const selectConversation = useCallback(
     (id: string | null): void => {

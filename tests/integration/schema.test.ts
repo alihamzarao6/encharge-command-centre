@@ -72,9 +72,8 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
   }, 30_000);
 
   afterAll(async () => {
-    await db.query(`delete from public.memory_facts where key like $1`, [
-      `process:schema-test-%-${RUN}`,
-    ]);
+    // Any category, not just `process:` — the uniqueness tests use `personal:` too.
+    await db.query(`delete from public.memory_facts where key like $1`, [`%:schema-test-%-${RUN}`]);
     // Children before parents — the memory FKs deliberately do not cascade (SCHEMA §4):
     // chunks and messages under this run's conversations first, then the conversations.
     await db.query(
@@ -293,7 +292,11 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
     await db.query(`delete from public.memory_chunks where conversation_id = $1`, [convId]);
   });
 
-  it('memory_facts refuses a second live value for the same key', async () => {
+  it('memory_facts refuses a second live value for the same key — including from a DIFFERENT author', async () => {
+    // Stage 3 part 3 review (D54, migration 20260827040000): a WORKSPACE note is one note
+    // for the business, so its identity is the key alone. Before that index, the second
+    // insert below succeeded and the model was handed both, every turn, contradicting
+    // itself — the exact failure the controlled vocabulary exists to prevent.
     const key = `process:schema-test-dup-${RUN}`;
     await db.query(
       `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'workspace', $2, 'v1')`,
@@ -304,7 +307,32 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
         `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'workspace', $2, 'v2')`,
         [ROSS, key],
       ),
-    ).rejects.toThrow(/memory_facts_live_key_uniq/);
+    ).rejects.toThrow(/memory_facts_live_workspace_key_uniq/);
+    await expect(
+      db.query(
+        `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'workspace', $2, 'v3')`,
+        [DEV, key],
+      ),
+    ).rejects.toThrow(/memory_facts_live_workspace_key_uniq/);
+  });
+
+  it('a PRIVATE note is per person: the same key is fine for two people, twice for one is not', async () => {
+    const key = `personal:schema-test-private-${RUN}`;
+    await db.query(
+      `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'user', $2, 'ross')`,
+      [ROSS, key],
+    );
+    // Someone else's private note under the same key is a different note entirely.
+    await db.query(
+      `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'user', $2, 'dev')`,
+      [DEV, key],
+    );
+    await expect(
+      db.query(
+        `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'user', $2, 'again')`,
+        [ROSS, key],
+      ),
+    ).rejects.toThrow(/memory_facts_live_user_key_uniq/);
   });
 
   it('review_queue refuses parked-era entity types', async () => {

@@ -200,6 +200,50 @@ facts: refusal + reason + redirect, five boundary checks pass (MEMORY.md 27 Aug)
 migration is **not yet applied live** (`supabase db push` refused by the tool permission
 layer this session — one command for the reviewer).
 
+**Part 3 (FND-320, 27 Aug 2026) evidence, code level — the eight Part C assertions:**
+(1) a note added from the page is in the next turn's request to Claude — `memory-page.test.ts`
+"1." (the fixture fetch reads the wire body of the Claude request), `page.test.ts` "add — 1.";
+(2) a note forgotten from the page stops reaching the next turn and the row survives with
+`superseded_by = its own id`, its value, its author and its audit trail —
+`memory-page.test.ts` "2." (including that forgetting twice writes one audit row, not two);
+(3) an edit supersedes rather than duplicating and the history is visible —
+`memory-page.test.ts` "3." (three rows, one live, values in order, and a 409 on the row that
+was just superseded), `page.test.ts` "edit — 3." (the upsert carries the ROW's author, not
+the editor's), `memory.test.ts` `buildFactLists`, browser "an edit shows as one note with its
+earlier wording kept"; (4) a deleted chunk stops being retrieved AND its range stays claimed
+— `memory-page.test.ts` "4." (recalled before, absent after, `coverage()` still `[1,11)`,
+embedding null, tombstone summary), `page.test.ts` "supabaseMemoryPageStore" (the update
+destroys content and does not touch `turn_range`); (5) a non-allowlisted or deactivated user
+cannot read or write memory through the page — `page.test.ts` "who is let in" (401/403 before
+any read, write or spend), `memory-page.test.ts` "a deactivated member…", `rls.test.ts` 2/3,
+browser "a deactivated account never reaches the page"; (6) the browser cannot write memory
+without the server path — `rls.test.ts` 8 (forget, tombstone, insert and delete all refused
+through PostgREST as a real session, nothing moved), browser (`postgrestWrites` empty on
+every change); (7) 375 / 768 / 1280 with no horizontal scroll — `memory.spec.ts`, 33 browser
+assertions, screenshots in `docs/assets/stage-3/`; (8) every memory write lands in
+`audit_log` with the right actor — `memory-page.test.ts` "8." (four fact actions and one
+chunk action, actor = the user id, trigger rows alongside with actor `service_role`, and no
+removed summary text anywhere in `audit_log`), `page.test.ts` per action.
+Items marked `memory-page.test.ts`, `schema.test.ts` and `rls.test.ts` need a stack and were
+**not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence.
+
+**Part 3 review (27 Aug), two additions and the live proof.** (a) **D54** — a workspace note
+is now unique by `key` alone and a private note by `(user_id, key)` (migration
+`20260827040000`), closing the gap where two staff could hold contradicting live notes under
+one key; `schema.test.ts` proves the constraint from both authors, `memory-page.test.ts`
+proves the write path supersedes rather than forks, and it was confirmed live (below).
+(b) **D55** — `web:build` forces `NODE_ENV=production` and `web:check` fails on a React
+development bundle; the live Vercel artefact was checked first and was already the production
+build. **Deployed and proven live on 27 Aug** against the real function with a disposable
+account whose rows were all removed afterwards: delete a conversation note → 200 `deleted`
+with the exact tombstone (marker summary, null audience, null embedding, `turn_range`
+unchanged, `deleted_by` = the caller) and 200 `already` on a repeat; forget → 200 with the
+row self-referenced and its wording kept; editing a teammate's note → 200 `replaced` leaving
+one live row authored by the editor, with a direct second insert refused by
+`memory_facts_live_workspace_key_uniq` (23505); three `audit_log` rows with the caller as
+actor; anonymous POST 401, GET 405, CORS echoing the Vercel origin; the production alias
+serving 444,266 bytes with zero React dev markers and no key of any kind.
+
 ---
 
 ## Stage 4 — Website reading and storage · Payment 4 of 5 (198)

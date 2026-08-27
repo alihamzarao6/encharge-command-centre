@@ -75,10 +75,32 @@ export interface StaffStore {
   readonly setActive: (userId: string, active: boolean) => Promise<Result<void>>;
 }
 
+/**
+ * Every application-written audit action, closed so a typo cannot invent one and a reader
+ * can see the whole set of things a person can be recorded as having done. The database
+ * trigger writes its own rows with `INSERT` / `UPDATE` / `DELETE` as the action; these are
+ * the ones code writes, and they name the HUMAN rather than the role the write used.
+ */
+export type AuditAction =
+  // Staff administration (Stage 2 part 3, src/lib/auth/admin.ts)
+  | 'USER_CREATED'
+  | 'USER_DEACTIVATED'
+  | 'PASSWORD_RESET'
+  | 'CREDENTIALS_ATTACHED'
+  // Memory page (Stage 3 part 3, src/lib/memory/page.ts)
+  | 'MEMORY_FACT_ADDED'
+  | 'MEMORY_FACT_REPLACED'
+  | 'MEMORY_FACT_EDITED'
+  | 'MEMORY_FACT_RESTORED'
+  | 'MEMORY_FACT_FORGOTTEN'
+  | 'MEMORY_CHUNK_DELETED';
+
+export type AuditEntityType = 'app_users' | 'memory_facts' | 'memory_chunks';
+
 export interface AuditEntry {
   readonly actor: string;
-  readonly action: 'USER_CREATED' | 'USER_DEACTIVATED' | 'PASSWORD_RESET' | 'CREDENTIALS_ATTACHED';
-  readonly entityType: 'app_users';
+  readonly action: AuditAction;
+  readonly entityType: AuditEntityType;
   readonly entityId: string;
 }
 

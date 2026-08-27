@@ -1,8 +1,13 @@
 /**
  * A scripted Supabase for the browser tests. Intercepts every request the built app makes —
- * GoTrue (sign-in, session, sign-out), PostgREST (app_users, conversations, messages) and
- * the chat Edge Function — and answers from an in-memory script. Nothing leaves the
- * machine; the app cannot tell the difference because the URLs and shapes are the real ones.
+ * GoTrue (sign-in, session, sign-out), PostgREST (app_users, conversations, messages,
+ * memory_facts, memory_chunks) and the two Edge Functions — and answers from an in-memory
+ * script. Nothing leaves the machine; the app cannot tell the difference because the URLs and
+ * shapes are the real ones.
+ *
+ * PostgREST is READ-ONLY here, as it is in production: any non-GET is recorded in
+ * `postgrestWrites` and answered 403 / 42501, so a test can assert that the interface changes
+ * memory only through the verified server path.
  */
 import type { Page, Route } from '@playwright/test';
 
@@ -75,18 +80,51 @@ export function sseDone(
   ];
 }
 
+/** Stage 3 part 3: the two memory tables the page selects, and the rows it starts with. */
+export interface ScriptedFact {
+  id: string;
+  user_id: string;
+  scope: string;
+  key: string;
+  value: string | null;
+  superseded_by: string | null;
+  created_at: string;
+}
+
+export interface ScriptedChunk {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  scope: string;
+  summary: string;
+  audience: string | null;
+  created_at: string;
+  deleted_at: string | null;
+}
+
 export interface MockOptions {
   /** 'active' → app_users row readable; 'deactivated' → zero rows (RLS); 'banned' → GoTrue refuses. */
   account?: 'active' | 'deactivated' | 'banned' | 'wrong-password';
+  admin?: boolean;
   conversations?: { id: string; title: string | null; last_active_at: string }[];
   messages?: Record<string, ScriptedMessage[]>;
   chat?: ChatScript;
+  facts?: ScriptedFact[];
+  chunks?: ScriptedChunk[];
+  /** Force one status/body from the memory endpoint instead of the faithful default. */
+  memoryFailure?: { status: number; body: unknown };
 }
 
 export interface MockState {
   readonly chatCalls: { message: string; conversationId?: string; authorization: string | null }[];
   readonly anthropicCalls: number;
   signOuts: number;
+  /** Every POST to /functions/v1/memory — the only sanctioned way memory changes. */
+  readonly memoryCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  /** Any non-GET/HEAD request to PostgREST. Part C item 6: this must stay empty. */
+  readonly postgrestWrites: { method: string; path: string }[];
+  readonly facts: ScriptedFact[];
+  readonly chunks: ScriptedChunk[];
 }
 
 function json(
@@ -127,8 +165,17 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
   const account = options.account ?? 'active';
   const conversations = options.conversations ?? [];
   const messages = options.messages ?? {};
-  const state: MockState = { chatCalls: [], anthropicCalls: 0, signOuts: 0 };
+  const state: MockState = {
+    chatCalls: [],
+    anthropicCalls: 0,
+    signOuts: 0,
+    memoryCalls: [],
+    postgrestWrites: [],
+    facts: [...(options.facts ?? [])],
+    chunks: [...(options.chunks ?? [])],
+  };
   let chatCall = 0;
+  let newRow = 0;
 
   // The assertion behind Part C item 2 and PHASE-ACCEPTANCE item 6: the browser never
   // talks to Anthropic. Any request there is counted and refused.
@@ -187,10 +234,29 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     }
 
     // ---- PostgREST (selects only; the browser has no write privilege) ----
+    // Part C item 6: the page must never write through PostgREST. Anything but a read is
+    // recorded and refused exactly as the privilege layer would refuse it (42501).
+    if (path.startsWith('/rest/v1/') && method !== 'GET' && method !== 'HEAD') {
+      state.postgrestWrites.push({ method, path });
+      await json(route, 403, {
+        code: '42501',
+        message: `permission denied for table ${path.replace('/rest/v1/', '')}`,
+      });
+      return;
+    }
+
     if (path === '/rest/v1/app_users') {
       const rows =
         account === 'active'
-          ? [{ user_id: USER_ID, email: EMAIL, role: 'staff', is_active: true, is_admin: false }]
+          ? [
+              {
+                user_id: USER_ID,
+                email: EMAIL,
+                role: 'staff',
+                is_active: true,
+                is_admin: options.admin === true,
+              },
+            ]
           : [];
       await json(route, 200, rows);
       return;
@@ -211,6 +277,97 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         200,
         (messages[id] ?? []).map((m) => ({ ...m, conversation_id: id })),
       );
+      return;
+    }
+
+    if (path === '/rest/v1/memory_facts') {
+      await json(route, 200, state.facts);
+      return;
+    }
+    if (path === '/rest/v1/memory_chunks') {
+      const live = url.search.includes('deleted_at=is.null');
+      await json(
+        route,
+        200,
+        live ? state.chunks.filter((c) => c.deleted_at === null) : state.chunks,
+      );
+      return;
+    }
+
+    // ---- the memory Edge Function (Stage 3 part 3) ----
+    // Faithful to src/lib/memory/page.ts on the parts the interface depends on: append-only
+    // with supersede, a self-reference for "forgotten", a tombstone for a deleted summary.
+    if (path === '/functions/v1/memory' && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.memoryCalls.push({
+        body,
+        authorization: request.headers()['authorization'] ?? null,
+      });
+      if (options.memoryFailure !== undefined) {
+        await json(route, options.memoryFailure.status, options.memoryFailure.body);
+        return;
+      }
+      const now = new Date().toISOString();
+      const action = body['action'];
+      if (action === 'add' || action === 'edit') {
+        const existing =
+          action === 'edit' ? state.facts.find((f) => f.id === body['factId']) : undefined;
+        const key = existing?.key ?? 'writing:added-from-the-page';
+        const value = String(action === 'edit' ? body['value'] : body['text']).trim();
+        const live = state.facts.find((f) => f.key === key && f.superseded_by === null);
+        newRow += 1;
+        const id = `new-fact-${String(newRow)}`;
+        // A live row is superseded; a forgotten row keeps its self-reference and the new
+        // row simply becomes live again under the same key — that is "add it back".
+        if (live !== undefined) live.superseded_by = id;
+        state.facts.push({
+          id,
+          user_id: USER_ID,
+          scope: 'workspace',
+          key,
+          value,
+          superseded_by: null,
+          created_at: now,
+        });
+        await json(route, 200, {
+          action,
+          outcome: 'saved',
+          factId: id,
+          key,
+          value,
+          replaced: live !== undefined,
+        });
+        return;
+      }
+      if (action === 'forget') {
+        const row = state.facts.find((f) => f.id === body['factId']);
+        if (row === undefined) {
+          await json(route, 404, {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'That note is no longer there.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        row.superseded_by = row.id;
+        await json(route, 200, { action: 'forget', outcome: 'forgotten', factId: row.id });
+        return;
+      }
+      if (action === 'delete_chunk') {
+        const row = state.chunks.find((c) => c.id === body['chunkId']);
+        if (row !== undefined) row.deleted_at = now;
+        await json(route, 200, {
+          action: 'delete_chunk',
+          outcome: 'deleted',
+          chunkId: String(body['chunkId']),
+        });
+        return;
+      }
+      await json(route, 400, {
+        error: { code: 'BAD_REQUEST', message: 'unknown action', retryable: false },
+      });
       return;
     }
 

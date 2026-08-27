@@ -7,6 +7,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { webConfig } from './env.js';
+// The two memory row shapes live in memoryView.ts, which imports nothing that touches
+// import.meta.env — so the view logic over them is unit-testable under Node. Re-exported
+// here because this is where the rest of the app expects a row type to come from.
+import type { MemoryChunkRow, MemoryFactRow } from './memoryView.js';
+
+export type { MemoryChunkRow, MemoryFactRow };
 
 /* eslint-disable @typescript-eslint/consistent-type-definitions,
    @typescript-eslint/consistent-indexed-object-style -- see WebDatabase */
@@ -60,6 +66,18 @@ export type WebDatabase = {
         Row: MessageRow;
         Insert: Partial<MessageRow>;
         Update: Partial<MessageRow>;
+        Relationships: [];
+      };
+      memory_facts: {
+        Row: MemoryFactRow;
+        Insert: Partial<MemoryFactRow>;
+        Update: Partial<MemoryFactRow>;
+        Relationships: [];
+      };
+      memory_chunks: {
+        Row: MemoryChunkRow;
+        Insert: Partial<MemoryChunkRow>;
+        Update: Partial<MemoryChunkRow>;
         Relationships: [];
       };
     };

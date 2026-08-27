@@ -9,6 +9,8 @@ export interface WebConfig {
   readonly supabaseUrl: string;
   readonly anonKey: string;
   readonly chatUrl: string;
+  /** Stage 3 part 3: the memory page's write endpoint. Reads go straight to PostgREST. */
+  readonly memoryUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -19,5 +21,10 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
   if (supabaseUrl === '' || anonKey === '') {
     throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set at build time.');
   }
-  return { supabaseUrl, anonKey, chatUrl: `${supabaseUrl}/functions/v1/chat` };
+  return {
+    supabaseUrl,
+    anonKey,
+    chatUrl: `${supabaseUrl}/functions/v1/chat`,
+    memoryUrl: `${supabaseUrl}/functions/v1/memory`,
+  };
 }

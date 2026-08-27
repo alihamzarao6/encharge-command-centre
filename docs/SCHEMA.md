@@ -333,6 +333,19 @@ what a conversation was called, when, and who it was for, not only on the note's
   aspiring to homeownership") but lifts other audience phrasings a little ("post for first
   home buyers in Perth" 0.24 → 0.32). Recorded honestly in MEMORY.md 27 Aug.
 
+- **`deleted_at timestamptz` / `deleted_by uuid`** (Stage 3 part 3, migration
+  `20260827030000`): what Delete on the memory page leaves behind. The row is NOT removed —
+  it keeps its `turn_range`, so `memory_chunks_no_overlap` still owns that range and the
+  summariser can never quietly re-summarise the messages the user asked to be rid of and
+  charge for it twice. Everything that made it memory is destroyed in the same update:
+  `summary` becomes a fixed marker (`CHUNK_TOMBSTONE_SUMMARY`, the column is NOT NULL),
+  `audience` and `embedding` become null. A null embedding is already invisible to
+  `match_memory_chunks`; the migration adds `k.deleted_at is null` to the same function so
+  the intent is stated rather than inherited. **`memory_chunks` deliberately has no audit
+  trigger** — a before-image would preserve in `audit_log` exactly the sentence that was
+  removed; the deletion is an application-written `audit_log` row carrying ids and the actor
+  only. The removal is therefore NOT reversible, and the page says so on the confirm step.
+
 Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document` (R5 — the key is
 still to arrive; without it the chat runs and no chunk is written). Cost per chunk is in
 `SECURITY.md` §8.
@@ -342,9 +355,12 @@ still to arrive; without it the chat runs and no chunk is written). Cost per chu
 source_message_id · superseded_by · embedding vector(1024) · created_at`
 
 Append-only. Updating inserts a new row and sets `superseded_by` on the old one. Current
-facts = `where superseded_by is null`. Unique on `(user_id, scope, key) where superseded_by
-is null` so two live values for one key cannot coexist. Written by `src/lib/memory/facts.ts`
-(27 Aug 2026, migration `20260827010000_memory_facts_stage3.sql`):
+facts = `where superseded_by is null`. **Identity is per scope** (migration
+`20260827040000`, D54): a **workspace** note is unique on `key` alone — the business has one
+answer, whoever wrote it — and a **user** note is unique on `(user_id, key)`. *(Superseded:
+the single index `(user_id, scope, key) where superseded_by is null`, which let two people
+each hold a live `writing:tone`, both handed to the model on every turn.)* Written by
+`src/lib/memory/facts.ts` (27 Aug 2026, migration `20260827010000_memory_facts_stage3.sql`):
 
 - **`key` is `<category>:<slug>`** — `memory_facts_key_format`: category one of `writing`,
   `audience`, `business`, `offer`, `process`, `personal`; slug lowercase kebab-case; ≤ 72
@@ -356,11 +372,17 @@ is null` so two live values for one key cannot coexist. Written by `src/lib/memo
   (`memory_facts_confidence_range`); explicit "remember that…" facts are stored at `1`.
 - **`upsert_memory_fact(user, scope, key, value, confidence, source_message_id)`** is the
   ONLY write path — `service_role` executes it, `anon`/`authenticated` cannot. One
-  transaction under a per-key advisory lock: identical value → `unchanged`; new key →
-  `inserted`; different value for a live key → the old row is pointed at the new one and the
+  transaction under a per-note advisory lock: identical value → `unchanged`; new key →
+  `inserted`; different value for a live note → the old row is pointed at the new one and the
   result is `superseded`. The partial unique index would refuse two live rows, so the
   function steps the old row out of "live" first (a self-reference), inserts, then repoints.
-  Two callers racing on one key end with one live row superseding the other, never an error.
+  The lock and the lookup use the **same shape as the index** — `(scope, key)` for a
+  workspace note, `(user_id, key)` for a private one — so two different people writing one
+  workspace note contend rather than pass each other. **Racing:** the second caller waits,
+  re-reads under READ COMMITTED, and supersedes the first one's row; the loser keeps its
+  value, author and date and appears in the note's history as *replaced*. One live row,
+  always, and never an error. `p_user_id` is therefore the **author of the new row**, not
+  part of a workspace note's identity.
 - **`source_message_id`** is the user message that carried the request, attached once the
   turn is saved (the fact is captured before the reply so the reply can say it was saved).
   Null for a fact stored by hand (`npm run memory -- remember`).
@@ -371,9 +393,27 @@ is null` so two live values for one key cannot coexist. Written by `src/lib/memo
   the day the fact count outgrows the per-turn budget.
 - **Read path for retrieval:** `match_memory_chunks(query, user, conversation,
   history_messages, limit, min_similarity)` — cosine top-k over `memory_chunks` via the HNSW
-  index, workspace rows plus the caller's own private ones, no deleted conversation, no chunk
-  whose messages are already in the turn's verbatim history window, nothing under the
-  floor. `service_role` only, like the write path.
+  index, workspace rows plus the caller's own private ones, no deleted conversation, no
+  deleted chunk, no chunk whose messages are already in the turn's verbatim history window,
+  nothing under the floor. `service_role` only, like the write path.
+- **`superseded_by` also carries "forgotten"** (Stage 3 part 3): a row whose `superseded_by`
+  is **its own id** was removed by a person from the memory page and nothing replaced it. It
+  is the one value that cannot mean "a newer row took over", `upsert_memory_fact` already
+  used it transiently for exactly that reason, and it needs no column: the live predicate
+  stays `superseded_by is null`, so retrieval and the extractor's key list both drop the note
+  with no change to any read path, and the partial unique index frees the key so the same
+  note can be stated again later. The row keeps its value, its author and its date, so the
+  page can show what was removed and offer to add it back — which is why the button says
+  **Forget** and not Delete. Three states, one column: `null` = live, own id = forgotten,
+  another id = replaced.
+- **Written from the page** (Stage 3 part 3, `src/lib/memory/page.ts`, Edge Function
+  `memory`): adding a note runs the SAME extractor and guards as "remember that…" in the
+  chat, so the page is not a way around D43's access and override checks; editing keeps the
+  person's exact words under the existing key and goes through `upsert_memory_fact` with the
+  **row's own `user_id`**, not the editor's — the function matches on `(user_id, scope, key)`
+  and passing the editor would insert a second live workspace row for one key instead of
+  superseding. Who made the change is the `audit_log` row. A note made on the page is always
+  `workspace`.
 
 *Superseded column shape, kept for the record:* `scope (global|user|org) · scope_id`. Replaced
 23 Aug by the two-value `scope` + `user_id` above; see the reasoning at the top of §4. *The

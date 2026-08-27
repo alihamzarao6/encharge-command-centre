@@ -417,8 +417,12 @@ test.describe('assistant', () => {
   }) => {
     await installMock(page);
     await signIn(page);
+    // Stage 3 part 3: Memory is live now, so the honest placeholders are Content and Ads.
     await page.getByRole('button', { name: /Memory/ }).click();
-    await expect(page.getByText('Stage 3 · not yet built')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Memory' })).toBeVisible();
+    await expect(page.getByText('not yet built')).toHaveCount(0);
+    await page.getByRole('button', { name: /Content/ }).click();
+    await expect(page.getByText('Stage 5 · not yet built')).toBeVisible();
     await page.getByRole('button', { name: /Ads/ }).click();
     await expect(page.getByText('Stage 5 · not yet built')).toBeVisible();
     await expectNoHorizontalScroll(page);

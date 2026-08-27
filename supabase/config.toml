@@ -438,3 +438,15 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/chat/index.ts"
 import_map = "./functions/chat/deno.json"
+
+# Stage 3 part 3 (FND-320): the memory page's write endpoint. Reads go straight to PostgREST
+# under RLS; this function exists because `authenticated` holds SELECT and nothing else, so
+# adding, correcting or removing a note has to come through a verified server path.
+# Same generation rule as chat: the entrypoint is written by `npm run functions:bundle` from
+# src/functions/memory/index.ts and is gitignored. verify_jwt stays off for the same reason —
+# the library verifies the bearer token itself and answers 401/403 with a body the UI shows.
+[functions.memory]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/memory/index.ts"
+import_map = "./functions/memory/deno.json"

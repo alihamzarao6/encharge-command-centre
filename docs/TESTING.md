@@ -161,6 +161,24 @@ Coverage required:
   block, still 200; Voyage unreachable → 200 with facts and no chunks. `rls.test.ts` 7:
   `upsert_memory_fact` / `match_memory_chunks` executable by `service_role` only, proven
   from the catalog and through PostgREST as a session
+- **Fact identity (`schema.test.ts`, part 3 review, D54):** a second live WORKSPACE row for
+  one key is refused by `memory_facts_live_workspace_key_uniq` — including from a *different*
+  author, which is the case the old `(user_id, scope, key)` index allowed; and a PRIVATE note
+  under the same key is fine for two people but refused twice for one
+  (`memory_facts_live_user_key_uniq`). `memory-page.test.ts` proves the same thing through
+  the write path: editing a teammate's workspace note supersedes it, leaving one live row
+  authored by the editor
+- **The memory page (`tests/integration/memory-page.test.ts`, Stage 3 part 3):** through
+  `handleMemoryRequest` and `handleChatTurn` with fixture fetches — a note added from the
+  page is in the NEXT turn's request to Claude; forgetting it takes it out of the next turn
+  while the row survives self-referenced with its value and author; an edit supersedes rather
+  than duplicating (three rows, one live, the earlier wording still readable) and editing the
+  row that was just superseded is a 409, not a second live note; a deleted chunk stops being
+  retrieved AND its range stays claimed (`coverage()` still reports `[1,11)`), so the
+  summariser cannot rebuild what was removed; every change is one `audit_log` row whose actor
+  is the person, and no removed summary text appears in `audit_log` at all; a deactivated
+  member is refused. `rls.test.ts` 8: a real session's attempts to forget a note, tombstone a
+  chunk, insert or delete a fact through PostgREST are all refused, and nothing moves
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL
@@ -246,6 +264,16 @@ three widths against `tests/e2e/mock.ts` (scripted GoTrue, PostgREST and chat en
 stack, no key, no spend): the eight Part C assertions of FND-250 that need a browser, and the
 screenshots under `docs/assets/stage-2/` as an artefact. Unit tests for the browser's pure
 libraries (`web/src/lib/`) live in `tests/unit/web/` and count toward coverage.
+
+*Status 27 Aug 2026 (Stage 3 part 3):* `web:check` also greps for the Voyage key (shape and
+value) and **fails on a React development bundle** — `npm run web:build` forces
+`NODE_ENV=production` (`scripts/build-web.ts`, D55) and this is the assertion that says it
+did. `tests/unit/web/bundleCheck.test.ts` covers the predicate; importing `check-bundle.ts`
+is side-effect free so the unit suite, which runs before the web build, is unaffected; `functions:bundle` now builds two functions, so a broken import in either fails CI;
+the `browser` job gains `tests/e2e/memory.spec.ts` (11 tests × 3 widths) and the screenshots
+under `docs/assets/stage-3/`. The e2e mock answers **403 / 42501 to any non-GET PostgREST
+request** and records it, so "the page changes memory only through the verified server path"
+is an assertion in the browser as well as in `rls.test.ts`.
 
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →
