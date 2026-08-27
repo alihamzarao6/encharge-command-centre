@@ -55,6 +55,8 @@ export interface RecalledChunk {
   readonly id: string;
   readonly conversationId: string;
   readonly title: string | null;
+  /** Who the work was aimed at (review, 27 Aug); null when the summariser found none. */
+  readonly audience: string | null;
   readonly summary: string;
   readonly createdAt: Date;
   readonly similarity: number;
@@ -107,6 +109,7 @@ export function supabaseChunkSearch(client: ServiceClient): ChunkSearch {
             id: row.id,
             conversationId: row.conversation_id,
             title: row.title,
+            audience: row.audience,
             summary: row.summary,
             createdAt: new Date(row.created_at),
             similarity: row.similarity,
@@ -145,7 +148,11 @@ export function renderFact(fact: FactRow): string {
 export function renderChunk(chunk: RecalledChunk, index: number): string {
   const title =
     chunk.title === null || chunk.title.trim() === '' ? 'Untitled' : oneLine(chunk.title);
-  return `[${index}] "${title}" (${perthDate(chunk.createdAt)}, similarity ${chunk.similarity.toFixed(2)}): ${oneLine(chunk.summary)}`;
+  const audience =
+    chunk.audience === null || chunk.audience.trim() === ''
+      ? ''
+      : `, for ${oneLine(chunk.audience)}`;
+  return `[${index}] "${title}" (${perthDate(chunk.createdAt)}${audience}, similarity ${chunk.similarity.toFixed(2)}): ${oneLine(chunk.summary)}`;
 }
 
 /** Newest first, then cut: count first, then rendered characters. */

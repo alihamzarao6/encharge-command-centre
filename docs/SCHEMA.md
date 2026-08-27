@@ -316,11 +316,22 @@ A chunk is **a summary plus a pointer**, never a second copy of the messages. Wr
 - `user_id` / `scope` are the parent conversation's (trigger, as for `messages`): a chunk of
   a private conversation is private, a scope flip cascades, and the RLS policy needs no join.
 
-**What is embedded** is the note under a two-line header — `Conversation: <title>` and
-`Date: <Perth calendar date of the range's newest message>` (`embeddingText`,
-`src/lib/memory/summarise.ts`) — so part 2's retrieval can match on what a conversation
-was called and when, not only on the note's words. `summary` stores the note alone; the
-header is reproducible from `conversations.title` and the range's messages.
+**What is embedded** is the note under a header — `Conversation: <title>`, `Date: <Perth
+calendar date of the range's newest message>` and, when there is one, `Audience: <who the
+work was for>` (`embeddingText`, `src/lib/memory/summarise.ts`) — so retrieval can match on
+what a conversation was called, when, and who it was for, not only on the note's words.
+`summary` stores the note alone; the header is reproducible from `conversations.title`,
+`memory_chunks.audience` and the range's messages.
+
+- **`audience text`** (review of part 2, 27 Aug, migration `20260827020000`): the
+  summariser's trailing `Audience:` line — who the copy or advice in that range was aimed
+  at, ≤ 120 chars (`memory_chunks_audience_length`), null when it named none. Stored so the
+  header can be rebuilt and shown on the memory page; `match_memory_chunks` returns it and
+  the recalled line reads `"<title>" (<date>, for <audience>, similarity …)`. Measured on
+  the one live chunk: it does **not** rescue the audience-phrased miss that prompted it
+  ("…for young Perth couples." 0.36 → 0.35 — the summariser called the audience "renters
+  aspiring to homeownership") but lifts other audience phrasings a little ("post for first
+  home buyers in Perth" 0.24 → 0.32). Recorded honestly in MEMORY.md 27 Aug.
 
 Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document` (R5 — the key is
 still to arrive; without it the chat runs and no chunk is written). Cost per chunk is in

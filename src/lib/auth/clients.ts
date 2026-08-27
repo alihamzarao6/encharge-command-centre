@@ -88,6 +88,7 @@ type MemoryChunksRow = {
   user_id: string;
   scope: string;
   summary: string;
+  audience: string | null;
   embedding: string | null;
   turn_range: string;
   created_at: string;
@@ -190,6 +191,7 @@ export type Database = {
           id: string;
           conversation_id: string;
           title: string | null;
+          audience: string | null;
           summary: string;
           turn_range: string;
           created_at: string;

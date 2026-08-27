@@ -271,10 +271,10 @@ describe('access decisions are not memory (review, 26 Aug)', () => {
   });
 
   it('embeds a title + Perth-date header above the note; the note itself is unchanged', () => {
-    expect(embeddingText({ title: '  Offset post  ', date: '2026-08-25' }, GOOD)).toBe(
-      `Conversation: Offset post\nDate: 2026-08-25\n\n${GOOD}`,
-    );
-    expect(embeddingText({ title: null, date: '2026-08-25' }, GOOD)).toContain(
+    expect(
+      embeddingText({ title: '  Offset post  ', date: '2026-08-25', audience: null }, GOOD),
+    ).toBe(`Conversation: Offset post\nDate: 2026-08-25\n\n${GOOD}`);
+    expect(embeddingText({ title: null, date: '2026-08-25', audience: null }, GOOD)).toContain(
       'Conversation: Untitled\n',
     );
     // 23:30 UTC on the 25th is already the 26th in Perth (UTC+8).

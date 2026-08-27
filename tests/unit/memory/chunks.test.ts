@@ -169,6 +169,7 @@ describe('insertChunk', () => {
     userId: USER_ID,
     scope: 'workspace' as const,
     summary: 'The user asked about offset accounts.',
+    audience: 'tradies',
     embedding: FIXTURE_VECTOR,
     range: { lo: 1, hi: 11 },
   };
@@ -181,6 +182,7 @@ describe('insertChunk', () => {
     expect(body['turn_range']).toBe('[1,11)');
     expect(body['scope']).toBe('workspace');
     expect(body['summary']).toBe(input.summary);
+    expect(body['audience']).toBe('tradies');
     expect(typeof body['embedding']).toBe('string');
     expect(JSON.parse(body['embedding'] as string)).toHaveLength(1024);
   });

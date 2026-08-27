@@ -146,6 +146,7 @@ describe('Part C 1–4: one window → one chunk, idempotent, 1024-d, metered', 
         userId: CONVERSATION.userId,
         scope: 'workspace',
         summary: 'raced',
+        audience: null,
         embedding: [1],
         range: { lo: 1, hi: 11 },
       });

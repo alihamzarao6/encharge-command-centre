@@ -122,7 +122,11 @@ down, facts down, search down, timeout, a throwing dependency, top-k 0, and the 
 path saved / declined / failed), `retrieval-config.test.ts`, and
 `tests/unit/llm/chat-recall.test.ts` (the block is the second system block, uncached, after
 the cached prefix; the summary rides on the reply; the source back-fill; memory that throws
-still answers 200; a refused caller never reaches memory; streaming). `npm run memory --
+still answers 200; a refused caller never reaches memory; streaming), and
+`audience.test.ts` (the summariser's trailing `Audience:` line: split, placeholders, bounds,
+access guard, the header, the recalled line, and the trigger over
+`tests/fixtures/anthropic/summary-audience.json` — the real Haiku answer for the live
+Meta-ad conversation, 955 in / 112 out). `npm run memory --
 recall "<message>"` prints the assembled block for a real message; `-- remember "<statement>"`
 stores a fact by hand through the same guards; `-- facts [--all]` lists them.
 

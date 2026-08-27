@@ -44,6 +44,8 @@ export interface ChunkInsert {
   readonly userId: string;
   readonly scope: 'user' | 'workspace';
   readonly summary: string;
+  /** Who the work was aimed at (review, 27 Aug); null when the summariser found none. */
+  readonly audience: string | null;
   readonly embedding: readonly number[];
   readonly range: MessageRange;
 }
@@ -159,6 +161,7 @@ export function supabaseChunkStore(client: ServiceClient): ChunkStore {
           user_id: input.userId,
           scope: input.scope,
           summary: input.summary,
+          audience: input.audience,
           // pgvector accepts the JSON array form on input; PostgREST forwards it as text.
           embedding: JSON.stringify(input.embedding),
           turn_range: formatInt4Range(input.range),

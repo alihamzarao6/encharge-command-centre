@@ -201,6 +201,7 @@ async function writeOne(
         {
           title: conversation.title,
           date: perthDate(newest ?? (deps.now ?? (() => new Date()))()),
+          audience: summary.value.audience,
         },
         summary.value.text,
       ),
@@ -228,6 +229,7 @@ async function writeOne(
     userId: conversation.userId,
     scope: conversation.scope,
     summary: summary.value.text,
+    audience: summary.value.audience,
     embedding: vector,
     range,
   });
