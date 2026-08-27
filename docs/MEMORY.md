@@ -23,7 +23,7 @@ file means every later session works from a wrong picture.
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
 | Next task | **Stage 3 part 3 (FND-320) is deployed and proven live; the working tree is staged, NOT committed** — reviewer reads the report → push → CI (`checks` + `integration`: `db reset` from zero with **14** migrations, `memory-page.test.ts`, `schema.test.ts` uniqueness, `rls.test.ts` 8 + `browser`: `memory.spec.ts` 33) → the manual pass on a phone (report §10) → **part 4** (Users page and conversation management). *Already done on the reviewer's go, 27 Aug:* `supabase db push` (13th + 14th migrations), `functions:bundle`, `supabase functions deploy chat` **and** `memory`, `web:build`, `vercel deploy --prod` — all verified live (see the 27 Aug part-3 entry) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local 27 Aug (Stage 3 part 3, uncommitted): typecheck + lint clean; unit 1018/1018, coverage 94.54% lines / 88.86% branches / 94.66% functions; whole suite 1028 passed + 66 stack-dependent skipped (no Docker); browser 81/81 at 375 / 768 / 1280 (33 of them the new `memory.spec.ts`); voice conformance 291/291 untouched at v2026-08-25.4; `web:check` 0 hits over 4 shapes (incl. `pa-…`) and 3 key values; Edge bundles 4,446 + 3,044 lines, 0 key shapes; web bundle 442.78 kB / 126.05 kB gzip in production mode; `memory-page.test.ts` and `rls.test.ts` 8 skipped locally — CI.** **CI run 33028757204 (`9d12238`, 27 Aug) fully green: unit 953/953 + coverage gate; `db reset --local` from zero with 12 migrations; integration 37/37 (incl. `recall.test.ts` 8); security incl. RLS 7 — zero skipped.** **Local 27 Aug (Stage 3 part 2): typecheck + lint clean; unit + security 935/935 with 59 stack-dependent skipped (no Docker), coverage 94.71% lines / 90.47% branches / 94.34% functions; voice conformance 291/291 untouched at v2026-08-25.4; Edge bundle 4,391 lines, 0 key shapes; `recall.test.ts`, `rls.test.ts` 7 and `schema.test.ts` skipped locally — CI.** **Local 26 Aug (Stage 3 part 1, uncommitted): typecheck + lint clean; unit + security 825/825 with 21 stack-dependent skipped (no Docker), coverage 94.56% lines / 90.3% branches / 94.89% functions; voice conformance 291/291 untouched at v2026-08-25.4; `web:check` 0 hits with real values present; Edge bundle 3,542 lines, 0 key shapes; integration suite (incl. new `memory.test.ts`) skipped locally — CI.** **Local 25 Aug (part 6, uncommitted): typecheck + lint clean; unit 712/712, coverage 94.87% lines / 90.69% branches; browser 48/48 at 375 / 768 / 1280; `web:check` 0 hits; security 6/6 with 20 stack-dependent skipped, integration 21 skipped (no Docker).** **Local 25 Aug (part 5, uncommitted): typecheck + lint clean; unit 615/615, coverage 95.72% lines / 92.78% branches; security 6/6 with 20 stack-dependent skipped (no Docker here); integration 21 skipped (no stack); voice conformance 291/291 on the recorded set at prompt v2026-08-25.4.** **CI run 32779504738 (`61188d4`, 24 Aug) fully green: unit 171/171, coverage 93.84% lines / 92.1% branches; `db reset --local` from zero; integration 15/15; security 23/23 — zero skipped.** **CI run 32790242804 (`22bdbb0`, 25 Aug) fully green: unit 282/282, coverage 95.17% lines / 93.06% branches; `db reset --local` from zero; integration 21/21 (incl. the 6 `llm.test.ts` stack assertions — one row per turn, cap → 402 + zero fetch, 401/403 before fetch, pagination past 1,000 rows); security 26/26 — zero skipped** |
+| Last regression run | **CI run 33045965704 (`e762c69`, 27 Aug) fully green: unit 1021/1021 + coverage gate 94.54% lines / 88.86% branches / 94.66% functions / 93.53% statements; `db reset --local` from zero with 14 migrations; integration 45/45 (5 files, incl. `memory-page.test.ts` 7 and `schema.test.ts` 17 with the two D54 uniqueness tests); security 33/33 (incl. `rls.test.ts` 14 with the new test 8); browser 81/81 at 375 / 768 / 1280 — zero skipped anywhere.** *(Two red runs before it, both mine, both cross-file fixture leaks — see the part-3 entry.)* **Local 27 Aug (Stage 3 part 3):
 | Known broken | Nothing outstanding on the memory layer. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6, **14 migrations applied (27 Aug — `20260827030000` chunk tombstone + `20260827040000` workspace-key uniqueness, both confirmed against the live catalog)**; both Edge Functions redeployed; Vercel serving the new bundle (444,266 bytes, 0 React dev markers). Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -107,7 +107,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
-### 2026-08-27 — [FND-320 · Stage 3 part 3] The Memory page — deployed; pushed after one red CI
+### 2026-08-27 — [FND-320 · Stage 3 part 3] The Memory page — deployed, pushed, CI green after two red runs
 
 **Did:** the Memory tab stops saying "Stage 3" and becomes the place the client can see,
 correct and remove what the assistant knows. `src/lib/memory/access.ts` (the ONE removal
@@ -235,8 +235,23 @@ staff and zero facts were untouched — counts confirmed identical before and af
 **Still not run here:** the stack suites (`memory-page.test.ts`, `schema.test.ts`,
 `rls.test.ts` 8) — no Docker; CI's `integration` job is their evidence.
 
-**Next:** reviewer reads the report → push → CI → the manual pass on a phone → **part 4**
-(Users page and conversation management).
+(5) **And the SECOND red CI was the same class of mistake one layer down.** With the files
+serialised, `memory-page.test.ts` passed all seven — but its `afterAll` threw on its opening
+statement (`audit_log.actor` is TEXT, `memory_facts.user_id` is UUID, and reusing `$1` for
+both makes Postgres resolve the placeholder to uuid: `operator does not exist: uuid = text`).
+Every remaining cleanup statement was abandoned, so two fixture users and one live workspace
+fact survived — and `recall.test.ts` counted 3 facts instead of 2 while `schema.test.ts` saw
+4 `app_users` rows instead of 2. Three red tests, none of them in the file with the bug.
+Fixed with two placeholders, and hardened so it cannot recur: the cleanup now **attempts
+every statement**, collects the failures and rethrows at the end — loud here, never silently
+contaminating a neighbour. The lesson worth keeping: when suites share a database, a cleanup
+that stops at its first error is a cross-file failure generator.
+
+**CI run 33045965704 (`e762c69`) is fully green** — unit 1021/1021, integration 45/45,
+security 33/33, browser 81/81, zero skipped anywhere, 14 migrations replayed from zero.
+
+**Next:** the manual pass on a phone (report §10) → **part 4** (Users page and conversation
+management).
 
 ---
 

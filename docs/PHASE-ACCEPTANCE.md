@@ -225,7 +225,11 @@ assertions, screenshots in `docs/assets/stage-3/`; (8) every memory write lands 
 chunk action, actor = the user id, trigger rows alongside with actor `service_role`, and no
 removed summary text anywhere in `audit_log`), `page.test.ts` per action.
 Items marked `memory-page.test.ts`, `schema.test.ts` and `rls.test.ts` need a stack and were
-**not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence.
+**not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence,
+and **CI run 33045965704 (`e762c69`, 27 Aug) is fully green**: unit 1021/1021 with the
+coverage gate, `db reset --local` from zero with 14 migrations, integration 45/45, security
+33/33, browser 81/81, zero skipped anywhere. (Two red runs preceded it, both cross-file
+fixture leaks in the new suite, both fixed — `docs/MEMORY.md`, part-3 entry.)
 
 **Part 3 review (27 Aug), two additions and the live proof.** (a) **D54** — a workspace note
 is now unique by `key` alone and a private note by `(user_id, key)` (migration
