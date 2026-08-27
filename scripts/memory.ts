@@ -11,6 +11,21 @@
  *                                                no database, no Voyage; the way to read
  *                                                what a summary looks like before trusting it
  *
+ * Part 2 (facts + retrieval), all as the staff account in CHAT_EMAIL / STAFF_ADMIN_EMAIL:
+ *   npm run memory -- recall "<message>" [--conversation <id>]
+ *                                                run the recall step for that message exactly
+ *                                                as a turn would and print the assembled
+ *                                                below-breakpoint block, the chunks with their
+ *                                                similarity, and the size in characters/tokens.
+ *                                                Nothing is sent to Claude; the query embedding
+ *                                                is metered as in production. Refuses a
+ *                                                "remember that…" message — use `remember`.
+ *   npm run memory -- remember "<statement>"     store a fact by hand through the same
+ *                                                extractor and guards a chat turn uses
+ *                                                (source_message_id null: there is no message)
+ *   npm run memory -- facts [--all]              list the caller's live facts (`--all`
+ *                                                includes superseded rows with their pointer)
+ *
  * `flush` and `sweep` run the production wiring (createChatDeps → createMemoryDeps): the
  * same caps, ledger, stores and Edge-Function code path, from a terminal. They need the
  * server environment (.env is loaded if present): SUPABASE_*, ANTHROPIC_* and VOYAGE_API_KEY.
@@ -31,7 +46,10 @@ import { createClaudeClient, type ClaudeClient, type UsageRecord } from '../src/
 import { loadLlmConfig } from '../src/lib/llm/config.js';
 import { supabaseUsageStore } from '../src/lib/llm/store.js';
 import { createMemoryDeps } from '../src/lib/llm/wiring.js';
-import { loadMemoryConfig, loadMemoryPolicy } from '../src/lib/memory/config.js';
+import { captureFact, isExplicitMemoryRequest } from '../src/lib/memory/capture.js';
+import { loadMemoryConfig, loadMemoryPolicy, type MemoryConfig } from '../src/lib/memory/config.js';
+import { supabaseFactStore } from '../src/lib/memory/facts.js';
+import { recallForTurn, supabaseChunkSearch } from '../src/lib/memory/retrieve.js';
 import { summariseMessages } from '../src/lib/memory/summarise.js';
 import {
   summariseConversation,
@@ -173,10 +191,129 @@ async function preview(file: string | undefined): Promise<void> {
   });
 }
 
+// ---------------------------------------------------------------------------------------
+// Part 2: facts and retrieval, as one staff account.
+// ---------------------------------------------------------------------------------------
+
+interface Caller {
+  readonly userId: string;
+  readonly deps: MemoryDeps;
+  readonly config: MemoryConfig;
+  readonly service: ReturnType<typeof createServiceClient>;
+}
+
+/** The staff account in CHAT_EMAIL / STAFF_ADMIN_EMAIL, resolved through app_users. */
+async function caller(): Promise<Caller> {
+  const email = readEnv('CHAT_EMAIL') ?? readEnv('STAFF_ADMIN_EMAIL');
+  if (email === undefined) fail('set CHAT_EMAIL (or STAFF_ADMIN_EMAIL) to the staff account');
+  const supabase = loadSupabaseAuthConfig(process.env);
+  if (!supabase.ok) fail(supabase.error.message);
+  const memory = loadMemoryConfig(process.env);
+  if (!memory.ok) fail(`${memory.error.code}: ${memory.error.message}`);
+  const service = createServiceClient(supabase.value);
+  const found = await service
+    .from('app_users')
+    .select('user_id, is_active')
+    .eq('email', email)
+    .limit(1);
+  const row = found.data?.[0];
+  if (found.error !== null || row === undefined) fail('no app_users row for that email');
+  if (!row.is_active) fail('that account is deactivated');
+  return { userId: row.user_id, deps: productionDeps(), config: memory.value, service };
+}
+
+function readEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value === undefined || value.trim() === '' ? undefined : value.trim();
+}
+
+async function recall(args: readonly string[]): Promise<void> {
+  const at = args.indexOf('--conversation');
+  const conversationId = at === -1 ? null : (args[at + 1] ?? null);
+  if (conversationId !== null && !UUID.test(conversationId)) fail('--conversation needs a UUID');
+  const message = args
+    .filter((_, i) => i !== at && i !== at + 1)
+    .join(' ')
+    .trim();
+  if (message === '') fail('usage: npm run memory -- recall "<message>" [--conversation <id>]');
+  if (isExplicitMemoryRequest(message)) {
+    fail('that reads as a "remember that…" request and would store a fact — use `remember`');
+  }
+  const c = await caller();
+  const facts = supabaseFactStore(c.service);
+  const started = Date.now();
+  const outcome = await recallForTurn(
+    {
+      claude: c.deps.claude,
+      embedder: c.deps.embedder,
+      facts,
+      search: supabaseChunkSearch(c.service),
+      config: c.config.retrieval,
+      log: logger,
+    },
+    {
+      userId: c.userId,
+      scope: 'workspace',
+      conversationId,
+      historyMessages: 0,
+      message,
+      previousUserMessage: null,
+    },
+  );
+  out({
+    elapsedMs: Date.now() - started,
+    summary: outcome.summary,
+    belowBreakpoint: outcome.belowBreakpoint,
+  });
+}
+
+async function remember(args: readonly string[]): Promise<void> {
+  const message = args.join(' ').trim();
+  if (message === '') fail('usage: npm run memory -- remember "<statement>"');
+  const c = await caller();
+  const facts = supabaseFactStore(c.service);
+  const existing = await facts.currentFacts(c.userId, c.config.retrieval.maxFacts * 4);
+  if (!existing.ok) fail(`${existing.error.code}: ${existing.error.message}`);
+  const result = await captureFact(
+    { claude: c.deps.claude, facts, log: logger },
+    {
+      message,
+      userId: c.userId,
+      scope: 'workspace',
+      conversationId: null,
+      existing: existing.value,
+    },
+  );
+  out(result.kind === 'failed' ? { kind: 'failed', error: result.error.toJSON() } : result);
+  process.exit(result.kind === 'saved' ? 0 : 2);
+}
+
+async function listFacts(args: readonly string[]): Promise<void> {
+  const c = await caller();
+  let query = c.service
+    .from('memory_facts')
+    .select('id, scope, key, value, confidence, source_message_id, superseded_by, created_at')
+    .or(`scope.eq.workspace,user_id.eq.${c.userId}`)
+    .order('created_at', { ascending: false });
+  if (!args.includes('--all')) query = query.is('superseded_by', null);
+  const { data, error } = await query;
+  if (error !== null) fail(error.message);
+  out(data);
+}
+
 async function main(): Promise<void> {
   loadEnv();
   const [mode, ...rest] = process.argv.slice(2);
   switch (mode) {
+    case 'recall':
+      await recall(rest);
+      return;
+    case 'remember':
+      await remember(rest);
+      return;
+    case 'facts':
+      await listFacts(rest);
+      return;
     case 'flush':
       await flush(rest[0]);
       return;
@@ -191,7 +328,7 @@ async function main(): Promise<void> {
     case undefined:
     default:
       fail(
-        'usage: npm run memory -- flush <conversationId> | sweep [--limit N] | preview <transcript.json>',
+        'usage: npm run memory -- flush <conversationId> | sweep [--limit N] | preview <transcript.json> | recall "<message>" [--conversation <id>] | remember "<statement>" | facts [--all]',
       );
   }
 }

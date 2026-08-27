@@ -175,6 +175,31 @@ not-saved / streaming), `memory.test.ts` "8." (broken Voyage behind `handleChatT
 Items marked `memory.test.ts` / `rls.test.ts` / `schema.test.ts` need a stack and were
 **not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence.
 
+**Part 2 (FND-310, 27 Aug 2026) evidence, code level — the nine Part C assertions:**
+(1) "Remember that…" → exactly one fact, right scope, source message — `capture.test.ts`
+"Part C 1" (recorded Haiku answer), `recall.test.ts` "1." (through `handleChatTurn`,
+`source_message_id` = the saved user message); (2) a contradiction supersedes, old row
+survives with `superseded_by` — `capture.test.ts` "Part C 2", `recall.test.ts` "2.", and the
+migration's own check run live in a rolled-back transaction (inserted → unchanged →
+superseded → superseded, one live row of three); (3) current facts exclude superseded rows —
+`facts.test.ts` (the predicate), `recall.test.ts` "3." (the next turn's request holds only
+the live value); (4) a chunk from an earlier conversation reaches the model — `recall.test.ts`
+"4." reads the wire body of the Claude request: the chunk text is in the second, uncached
+system block after the cached voice prefix; `chat-recall.test.ts` "Part C 4"; live: a fact recalled into a real Sonnet reply that
+applied it (Rule of One + one direct CTA) — the live chunk recall through the real function
+waits on the migration being applied (MEMORY.md 27 Aug); (5)
+budget with a large store — `retrieve.test.ts` "Part C 5" (40 facts, 3 long chunks, drops
+counted, under the cap), `recall.test.ts` "5." (41 chunks in the table → ≤ 3, ordered,
+above the floor); (6) nothing clears the floor → no chunks, turn works — `retrieve.test.ts`
+"Part C 6", `recall.test.ts` "6."; (7) Voyage failure → reply — `retrieve.test.ts` "Part C 7",
+`recall.test.ts` "7.", `chat-recall.test.ts` (degraded / throwing memory → 200); (8) RLS on
+facts — `rls.test.ts` 4, 5 (unchanged) and 7 (the functions are `service_role`-only); (9)
+the refusal boundary survives a hostile fact — live, real Sonnet with two seeded override
+facts: refusal + reason + redirect, five boundary checks pass (MEMORY.md 27 Aug).
+`recall.test.ts` and `rls.test.ts` 7 need a stack and were **not run here** — CI; and the
+migration is **not yet applied live** (`supabase db push` refused by the tool permission
+layer this session — one command for the reviewer).
+
 ---
 
 ## Stage 4 — Website reading and storage · Payment 4 of 5 (198)

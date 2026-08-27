@@ -326,13 +326,43 @@ Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document` (R5 �
 still to arrive; without it the chat runs and no chunk is written). Cost per chunk is in
 `SECURITY.md` §8.
 
-### memory_facts — structured memory (populated from Stage 3)
-`id · user_id not null · scope not null · key · value · confidence · source_message_id ·
-superseded_by · embedding vector(1024) · created_at`
+### memory_facts — structured memory (written from Stage 3 part 2, FND-310)
+`id · user_id not null · scope not null · key not null · value not null · confidence ·
+source_message_id · superseded_by · embedding vector(1024) · created_at`
 
 Append-only. Updating inserts a new row and sets `superseded_by` on the old one. Current
 facts = `where superseded_by is null`. Unique on `(user_id, scope, key) where superseded_by
-is null` so two live values for one key cannot coexist.
+is null` so two live values for one key cannot coexist. Written by `src/lib/memory/facts.ts`
+(27 Aug 2026, migration `20260827010000_memory_facts_stage3.sql`):
+
+- **`key` is `<category>:<slug>`** — `memory_facts_key_format`: category one of `writing`,
+  `audience`, `business`, `offer`, `process`, `personal`; slug lowercase kebab-case; ≤ 72
+  chars. A controlled category with a free slug (D44): a wholly free key lets "tone" and
+  "writing style" become two facts that contradict each other; a closed vocabulary refuses
+  the useful thing the user actually says. The extractor is shown the live keys and told to
+  reuse one when a new statement is about the same subject.
+- **`value not null`** (a fact with no value is not a fact); `confidence` in `[0, 1]`
+  (`memory_facts_confidence_range`); explicit "remember that…" facts are stored at `1`.
+- **`upsert_memory_fact(user, scope, key, value, confidence, source_message_id)`** is the
+  ONLY write path — `service_role` executes it, `anon`/`authenticated` cannot. One
+  transaction under a per-key advisory lock: identical value → `unchanged`; new key →
+  `inserted`; different value for a live key → the old row is pointed at the new one and the
+  result is `superseded`. The partial unique index would refuse two live rows, so the
+  function steps the old row out of "live" first (a self-reference), inserts, then repoints.
+  Two callers racing on one key end with one live row superseding the other, never an error.
+- **`source_message_id`** is the user message that carried the request, attached once the
+  turn is saved (the fact is captured before the reply so the reply can say it was saved).
+  Null for a fact stored by hand (`npm run memory -- remember`).
+- **`scope`** is the conversation's (D41 applies to facts exactly as to chunks): a fact
+  stated in a private conversation is private.
+- `embedding` stays null in part 2: facts are few and always included in a turn (§4 of
+  `docs/MEMORY.md` D46), so nothing ranks them by similarity yet. The column is there for
+  the day the fact count outgrows the per-turn budget.
+- **Read path for retrieval:** `match_memory_chunks(query, user, conversation,
+  history_messages, limit, min_similarity)` — cosine top-k over `memory_chunks` via the HNSW
+  index, workspace rows plus the caller's own private ones, no deleted conversation, no chunk
+  whose messages are already in the turn's verbatim history window, nothing under the
+  floor. `service_role` only, like the write path.
 
 *Superseded column shape, kept for the record:* `scope (global|user|org) · scope_id`. Replaced
 23 Aug by the two-value `scope` + `user_id` above; see the reasoning at the top of §4. *The

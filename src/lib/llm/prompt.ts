@@ -15,6 +15,10 @@ export interface SystemBlock {
   readonly cache: boolean;
 }
 
-export function buildSystemBlocks(): readonly SystemBlock[] {
-  return buildVoiceSystemBlocks();
+/**
+ * `belowBreakpoint` (Stage 3 part 2) is the recalled-memory block: per-turn, uncached,
+ * after the voice prefix so the prefix's cache entry is untouched by it.
+ */
+export function buildSystemBlocks(belowBreakpoint?: string): readonly SystemBlock[] {
+  return buildVoiceSystemBlocks(belowBreakpoint === undefined ? {} : { belowBreakpoint });
 }

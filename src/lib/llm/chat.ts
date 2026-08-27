@@ -14,10 +14,12 @@
  *   5. call Claude (client.ts owns the cap, the retries and the api_usage row);
  *   6. write the user turn and the assistant turn to `messages` and touch the conversation.
  *
- * Deliberately NOT done here (Stage 3 owns memory): semantic recall, durable facts, anything
- * from another conversation. The request is the system prompt, the recent turns of the
- * current conversation, and the message the user just sent — nothing else. History is
- * uncached input; the voice prefix stays the cached part.
+ * Stage 3 part 2 added step 4b: memory recall (facts + relevant earlier notes, and fact
+ * capture on a "remember that…" message) goes BELOW the cache breakpoint as one uncached
+ * system block, framed as data. It is on the reply's path because the context must be in
+ * the request, but it is bounded by its own timeout and can only ever degrade to "no
+ * memory this turn" — never to no reply. History is uncached input; the voice prefix stays
+ * the cached part.
  *
  * An empty reply is an error, not a turn. Part 5 found Sonnet 5 spending the whole output
  * budget on adaptive thinking and returning no text (D39); the metered call is recorded by
@@ -30,6 +32,7 @@ import { verifyStaffAccess, type StaffIdentity, type VerifyDeps } from '../auth/
 import type { ClaudeClient, Completion, CompletionRequest, LlmError } from './client.js';
 import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
+import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
 
 export interface ConversationRow {
   readonly id: string;
@@ -90,9 +93,18 @@ export interface ChatDeps {
   readonly claude: ClaudeClient;
   readonly conversations: ConversationStore;
   readonly log: Logger;
-  readonly systemBlocks?: () => readonly SystemBlock[];
+  /** The system prompt; the argument is the recalled-memory block for below the breakpoint. */
+  readonly systemBlocks?: (belowBreakpoint?: string) => readonly SystemBlock[];
   readonly maxMessageChars?: number;
   readonly history?: HistoryBounds;
+  /**
+   * Stage 3 part 2: what memory puts in front of Claude for this turn (facts, relevant
+   * notes from earlier conversations, and the outcome of a "remember that…" request).
+   * Runs ON the reply's path, before Claude, because the context has to be in the
+   * request — but it is bounded by its own timeout, never throws, and a failure means
+   * the turn goes without memory, not without a reply. Absent = no memory (no Voyage key).
+   */
+  readonly memory?: TurnMemory;
   /**
    * Stage 3 memory: runs after a turn is in `messages`, OFF the reply's path. It is
    * awaited by nobody here — its promise goes to `waitUntil` — and whatever it does or
@@ -105,6 +117,12 @@ export interface ChatDeps {
    * promise is left to run, with rejections caught and logged.
    */
   readonly waitUntil?: (work: Promise<void>) => void;
+}
+
+export interface TurnMemory {
+  recall(input: RecallInput): Promise<RecallOutcome>;
+  /** Point a fact captured this turn at the user message that carried it. Best effort. */
+  attachSource(factId: string, messageId: string): Promise<Result<void>>;
 }
 
 export interface TurnSavedEvent {
@@ -135,6 +153,8 @@ export interface ChatReply {
   readonly stopReason: string | null;
   readonly usage: TokenUsage;
   readonly costUsd: number;
+  /** What memory added to this turn — ids, similarities and sizes, never text. Absent when memory is off. */
+  readonly memory?: RecallSummary;
 }
 
 export type ChatErrorStatus = 400 | 401 | 402 | 403 | 404 | 422 | 429 | 500 | 502 | 503 | 504;
@@ -278,6 +298,8 @@ interface PreparedTurn {
   readonly conversation: ConversationRow;
   readonly history: readonly HistoryMessage[];
   readonly message: string;
+  /** Null when memory is off. A degraded recall is still an outcome, never a refusal. */
+  readonly recall: RecallOutcome | null;
 }
 
 type Prepared =
@@ -287,7 +309,7 @@ type Prepared =
 function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
   return {
     route: 'default',
-    system: (deps.systemBlocks ?? buildSystemBlocks)(),
+    system: (deps.systemBlocks ?? buildSystemBlocks)(prepared.recall?.belowBreakpoint ?? undefined),
     messages: [...prepared.history, { role: 'user', content: prepared.message }],
     operation: 'chat.turn',
     userId: prepared.user.userId,
@@ -384,7 +406,31 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
     history = boundHistory(recent.value, bounds);
   }
 
-  return { ok: true, value: { user, conversation, history, message } };
+  // 4b. Memory (Stage 3 part 2): facts, relevant earlier notes, and any "remember that…"
+  //     in this message. Bounded by its own timeout; whatever it cannot do, the turn
+  //     proceeds without. A thrown error here is a bug in the memory layer, not a reason
+  //     to refuse the user.
+  let recall: RecallOutcome | null = null;
+  if (deps.memory !== undefined) {
+    const previousUser = [...history].reverse().find((m) => m.role === 'user');
+    try {
+      recall = await deps.memory.recall({
+        userId: user.userId,
+        scope: conversation.scope,
+        conversationId: requestedConversationId,
+        historyMessages: history.length,
+        message,
+        previousUserMessage: previousUser?.content ?? null,
+      });
+    } catch (caught: unknown) {
+      log.error('memory recall threw; turn proceeds without memory', {
+        conversationId: conversation.id,
+        error: ensureError(caught),
+      });
+    }
+  }
+
+  return { ok: true, value: { user, conversation, history, message, recall } };
 }
 
 /**
@@ -461,6 +507,23 @@ async function finishTurn(
     );
   }
 
+  // A fact captured before Claude was called now has its source message. Best effort: the
+  // fact is already stored and current; a missing pointer is logged, never a failed turn.
+  const recall = prepared.recall;
+  if (
+    deps.memory !== undefined &&
+    recall?.savedFactId !== null &&
+    recall?.savedFactId !== undefined
+  ) {
+    const attached = await deps.memory.attachSource(
+      recall.savedFactId,
+      appended.value.userMessageId,
+    );
+    if (!attached.ok) {
+      log.error('fact source not attached', { factId: recall.savedFactId, error: attached.error });
+    }
+  }
+
   scheduleAfterTurn(deps, {
     conversation: {
       id: conversation.id,
@@ -484,6 +547,7 @@ async function finishTurn(
       stopReason: reply.stopReason,
       usage: reply.usage,
       costUsd: reply.costUsd,
+      ...(recall === null ? {} : { memory: recall.summary }),
     },
   };
 }

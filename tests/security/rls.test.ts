@@ -135,7 +135,14 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       `insert into public.memory_facts (user_id, scope, key, value)
        values ($1, 'workspace', $3, 'shared'), ($1, 'user', $4, 'private-a'), ($2, 'user', $5, 'private-b')
        returning id`,
-      [userA.id, userB.id, `rls_ws_fact_${RUN}`, `rls_private_a_${RUN}`, `rls_private_b_${RUN}`],
+      // Keys follow memory_facts_key_format (part 2): <category>:<slug>.
+      [
+        userA.id,
+        userB.id,
+        `process:rls-ws-fact-${RUN}`,
+        `process:rls-private-a-${RUN}`,
+        `process:rls-private-b-${RUN}`,
+      ],
     );
     fixtureIds.factWorkspaceA = facts.rows[0]?.id ?? '';
     fixtureIds.factPrivateA = facts.rows[1]?.id ?? '';
@@ -164,7 +171,7 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
 
   afterAll(async () => {
     // Fixture rows first (memory FKs deliberately do not cascade), then the users.
-    await db.query(`delete from public.memory_facts where key like $1`, [`rls_%_${RUN}`]);
+    await db.query(`delete from public.memory_facts where key like $1`, [`process:rls-%-${RUN}`]);
     await db.query(`delete from public.memory_chunks where conversation_id = any($1::uuid[])`, [
       [fixtureIds.convWorkspaceA, fixtureIds.convPrivateA].filter((s) => s !== ''),
     ]);
@@ -383,6 +390,45 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       [`SYNTHETIC ${RUN}`],
     );
     expect(check.rows[0]?.n).toBe('0');
+  });
+
+  it('7. Stage 3 part 2: the memory functions are executable by service_role only — a session cannot search memory or write a fact', async () => {
+    // Postgres grants EXECUTE on a new function to PUBLIC by default; the migration
+    // revokes it. Asserted from the catalog AND behaviourally through PostgREST.
+    const privileges = await db.query<{ fn: string; role: string; can: boolean }>(
+      `select fn, role, has_function_privilege(role, fn, 'execute') as can
+       from (values
+         ('public.upsert_memory_fact(uuid,text,text,text,numeric,uuid)'),
+         ('public.match_memory_chunks(extensions.vector,uuid,uuid,integer,integer,double precision)')
+       ) f(fn)
+       cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)`,
+    );
+    for (const row of privileges.rows) {
+      expect(row.can, `${row.role} on ${row.fn}`).toBe(row.role === 'service_role');
+    }
+    const write = await userA.client.rpc('upsert_memory_fact', {
+      p_user_id: userA.id,
+      p_scope: 'workspace',
+      p_key: `process:rls-rpc-${RUN}`,
+      p_value: 'should never land',
+      p_confidence: 1,
+      p_source_message_id: null,
+    });
+    expect(write.error).not.toBeNull();
+    const landed = await db.query<{ n: string }>(
+      `select count(*) as n from public.memory_facts where key = $1`,
+      [`process:rls-rpc-${RUN}`],
+    );
+    expect(landed.rows[0]?.n).toBe('0');
+    const search = await userA.client.rpc('match_memory_chunks', {
+      p_query: `[${Array.from({ length: 1024 }, () => '0').join(',')}]`,
+      p_user_id: userA.id,
+      p_conversation_id: null,
+      p_history_messages: 0,
+      p_limit: 3,
+      p_min_similarity: 0,
+    });
+    expect(search.error).not.toBeNull();
   });
 
   it('anon policies do not exist at all', async () => {

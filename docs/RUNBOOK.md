@@ -226,6 +226,35 @@ Every chunk written costs one Haiku call and one Voyage call, both in `api_usage
 (`memory.summarise`, `memory.embed`). A re-run of a covered range costs nothing and writes
 nothing — the database refuses the overlap.
 
+### The assistant is not remembering, or remembers the wrong thing (Stage 3 part 2)
+
+Recall runs on the reply's path, bounded by `MEMORY_RECALL_TIMEOUT_MS` (4 s); anything it
+cannot do in time, the turn goes without, and the reply still arrives. Every turn's reply
+body carries `memory` — the fact count, the chunk ids with their similarity, the size in
+characters and estimated tokens, `savedFact` when a "remember that…" landed, and `degraded`
+naming what failed (`facts`, `embed`, `search`, `capture`, `timeout`, `threw`). In order:
+
+1. **See what a turn would retrieve:** `npm run memory -- recall "<the message>"
+   [--conversation <id>]` (as `CHAT_EMAIL`) prints the assembled below-breakpoint block, each
+   chunk with its similarity, and the size. Nothing is sent to Claude. If the chunk you
+   expected is missing, its similarity is under the floor (`MEMORY_RETRIEVAL_MIN_SIMILARITY`,
+   0.45) or it was not summarised yet (the section above).
+2. **See the standing notes:** `npm run memory -- facts` (live) or `-- facts --all` (with
+   superseded rows and their `superseded_by` pointer). A fact the user says he never asked
+   for should be traced through `source_message_id` to the message that created it.
+3. **"I told it to remember and it did not":** the reply on that turn says whether the note
+   was saved, and if not, why (a question, a one-off instruction, an access decision, or
+   something that would override the assistant's rules — those are refused by design). The
+   function logs carry `fact stored` / `fact not stored` / `fact extraction rejected` with
+   ids and reasons. `npm run memory -- remember "<statement>"` stores one by hand through the
+   same guards.
+4. **Wrong or stale fact:** until the memory page (part 3), supersede it by saying the new
+   version in a chat ("From now on, …") or with `-- remember`; the old row stays, pointed at
+   the new one. There is no delete before part 3.
+5. **`degraded: ["embed"]` on every turn** → the Voyage side (cap, key, outage) — same
+   checks as the section above. `["search"]` → the `match_memory_chunks` function is
+   missing or refused (migration `20260827010000` not applied, or a grant changed).
+
 ---
 
 ## 4. Key rotation

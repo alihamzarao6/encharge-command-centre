@@ -108,6 +108,24 @@ real numbers). `tests/unit/llm/chat-memory.test.ts` proves the hook cannot chang
 `npm run memory -- preview <transcript.json>` summarises a transcript live to read what a
 note looks like before trusting it.
 
+**f. Facts and retrieval (Stage 3 part 2).** `tests/unit/memory/facts.test.ts` (key shape,
+the supabase-js store over a stubbed PostgREST: the current-facts predicate, the
+`upsert_memory_fact` RPC and its three outcomes, the source back-fill),
+`capture.test.ts` (the "remember that…" gate on phrases that must and must not fire, the
+override guard, the parser, and `captureFact` end to end with the real Claude client over
+**recorded Haiku answers** — `tests/fixtures/anthropic/fact-ok.json`, `fact-replace.json`,
+`fact-none.json`, `fact-access.json`, `fact-override.json`, recorded 27 Aug from the exact
+messages in the test — so Part C 1 and 2 use real model output), `retrieve.test.ts` (query
+text, budget arithmetic with drops counted, rendering inside the 4,000-char cap in the worst
+case, the `match_memory_chunks` adapter, and `recallForTurn` over fakes: the floor, Voyage
+down, facts down, search down, timeout, a throwing dependency, top-k 0, and the capture
+path saved / declined / failed), `retrieval-config.test.ts`, and
+`tests/unit/llm/chat-recall.test.ts` (the block is the second system block, uncached, after
+the cached prefix; the summary rides on the reply; the source back-fill; memory that throws
+still answers 200; a refused caller never reaches memory; streaming). `npm run memory --
+recall "<message>"` prints the assembled block for a real message; `-- remember "<statement>"`
+stores a fact by hand through the same guards; `-- facts [--all]` lists them.
+
 ---
 
 ## 4. Integration tests
@@ -129,6 +147,16 @@ Coverage required:
   cap 0 → nothing fetched or written; a broken Voyage behind `handleChatTurn` still answers
   200 and saves the turn. `schema.test.ts` proves the no-overlap constraint, the mandatory
   valid range and the HNSW index
+- **Facts and retrieval (`tests/integration/recall.test.ts`, Stage 3 part 2):** through
+  `handleChatTurn` with fixture fetches — "remember that…" → exactly one `memory_facts` row,
+  workspace scope, `source_message_id` = the saved user message; a contradiction → the old
+  row survives with `superseded_by` set, one live row; the next turn's request holds only the
+  live value; a chunk from an EARLIER conversation is in the request as an uncached system
+  block after the cached prefix (the fixture fetch reads the wire body); forty chunks → at
+  most three under the budget, lowest similarity dropped; nothing above the floor → no chunk
+  block, still 200; Voyage unreachable → 200 with facts and no chunks. `rls.test.ts` 7:
+  `upsert_memory_fact` / `match_memory_chunks` executable by `service_role` only, proven
+  from the catalog and through PostgREST as a session
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL

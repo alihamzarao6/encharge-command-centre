@@ -34,7 +34,11 @@ import type { LlmConfig } from '../../src/lib/llm/config.js';
 import { DEFAULT_PRICING } from '../../src/lib/llm/pricing.js';
 import { supabaseConversationStore, supabaseUsageStore } from '../../src/lib/llm/store.js';
 import { supabaseChunkStore } from '../../src/lib/memory/chunks.js';
-import { POLICY_DEFAULTS, type MemoryConfig } from '../../src/lib/memory/config.js';
+import {
+  POLICY_DEFAULTS,
+  RETRIEVAL_DEFAULTS,
+  type MemoryConfig,
+} from '../../src/lib/memory/config.js';
 import { createVoyageEmbedder } from '../../src/lib/memory/embed.js';
 import {
   createAfterTurnHook,
@@ -85,6 +89,7 @@ function memoryConfig(voyageDailyCap: number): MemoryConfig {
       caps: { dailyUsd: voyageDailyCap, monthlyUsd: 5, warnFraction: 0.8 },
     },
     policy: POLICY_DEFAULTS,
+    retrieval: RETRIEVAL_DEFAULTS,
   };
 }
 

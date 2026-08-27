@@ -114,6 +114,7 @@ npm run staff -- help   # admin user management (add-user / deactivate / reset-p
 npm run chat -- "hi"    # one real chat turn through the server-side path (needs a stack + key in env)
 npm run voice           # voice conformance over recorded fixtures (CI mode); `-- record` re-records live, `-- live "<brief>"` one generation
 npm run memory -- flush <conversationId>   # Stage 3: summarise + embed a conversation's uncovered tail now; `-- sweep` idle tails; `-- preview <transcript.json>` one live summary, no database
+npm run memory -- recall "<message>"       # Stage 3 part 2: print what a turn would retrieve (block, similarities, size); `-- remember "<statement>"` store a fact by hand; `-- facts [--all]` list them
 npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
 npm run web:build       # static build → web/dist
 npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits

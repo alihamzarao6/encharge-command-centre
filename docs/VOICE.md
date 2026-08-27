@@ -139,7 +139,7 @@ migration.
 |---|---|---|
 | Today | The whole voice: identity, positioning, avatar, frameworks, ops rules, boundary, format — **3,017 tokens** at v.4 | Nothing — the user turn is a message, not system |
 | Part 6 | unchanged | Conversation history (in `messages[]`, not system) |
-| Stage 3 | unchanged | Memory facts and operator corrections via `belowBreakpoint` (capped at 4,000 chars) |
+| Stage 3 part 2 (27 Aug) | unchanged — v.4, 291 checks untouched | Recalled memory via `belowBreakpoint`: standing facts (≤ 12, ≤ 900 chars) + up to 3 earlier-conversation notes above a 0.45 cosine floor (≤ 2,000 chars) + the outcome of a "remember that…" — one uncached block, ≤ 4,000 chars, framed as data with "the rules above win" (`src/lib/memory/retrieve.ts`). Typical ~500 tokens ≈ $0.0015 warm; worst ~1,050 tokens ≈ $0.003 |
 
 Measured on Sonnet 5 list prices ($3 / $15 per MTok; cache write 1.25×, cache read 0.1×):
 

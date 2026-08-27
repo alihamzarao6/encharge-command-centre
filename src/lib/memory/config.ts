@@ -52,9 +52,30 @@ export interface MemoryPolicyConfig {
   readonly summaryMaxChars: number;
 }
 
+/**
+ * Retrieval knobs (part 2). Characters, not tokens, like the history bounds: a hard
+ * ceiling an operator can reason about. Everything recalled sits BELOW the cache
+ * breakpoint and inside `MAX_BELOW_BREAKPOINT_CHARS` (4,000, voice/prompt.ts); the
+ * defaults are chosen so the worst case renders inside it without truncation.
+ */
+export interface RetrievalConfig {
+  /** Nearest chunks asked of the database; fewer may clear the floor. */
+  readonly topK: number;
+  /** Cosine similarity floor. Below it a chunk is noise, not memory. */
+  readonly minSimilarity: number;
+  /** Rendered characters of chunk notes per turn; lowest similarity is dropped first. */
+  readonly chunkBudgetChars: number;
+  /** Rendered characters of facts per turn; the oldest is dropped first. */
+  readonly factBudgetChars: number;
+  readonly maxFacts: number;
+  /** The whole recall step (capture + embed + search) must finish inside this, or the turn goes without. */
+  readonly timeoutMs: number;
+}
+
 export interface MemoryConfig {
   readonly voyage: VoyageConfig;
   readonly policy: MemoryPolicyConfig;
+  readonly retrieval: RetrievalConfig;
 }
 
 export const VOYAGE_API_BASE_URL = 'https://api.voyageai.com';
@@ -239,10 +260,80 @@ export function loadMemoryPolicy(env: Env = process.env): Result<MemoryPolicyCon
   });
 }
 
+export const RETRIEVAL_DEFAULTS: RetrievalConfig = Object.freeze({
+  topK: 3,
+  minSimilarity: 0.45,
+  chunkBudgetChars: 2_000,
+  factBudgetChars: 900,
+  maxFacts: 12,
+  timeoutMs: 4_000,
+});
+
+export function loadRetrievalConfig(env: Env = process.env): Result<RetrievalConfig, ConfigError> {
+  const topK = readNumber(
+    env,
+    'MEMORY_RETRIEVAL_TOP_K',
+    RETRIEVAL_DEFAULTS.topK,
+    (n) => Number.isInteger(n) && n >= 0 && n <= 10,
+    'an integer from 0 to 10',
+  );
+  if (!topK.ok) return topK;
+  const floor = readNumber(
+    env,
+    'MEMORY_RETRIEVAL_MIN_SIMILARITY',
+    RETRIEVAL_DEFAULTS.minSimilarity,
+    (n) => n >= 0 && n <= 1,
+    'between 0 and 1',
+  );
+  if (!floor.ok) return floor;
+  const chunkChars = readNumber(
+    env,
+    'MEMORY_RETRIEVAL_CHUNK_CHARS',
+    RETRIEVAL_DEFAULTS.chunkBudgetChars,
+    (n) => Number.isInteger(n) && n >= 0 && n <= 2_600,
+    'an integer from 0 to 2600',
+  );
+  if (!chunkChars.ok) return chunkChars;
+  const factChars = readNumber(
+    env,
+    'MEMORY_RETRIEVAL_FACT_CHARS',
+    RETRIEVAL_DEFAULTS.factBudgetChars,
+    (n) => Number.isInteger(n) && n >= 0 && n <= 1_200,
+    'an integer from 0 to 1200',
+  );
+  if (!factChars.ok) return factChars;
+  const maxFacts = readNumber(
+    env,
+    'MEMORY_RETRIEVAL_MAX_FACTS',
+    RETRIEVAL_DEFAULTS.maxFacts,
+    (n) => Number.isInteger(n) && n >= 0 && n <= 50,
+    'an integer from 0 to 50',
+  );
+  if (!maxFacts.ok) return maxFacts;
+  const timeoutMs = readNumber(
+    env,
+    'MEMORY_RECALL_TIMEOUT_MS',
+    RETRIEVAL_DEFAULTS.timeoutMs,
+    positiveInt,
+    'a positive integer',
+  );
+  if (!timeoutMs.ok) return timeoutMs;
+  return ok({
+    topK: topK.value,
+    minSimilarity: floor.value,
+    chunkBudgetChars: chunkChars.value,
+    factBudgetChars: factChars.value,
+    maxFacts: maxFacts.value,
+    timeoutMs: timeoutMs.value,
+  });
+}
+
 export function loadMemoryConfig(env: Env = process.env): Result<MemoryConfig, ConfigError> {
   const voyage = loadVoyageConfig(env);
   if (!voyage.ok) return voyage;
   const policy = loadMemoryPolicy(env);
   if (!policy.ok) return policy;
-  return ok({ voyage: voyage.value, policy: policy.value });
+  const retrieval = loadRetrievalConfig(env);
+  if (!retrieval.ok) return retrieval;
+  return ok({ voyage: voyage.value, policy: policy.value, retrieval: retrieval.value });
 }

@@ -30,8 +30,10 @@ import {
   type MemoryConfig,
 } from '../memory/config.js';
 import { createVoyageEmbedder } from '../memory/embed.js';
+import { supabaseFactStore } from '../memory/facts.js';
+import { recallForTurn, supabaseChunkSearch, type RecallDeps } from '../memory/retrieve.js';
 import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
-import type { ChatDeps } from './chat.js';
+import type { ChatDeps, TurnMemory } from './chat.js';
 import { createClaudeClient, type ClaudeClient } from './client.js';
 import { loadLlmConfig } from './config.js';
 import { supabaseConversationStore, supabaseUsageStore } from './store.js';
@@ -90,10 +92,13 @@ export function createChatDeps(
   });
 
   let afterTurn: ChatDeps['afterTurn'];
+  let memory: ChatDeps['memory'];
   if (hasVoyageKey(env)) {
-    const memory = loadMemoryConfig(env);
-    if (!memory.ok) return memory;
-    afterTurn = createAfterTurnHook(createMemoryDeps(memory.value, service, claude, log));
+    const config = loadMemoryConfig(env);
+    if (!config.ok) return config;
+    const memoryDeps = createMemoryDeps(config.value, service, claude, log);
+    afterTurn = createAfterTurnHook(memoryDeps);
+    memory = createTurnMemory(config.value, service, memoryDeps);
   } else {
     log.warn(MEMORY_DISABLED_WARNING);
   }
@@ -105,6 +110,28 @@ export function createChatDeps(
     log,
     history: llm.value.history,
     ...(afterTurn === undefined ? {} : { afterTurn }),
+    ...(memory === undefined ? {} : { memory }),
     ...(waitUntil === undefined ? {} : { waitUntil }),
   });
+}
+
+/** The on-path half of memory (part 2): recall for a turn, plus the fact-source back-fill. */
+export function createTurnMemory(
+  config: MemoryConfig,
+  service: ServiceClient,
+  memoryDeps: MemoryDeps,
+): TurnMemory {
+  const facts = supabaseFactStore(service);
+  const recallDeps: RecallDeps = {
+    claude: memoryDeps.claude,
+    embedder: memoryDeps.embedder,
+    facts,
+    search: supabaseChunkSearch(service),
+    config: config.retrieval,
+    log: memoryDeps.log,
+  };
+  return {
+    recall: (input) => recallForTurn(recallDeps, input),
+    attachSource: (factId, messageId) => facts.setSource(factId, messageId),
+  };
 }

@@ -100,6 +100,20 @@ type AuditLogInsert = {
   entity_id: string;
 };
 
+/** memory_facts (Stage 3 part 2). Written only through the `upsert_memory_fact` function. */
+type MemoryFactsRow = {
+  id: string;
+  user_id: string;
+  scope: string;
+  key: string;
+  value: string | null;
+  confidence: number | null;
+  source_message_id: string | null;
+  superseded_by: string | null;
+  embedding: string | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -141,9 +155,48 @@ export type Database = {
         Update: Partial<MemoryChunksRow>;
         Relationships: [];
       };
+      memory_facts: {
+        Row: MemoryFactsRow;
+        Insert: Omit<MemoryFactsRow, 'id' | 'created_at'> &
+          Partial<Pick<MemoryFactsRow, 'id' | 'created_at'>>;
+        Update: Partial<MemoryFactsRow>;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    // Stage 3 part 2 (migration 20260827010000): the fact write path and the chunk search.
+    Functions: {
+      upsert_memory_fact: {
+        Args: {
+          p_user_id: string;
+          p_scope: string;
+          p_key: string;
+          p_value: string;
+          p_confidence: number;
+          p_source_message_id: string | null;
+        };
+        Returns: { id: string; superseded_id: string | null; outcome: string }[];
+      };
+      match_memory_chunks: {
+        Args: {
+          p_query: string;
+          p_user_id: string;
+          p_conversation_id: string | null;
+          p_history_messages: number;
+          p_limit: number;
+          p_min_similarity: number;
+        };
+        Returns: {
+          id: string;
+          conversation_id: string;
+          title: string | null;
+          summary: string;
+          turn_range: string;
+          created_at: string;
+          similarity: number;
+        }[];
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };
