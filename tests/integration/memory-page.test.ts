@@ -314,35 +314,62 @@ describe.skipIf(env === null)('the memory page against a real stack', () => {
   }, 60_000);
 
   afterAll(async () => {
-    await db.query(
+    // Every statement is ATTEMPTED, then the first failure is rethrown. A cleanup that stops
+    // at its first error leaves fixture rows behind, and since these files share one database
+    // — and, since D54, one workspace — a leak here fails other files rather than this one.
+    // That is exactly what happened on this branch's first CI: a type error on the opening
+    // statement abandoned the rest, and two unrelated suites went red.
+    const failures: string[] = [];
+    const attempt = async (label: string, sql: string, params: unknown[]): Promise<void> => {
+      try {
+        await db.query(sql, params);
+      } catch (caught: unknown) {
+        failures.push(`${label}: ${caught instanceof Error ? caught.message : String(caught)}`);
+      }
+    };
+
+    // `audit_log.actor` is TEXT and `memory_facts.user_id` is UUID; Postgres resolves a
+    // placeholder to ONE type, so reusing $1 for both makes it uuid and `actor = $1` fails.
+    await attempt(
+      'audit_log',
       `delete from public.audit_log where actor = $1 or entity_id in (
-         select id from public.memory_facts where user_id = $1
+         select id from public.memory_facts where user_id = $2
          union select id from public.memory_chunks
-           where conversation_id in (select id from public.conversations where user_id = $1))`,
-      [userId],
+           where conversation_id in (select id from public.conversations where user_id = $2))`,
+      [userId, userId],
     );
-    await db.query(`delete from public.api_usage where user_id = $1`, [userId]);
+    await attempt('api_usage', `delete from public.api_usage where user_id = $1`, [userId]);
     // Delete without nulling `superseded_by` first. The self-FK is NO ACTION, so a single
     // DELETE that removes a whole chain is checked at end of statement and passes — whereas
     // nulling the chain first makes two rows live under one key at once, which since D54 the
     // partial unique index refuses. (`recall.test.ts` has always deleted this way.)
-    await db.query(`delete from public.memory_facts where user_id = $1`, [userId]);
-    await db.query(
+    await attempt(
+      'memory_facts',
+      `delete from public.memory_facts where user_id = any($1::uuid[])`,
+      [[userId, teammateId].filter((id) => id !== '')],
+    );
+    await attempt(
+      'memory_chunks',
       `delete from public.memory_chunks where conversation_id in (select id from public.conversations where user_id = $1)`,
       [userId],
     );
-    await db.query(
+    await attempt(
+      'messages',
       `delete from public.messages where conversation_id in (select id from public.conversations where user_id = $1)`,
       [userId],
     );
-    await db.query(`delete from public.conversations where user_id = $1`, [userId]);
-    await db.query(`delete from public.memory_facts where user_id = $1`, [teammateId]);
-    await db.query(`delete from public.app_users where user_id = any($1::uuid[])`, [
+    await attempt('conversations', `delete from public.conversations where user_id = $1`, [userId]);
+    await attempt('app_users', `delete from public.app_users where user_id = any($1::uuid[])`, [
       [userId, teammateId].filter((id) => id !== ''),
     ]);
-    await admin.auth.admin.deleteUser(userId);
-    if (teammateId !== '') await admin.auth.admin.deleteUser(teammateId);
+    for (const id of [userId, teammateId].filter((value) => value !== '')) {
+      const deleted = await admin.auth.admin.deleteUser(id);
+      if (deleted.error !== null) failures.push(`auth.users: ${deleted.error.message}`);
+    }
     await db.end();
+    if (failures.length > 0) {
+      throw new Error(`fixture cleanup left rows behind — ${failures.join(' | ')}`);
+    }
   }, 60_000);
 
   it("1. a note added from the page is in the next turn's request to Claude", async () => {
