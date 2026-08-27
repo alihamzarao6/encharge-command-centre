@@ -292,7 +292,7 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
   });
 
   it('memory_facts refuses a second live value for the same key', async () => {
-    const key = `schema_test_dup_${RUN}`;
+    const key = `process:schema-test-dup-${RUN}`;
     await db.query(
       `insert into public.memory_facts (user_id, scope, key, value) values ($1, 'workspace', $2, 'v1')`,
       [ROSS, key],
