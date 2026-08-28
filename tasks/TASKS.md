@@ -224,6 +224,8 @@ their first real run (CI on push, or credentials).*
 | R24 `finance-option.com.au` → Refi Pixel | Origin unknown | 22 Aug | Ross |
 | **R26 an email sender for staff invites and "forgot password"** | No SMTP is configured on the project, so an admin hands a generated password over by hand — fine for one person, awkward for the 35 the client has described (D57). A sender from a domain he controls would let Supabase send both the invite and a self-service reset | 28 Aug | Ross — a scope conversation, not a code change |
 
+| **R27 should a conversation be able to be private?** `conversations.scope` has held `'user'` since the first migration and the parent-sync trigger already cascades it to messages and chunks — but **nothing in the UI can set it**, so every conversation anyone starts is readable by the whole team. That was invisible with one user; part 4 added staff and part 4a's author prefix makes it legible. The client was told **memory** is shared (D33) — he was not told his own chats are. Recommendation on file: keep `workspace` the default, add an owner-only "Just me" toggle before real staff arrive, and say on screen that a private conversation stops contributing to shared recall | 28 Aug | Ross — a client conversation, not a build decision |
+
 *Anything sitting here more than 3 days goes into a client message, not silence.*
 
 ---
@@ -434,5 +436,7 @@ above.
 | Item | Reason | Since | Unblocked by |
 |---|---|---|---|
 | P0.10 database platform | Supabase paused, MongoDB org appeared, intent unconfirmed | 09 Aug | Ross |
+
+| **R27 should a conversation be able to be private?** `conversations.scope` has held `'user'` since the first migration and the parent-sync trigger already cascades it to messages and chunks — but **nothing in the UI can set it**, so every conversation anyone starts is readable by the whole team. That was invisible with one user; part 4 added staff and part 4a's author prefix makes it legible. The client was told **memory** is shared (D33) — he was not told his own chats are. Recommendation on file: keep `workspace` the default, add an owner-only "Just me" toggle before real staff arrive, and say on screen that a private conversation stops contributing to shared recall | 28 Aug | Ross — a client conversation, not a build decision |
 
 *Anything sitting here more than 3 days goes into a client message, not silence.*

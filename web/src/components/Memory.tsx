@@ -22,6 +22,7 @@ import { callMemory, type MemoryOutcome, type MemoryRequest } from '../lib/memor
 import {
   buildChunkList,
   buildFactLists,
+  type ChunkSource,
   categoryLabel,
   topicLabel,
   type FactLists,
@@ -70,7 +71,7 @@ export function Memory({
 
   const load = useCallback(
     async (limit: number): Promise<void> => {
-      const [facts, notes, conversations] = await Promise.all([
+      const [facts, notes, conversations, roster] = await Promise.all([
         supabase
           .from('memory_facts')
           .select('id, user_id, scope, key, value, superseded_by, created_at')
@@ -82,17 +83,34 @@ export function Memory({
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(limit),
-        supabase.from('conversations').select('id, title').is('deleted_at', null).limit(200),
+        supabase
+          .from('conversations')
+          .select('id, title, user_id')
+          .is('deleted_at', null)
+          .limit(200),
+        // The roster, for the author prefix a conversation is named with (part 4a). Read
+        // under the policy part 4 widened (D56); it is the same one the Team page uses.
+        supabase.from('app_users').select('user_id, email').limit(500),
       ]);
       if (facts.error !== null || notes.error !== null || conversations.error !== null) {
         setState('error');
         return;
       }
-      const titles = new Map<string, string | null>(
-        conversations.data.map((row): [string, string | null] => [row.id, row.title]),
+      // A roster failure costs the prefix, never the page: the notes still list.
+      const emails = new Map<string, string>(
+        (roster.error === null ? roster.data : []).map((row): [string, string] => [
+          row.user_id,
+          row.email,
+        ]),
+      );
+      const sources = new Map<string, ChunkSource>(
+        conversations.data.map((row): [string, ChunkSource] => [
+          row.id,
+          { title: row.title, authorEmail: emails.get(row.user_id) ?? null },
+        ]),
       );
       setLists(buildFactLists(facts.data, actor));
-      setChunks(buildChunkList(notes.data, titles, actor));
+      setChunks(buildChunkList(notes.data, sources, actor));
       setHasMore(notes.data.length >= limit);
       setState('ready');
     },

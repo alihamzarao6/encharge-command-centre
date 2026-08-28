@@ -42,7 +42,7 @@ function ChunkCard({
     <li className="card mem__card">
       <div className="mem__card-head">
         <h3 className="mem__chunk-title">
-          {chunk.conversationTitle ?? 'A conversation that has since been removed'}
+          {chunk.conversationName ?? 'A conversation that has since been removed'}
         </h3>
       </div>
       <p className="muted mem__meta">
@@ -97,7 +97,7 @@ function ChunkCard({
         </div>
       ) : (
         <div className="mem__row mem__actions">
-          {chunk.conversationTitle !== null && (
+          {chunk.conversationName !== null && (
             <button
               className="button button--small"
               type="button"

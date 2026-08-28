@@ -32,6 +32,7 @@ import { verifyStaffAccess, type StaffIdentity, type VerifyDeps } from '../auth/
 import type { ClaudeClient, Completion, CompletionRequest, LlmError } from './client.js';
 import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
+import { titleFromFirstMessage } from '../memory/naming.js';
 import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
 
 export interface ConversationRow {
@@ -79,7 +80,12 @@ export interface AppendedTurn {
 
 export interface ConversationStore {
   get(conversationId: string): Promise<Result<ConversationRow | null>>;
-  create(userId: string): Promise<Result<ConversationRow>>;
+  /**
+   * `title` is the auto-title derived from the first message (naming.ts) — null when the
+   * message yields nothing usable, in which case the conversation stays untitled and the
+   * list says so. A person's rename always wins afterwards: nothing re-titles later.
+   */
+  create(userId: string, title: string | null): Promise<Result<ConversationRow>>;
   /**
    * The last `limit` user/assistant messages of one conversation, OLDEST FIRST, content
    * only. Tool rows and null content are excluded at the source.
@@ -369,7 +375,9 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
   // 3. The conversation.
   let conversation: ConversationRow;
   if (requestedConversationId === null) {
-    const created = await deps.conversations.create(user.userId);
+    // Named from the first thing he said. Free, local, and wrong-but-fixable beats a list
+    // of forty rows all called "Untitled conversation" (part 4a).
+    const created = await deps.conversations.create(user.userId, titleFromFirstMessage(message));
     if (!created.ok) {
       log.error('conversation create failed', { error: created.error });
       return refuse(unavailable(created.error));

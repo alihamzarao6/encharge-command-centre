@@ -67,14 +67,6 @@ export const CONVERSATION_DELETE_DENIED_MESSAGE =
 export const MEMORY_NOTE_MAX_INPUT_CHARS = 1_000;
 
 /**
- * Stage 3 part 4: a conversation's name. Short on purpose — it is read in a list on a
- * 375 px screen, where anything longer is truncated and therefore not a name but a
- * paragraph. Nothing generates titles today (`conversations.title` has been null since the
- * first turn was ever saved), so renaming is the ONLY way a conversation has a name at all.
- */
-export const CONVERSATION_TITLE_MAX_CHARS = 80;
-
-/**
  * The longest a stored note may be. MIRRORS `FACT_VALUE_MAX_CHARS` in facts.ts, which is
  * the store's own limit; `tests/unit/memory/access.test.ts` asserts the two agree, so this
  * copy can never drift away from the thing it is a copy of. It is a copy rather than an

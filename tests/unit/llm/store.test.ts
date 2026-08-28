@@ -202,7 +202,7 @@ describe('supabaseConversationStore', () => {
   it('create inserts user_id only (scope defaults to workspace in the database) and returns the row', async () => {
     stub((req) => (req.method === 'POST' ? json(ROW, 201) : undefined));
     const store = supabaseConversationStore(createServiceClient(CONFIG));
-    const result = await store.create(USER_ID);
+    const result = await store.create(USER_ID, null);
     expect(result).toEqual({
       ok: true,
       value: { id: CONV_ID, userId: USER_ID, scope: 'workspace', title: null, deletedAt: null },
@@ -212,13 +212,13 @@ describe('supabaseConversationStore', () => {
 
   it('create maps failures', async () => {
     stub(() => json({ message: 'fk', code: '23503' }, 409));
-    expect((await supabaseConversationStore(createServiceClient(CONFIG)).create(USER_ID)).ok).toBe(
-      false,
-    );
+    expect(
+      (await supabaseConversationStore(createServiceClient(CONFIG)).create(USER_ID, null)).ok,
+    ).toBe(false);
     vi.stubGlobal('fetch', () => Promise.reject(new Error('reset')));
-    expect((await supabaseConversationStore(createServiceClient(CONFIG)).create(USER_ID)).ok).toBe(
-      false,
-    );
+    expect(
+      (await supabaseConversationStore(createServiceClient(CONFIG)).create(USER_ID, null)).ok,
+    ).toBe(false);
   });
 
   it('appendTurn writes the user message, the assistant message with model and tokens, then touches the conversation', async () => {

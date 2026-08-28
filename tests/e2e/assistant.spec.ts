@@ -406,7 +406,11 @@ test.describe('assistant', () => {
     }
     await page.getByRole('listitem').filter({ hasText: 'Offset accounts post' }).click();
     await expect(page.locator('[data-role="assistant"]')).toContainText('Offsets, explained.');
-    await expect(page.locator('.thread-pane__title')).toHaveText('Offset accounts post');
+    // Part 4a: every conversation is named for its author, in the list and in the header
+    // alike — the same conversation must never be called two things one tap apart.
+    await expect(page.locator('.thread-pane__title')).toHaveText(
+      'ross.test — Offset accounts post',
+    );
     await page.getByRole('button', { name: '+ New', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'What do you want to say?' })).toBeVisible();
     await expectNoHorizontalScroll(page);

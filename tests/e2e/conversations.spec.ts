@@ -15,7 +15,14 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { CONV_ID, USER_ID, installMock, seedStoredSession, type MockOptions } from './mock.js';
+import {
+  CONV_ID,
+  EMAIL,
+  USER_ID,
+  installMock,
+  seedStoredSession,
+  type MockOptions,
+} from './mock.js';
 
 const SHOTS = fileURLToPath(new URL('../../docs/assets/stage-3/', import.meta.url));
 mkdirSync(SHOTS, { recursive: true });
@@ -65,6 +72,91 @@ async function open(page: Page, options: MockOptions = {}) {
   await expect(page.getByRole('button', { name: '+ New', exact: true })).toBeVisible();
   return state;
 }
+
+test.describe('whose conversation is whose', () => {
+  const ROSTER = [
+    {
+      user_id: SOMEONE_ELSE,
+      email: 'zoe@fundd.com.au',
+      role: 'staff',
+      is_active: true,
+      is_admin: false,
+      created_at: '2026-08-10T02:00:00Z',
+    },
+  ];
+
+  test('every row is named for its AUTHOR, not for the person looking', async ({ page }) => {
+    await open(page, { roster: ROSTER });
+    await openList(page);
+
+    // The signed-in user is ross.test@example.com; the other conversation is Zoe's. Both
+    // rows carry their own author, which is the entire point of the prefix.
+    await expect(page.getByText('ross.test — Untitled conversation')).toBeVisible();
+    await expect(page.getByText('zoe — Started by someone else')).toBeVisible();
+    expect(EMAIL.startsWith('ross.test')).toBe(true);
+
+    await shot(page, 'conversations-authored');
+    await expectNoHorizontalScroll(page);
+  });
+
+  test('renaming edits only the part after the prefix, and the prefix is not in the field', async ({
+    page,
+  }) => {
+    const state = await open(page, {
+      roster: ROSTER,
+      conversations: [
+        { id: CONV_ID, title: 'Offset accounts post', last_active_at: '2026-08-27T02:00:00Z' },
+      ],
+    });
+    await openList(page);
+    await expect(page.getByText('ross.test — Offset accounts post')).toBeVisible();
+
+    const row = page.locator('.convos__row', { hasText: 'Offset accounts post' });
+    await row.getByRole('button', { name: 'Rename' }).click();
+
+    // The field holds the NAME only; the prefix sits beside it, visibly fixed.
+    const field = page.getByLabel('Name this conversation');
+    await expect(field).toHaveValue('Offset accounts post');
+    await expect(page.locator('.convos__rename-prefix')).toHaveText('ross.test — ');
+    await shot(page, 'conversation-rename-prefix');
+
+    await field.fill('Refinance ads for October');
+    await page.getByRole('button', { name: 'Save name' }).click();
+
+    // What was SENT is the name alone — the prefix is derived, never stored.
+    expect(state.memoryCalls[0]?.body['title']).toBe('Refinance ads for October');
+    await expect(page.getByText('ross.test — Refinance ads for October')).toBeVisible();
+    await expectNoHorizontalScroll(page);
+  });
+
+  test('the filter finds a colleague by name, which is the first thing anyone tries', async ({
+    page,
+  }) => {
+    await open(page, {
+      roster: ROSTER,
+      conversations: [
+        // A distinct id space from OTHER_CONV: a collision duplicates a React key and
+        // leaves a stale row behind, which is a fixture bug that reads like a filter bug.
+        ...Array.from({ length: 12 }, (_v, i) => ({
+          id: `c1110000-0000-4000-8000-0000000${String(i).padStart(5, '0')}`,
+          title: `Mine number ${String(i)}`,
+          last_active_at: '2026-08-27T02:00:00Z',
+        })),
+        {
+          id: OTHER_CONV,
+          title: 'Her refinance thread',
+          last_active_at: '2026-08-26T02:00:00Z',
+          user_id: SOMEONE_ELSE,
+        },
+      ],
+    });
+    await openList(page);
+    const filter = page.getByLabel('Find a conversation by name');
+    await filter.fill('zoe');
+    await expect(page.locator('.convos__row')).toHaveCount(1);
+    await expect(page.getByText('zoe — Her refinance thread')).toBeVisible();
+  });
+});
 
 test.describe('naming a conversation', () => {
   test('6/8: a rename shows straight away, from the list, through the server path only', async ({

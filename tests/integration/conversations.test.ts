@@ -258,6 +258,23 @@ describe.skipIf(env === null)('conversation management (requires a running Supab
     expect(audit.rows).toStrictEqual([{ actor: OWNER }]);
   }, 120_000);
 
+  it('strips the author prefix, so what is STORED is only ever the name (part 4a)', async () => {
+    // The list shows "rossb — X". Sending the whole displayed name back must store "X".
+    const result = await post({
+      action: 'rename_conversation',
+      conversationId: renamedConvId,
+      title: 'rossb — Refinance ads for October',
+    });
+    expect(result.status).toBe(200);
+    expect(body(result)['outcome']).toBe('unchanged');
+
+    const row = await db.query<{ title: string | null }>(
+      `select title from public.conversations where id = $1`,
+      [renamedConvId],
+    );
+    expect(row.rows[0]?.title).toBe('Refinance ads for October');
+  }, 120_000);
+
   it('renaming it again to the same name writes nothing and audits nothing', async () => {
     const result = await post({
       action: 'rename_conversation',

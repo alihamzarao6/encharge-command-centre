@@ -283,10 +283,23 @@ user B's `user`-scoped rows.
 `id · user_id not null · scope not null default 'workspace' · title · created_at ·
 last_active_at · deleted_at`
 
-`title` is null on every conversation the assistant has ever created — nothing generates one.
-**Stage 3 part 4** makes renaming the way a conversation gets a name at all
-(`rename_conversation`, open to every active allowlisted member because naming is a
-correction, not a removal — D52's open half).
+**How a conversation is named (part 4a, D61).** Two halves, and neither writes a prefix:
+
+- `title` is **auto-set on create** from the first user message (`titleFromFirstMessage`,
+  `src/lib/memory/naming.ts`, called by `chat.ts`). It was null on every conversation that
+  had ever existed, which made renaming a chore rather than a correction. Nothing re-titles
+  later, so a person's rename is never overwritten.
+- The **displayed** name is `<author's email local part> — <title>`, derived at read time
+  from `app_users.email` and **never stored**. Conversations are workspace-scoped (D33), so
+  since part 4 put staff on the system everyone sees everyone's; the prefix is what makes
+  that list attributable. Deriving rather than storing means an email change is followed on
+  the next read and no backfill is owed for existing rows.
+- `rename_conversation` therefore edits only the part after the prefix. The interface keeps
+  the prefix outside the input, and the server applies `stripConversationPrefix` against the
+  **author's** email as well, so a title can never come to contain its own prefix.
+
+Renaming is open to every active allowlisted member because naming is a correction, not a
+removal — D52's open half.
 
 **Deleting a conversation** (D59, migration `20260828010000`, one transaction in
 `delete_conversation(uuid, uuid)`) treats the four tables that hang off it differently,

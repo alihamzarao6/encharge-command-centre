@@ -13,6 +13,7 @@ import {
   CONVERSATION_FILTER_THRESHOLD,
   DELETE_CONVERSATION_CONFIRM,
   UNTITLED_CONVERSATION,
+  buildConversationList,
   filterConversations,
   formatWhen,
   type ConversationListRow,
@@ -20,7 +21,14 @@ import {
 import { interpretMemoryResponse } from '../../../web/src/lib/memoryApi.js';
 
 const USER = '11111111-1111-4111-8111-111111111111';
+const ZOE = '22222222-2222-4222-8222-222222222222';
 const CONV = 'c0000000-0000-4000-8000-000000000001';
+
+/** The roster the page reads under the policy part 4 widened (D56). */
+const EMAILS = new Map([
+  [USER, 'ross@fundd.com.au'],
+  [ZOE, 'zoe@fundd.com.au'],
+]);
 
 function conversation(overrides: Partial<ConversationListRow> = {}): ConversationListRow {
   return {
@@ -43,25 +51,79 @@ describe('formatWhen', () => {
   });
 });
 
+describe('buildConversationList', () => {
+  it('names every row for its AUTHOR, whoever is looking', () => {
+    const views = buildConversationList(
+      [
+        conversation({ id: 'a', title: 'Refinance ads for October' }),
+        conversation({ id: 'b', title: 'Her thread', user_id: ZOE }),
+      ],
+      EMAILS,
+    );
+    expect(views.map((v) => v.displayName)).toStrictEqual([
+      'ross — Refinance ads for October',
+      'zoe — Her thread',
+    ]);
+    // The raw title is kept, because that — and only that — is what a rename edits.
+    expect(views[0]?.title).toBe('Refinance ads for October');
+    expect(views[0]?.prefix).toBe('ross');
+  });
+
+  it('names an unnamed conversation without losing whose it is', () => {
+    const views = buildConversationList([conversation({ title: null })], EMAILS);
+    expect(views[0]?.displayName).toBe(`ross — ${UNTITLED_CONVERSATION}`);
+    expect(views[0]?.title).toBeNull();
+  });
+
+  it('degrades to a bare name when the author is not on the roster', () => {
+    const views = buildConversationList([conversation({ title: 'Orphan' })], new Map());
+    expect(views[0]?.displayName).toBe('Orphan');
+    expect(views[0]?.prefix).toBeNull();
+  });
+
+  it('keeps a deactivated colleague named — their row is still readable', () => {
+    // The roster policy returns every row regardless of is_active, so a conversation started
+    // by someone who has since left is still attributed rather than going anonymous.
+    const views = buildConversationList(
+      [conversation({ user_id: ZOE, title: 'Old work' })],
+      EMAILS,
+    );
+    expect(views[0]?.displayName).toBe('zoe — Old work');
+  });
+});
+
 describe('filterConversations', () => {
+  function views(rows: readonly ConversationListRow[]) {
+    return buildConversationList(rows, EMAILS);
+  }
+
   it('matches part of a name, case-insensitively, and ignores surrounding spaces', () => {
-    const rows = [
+    const list = views([
       conversation({ id: 'a', title: 'Refinance ads for October' }),
       conversation({ id: 'b', title: 'First home buyer carousel' }),
       conversation({ id: 'c', title: null }),
-    ];
-    expect(filterConversations(rows, '  OCTOBER ').map((c) => c.id)).toStrictEqual(['a']);
-    expect(filterConversations(rows, 'r').map((c) => c.id)).toStrictEqual(['a', 'b']);
+    ]);
+    expect(filterConversations(list, '  OCTOBER ').map((c) => c.id)).toStrictEqual(['a']);
   });
 
-  it('an empty query is not a filter — the whole list comes back, same array contents', () => {
-    const rows = [conversation({ id: 'a' }), conversation({ id: 'b' })];
-    expect(filterConversations(rows, '   ')).toStrictEqual(rows);
+  it('matches the AUTHOR too, which is the first thing anyone tries on a long list', () => {
+    const list = views([
+      conversation({ id: 'a', title: 'Refinance ads' }),
+      conversation({ id: 'b', title: 'Her thread', user_id: ZOE }),
+    ]);
+    expect(filterConversations(list, 'zoe').map((c) => c.id)).toStrictEqual(['b']);
+    expect(filterConversations(list, 'ross').map((c) => c.id)).toStrictEqual(['a']);
   });
 
-  it('an unnamed conversation matches nothing, which is why the empty state says so', () => {
-    expect(filterConversations([conversation()], 'anything')).toStrictEqual([]);
-    expect(UNTITLED_CONVERSATION).toBe('Untitled conversation');
+  it('an empty query is not a filter — the whole list comes back', () => {
+    const list = views([conversation({ id: 'a' }), conversation({ id: 'b' })]);
+    expect(filterConversations(list, '   ')).toStrictEqual(list);
+  });
+
+  it('an unnamed conversation is still found by its author', () => {
+    const list = views([conversation({ title: null })]);
+    expect(filterConversations(list, 'nothing-like-this')).toStrictEqual([]);
+    expect(filterConversations(list, 'ross')).toHaveLength(1);
   });
 
   it('the filter appears before scanning becomes hopeless, not after', () => {

@@ -85,7 +85,8 @@ function fakeClaude(
 }
 
 interface FakeStore extends ConversationStore {
-  readonly created: string[];
+  /** Every create, with the auto-title the chat path derived for it (part 4a). */
+  readonly created: { userId: string; title: string | null }[];
   readonly appended: unknown[];
   readonly historyReads: { conversationId: string; limit: number }[];
   existing: ConversationRow | null;
@@ -108,11 +109,11 @@ function fakeStore(existing: ConversationRow | null = null): FakeStore {
     failHistory: null,
     failAppend: null,
     get: () => Promise.resolve(store.failGet === null ? ok(store.existing) : err(store.failGet)),
-    create: (userId) => {
-      store.created.push(userId);
+    create: (userId, title) => {
+      store.created.push({ userId, title });
       return Promise.resolve(
         store.failCreate === null
-          ? ok({ id: CONV_ID, userId, scope: 'workspace' as const, title: null, deletedAt: null })
+          ? ok({ id: CONV_ID, userId, scope: 'workspace' as const, title, deletedAt: null })
           : err(store.failCreate),
       );
     },
@@ -224,6 +225,41 @@ describe('input', () => {
 });
 
 describe('the turn', () => {
+  it('auto-titles a new conversation from the first message, and never re-titles later', async () => {
+    const d = deps();
+    await handleChatTurn(d, {
+      token: 't',
+      message: 'Write me a Meta ad about offset accounts. Keep it punchy.',
+    });
+    expect(d.conversations.created).toEqual([
+      { userId: USER_ID, title: 'Write me a Meta ad about offset accounts' },
+    ]);
+
+    // A second turn on an EXISTING conversation creates nothing and re-titles nothing: a
+    // person's rename must never be overwritten by a later message.
+    const d2 = deps({
+      conversations: fakeStore({
+        id: CONV_ID,
+        userId: USER_ID,
+        scope: 'workspace',
+        title: 'Named by hand',
+        deletedAt: null,
+      }),
+    });
+    await handleChatTurn(d2, {
+      token: 't',
+      message: 'and now something else',
+      conversationId: CONV_ID,
+    });
+    expect(d2.conversations.created).toHaveLength(0);
+  });
+
+  it('leaves a conversation untitled when the first message yields no usable name', async () => {
+    const d = deps();
+    await handleChatTurn(d, { token: 't', message: '...' });
+    expect(d.conversations.created).toEqual([{ userId: USER_ID, title: null }]);
+  });
+
   it('creates a conversation for the caller, calls Claude with the voice prompt cached, saves both turns, returns 200', async () => {
     const d = deps();
     const result = await handleChatTurn(d, { token: 't', message: 'hello' });
@@ -238,7 +274,9 @@ describe('the turn', () => {
       usage: COMPLETION.usage,
       costUsd: 0.0006,
     });
-    expect(d.conversations.created).toEqual([USER_ID]);
+    // Part 4a: a new conversation is named from the first thing he said, so the list is not
+    // forty rows of "Untitled conversation" before anyone renames anything.
+    expect(d.conversations.created).toEqual([{ userId: USER_ID, title: 'hello' }]);
     const call = d.claude.calls[0];
     expect(call?.userId).toBe(USER_ID);
     expect(call?.conversationId).toBe(CONV_ID);
@@ -252,7 +290,8 @@ describe('the turn', () => {
           id: CONV_ID,
           userId: USER_ID,
           scope: 'workspace',
-          title: null,
+          // Auto-titled from this very message on create (part 4a).
+          title: 'hello',
           deletedAt: null,
         },
         userContent: 'hello',

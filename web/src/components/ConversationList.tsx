@@ -17,22 +17,20 @@
  */
 import { useState, type ReactElement, type SyntheticEvent } from 'react';
 
+import { canRemoveMemory, type MemoryActor } from '../../../src/lib/memory/access.js';
 import {
-  canRemoveMemory,
+  CONVERSATION_PREFIX_SEPARATOR,
   CONVERSATION_TITLE_MAX_CHARS,
-  type MemoryActor,
-} from '../../../src/lib/memory/access.js';
+} from '../../../src/lib/memory/naming.js';
 import {
   CONVERSATION_FILTER_THRESHOLD,
   DELETE_CONVERSATION_CONFIRM,
-  UNTITLED_CONVERSATION,
   filterConversations,
-  formatWhen,
-  type ConversationListRow,
+  type ConversationView,
 } from '../lib/conversationsView.js';
 
 interface Props {
-  readonly conversations: readonly ConversationListRow[];
+  readonly conversations: readonly ConversationView[];
   readonly state: 'loading' | 'ready' | 'error';
   readonly activeId: string | null;
   readonly actor: MemoryActor;
@@ -131,7 +129,7 @@ export function ConversationList({
               key={c.id}
               conversation={c}
               active={c.id === activeId}
-              canDelete={canRemoveMemory({ authorId: c.user_id }, actor).allowed}
+              canDelete={canRemoveMemory({ authorId: c.authorId }, actor).allowed}
               busy={busyId === c.id}
               onSelect={onSelect}
               onRename={onRename}
@@ -155,7 +153,7 @@ function ConversationRow({
   onRename,
   onDelete,
 }: {
-  readonly conversation: ConversationListRow;
+  readonly conversation: ConversationView;
   readonly active: boolean;
   readonly canDelete: boolean;
   readonly busy: boolean;
@@ -181,16 +179,27 @@ function ConversationRow({
         <label className="sr-only" htmlFor={`convos-rename-${conversation.id}`}>
           Name this conversation
         </label>
-        <input
-          id={`convos-rename-${conversation.id}`}
-          className="field__input"
-          value={draft}
-          maxLength={CONVERSATION_TITLE_MAX_CHARS}
-          placeholder="e.g. Refinance ads for October"
-          onChange={(event) => {
-            setDraft(event.target.value);
-          }}
-        />
+        {/* The author's prefix is derived, not stored, and is not the renamer's to change —
+            so it sits OUTSIDE the field, visibly fixed, rather than as editable text the
+            server would only strip back off. */}
+        <div className="convos__rename-row">
+          {conversation.prefix !== null && (
+            <span className="convos__rename-prefix" aria-hidden="true">
+              {conversation.prefix}
+              {CONVERSATION_PREFIX_SEPARATOR}
+            </span>
+          )}
+          <input
+            id={`convos-rename-${conversation.id}`}
+            className="field__input"
+            value={draft}
+            maxLength={CONVERSATION_TITLE_MAX_CHARS}
+            placeholder="e.g. Refinance ads for October"
+            onChange={(event) => {
+              setDraft(event.target.value);
+            }}
+          />
+        </div>
         <div className="mem__row">
           <button
             className="button button--primary button--small"
@@ -225,8 +234,8 @@ function ConversationRow({
           onSelect(conversation.id);
         }}
       >
-        <span className="convos__item-title">{conversation.title ?? UNTITLED_CONVERSATION}</span>
-        <span className="convos__item-when">{formatWhen(conversation.last_active_at)}</span>
+        <span className="convos__item-title">{conversation.displayName}</span>
+        <span className="convos__item-when">{conversation.when}</span>
       </button>
 
       {mode === 'confirm' ? (

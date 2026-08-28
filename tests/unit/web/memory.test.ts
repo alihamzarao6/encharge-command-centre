@@ -25,6 +25,7 @@ import {
   factState,
   formatMemoryDate,
   topicLabel,
+  type ChunkSource,
   type MemoryChunkRow,
   type MemoryFactRow,
 } from '../../../web/src/lib/memoryView.js';
@@ -355,14 +356,18 @@ describe('chunkPreview', () => {
 });
 
 describe('buildChunkList', () => {
-  const titles = new Map<string, string | null>([['conv-1', 'Renting vs buying ad']]);
+  // Part 4a: a chunk card names its conversation exactly as the conversations list does —
+  // author prefix and all — so the same conversation is never called two things.
+  const titles = new Map<string, ChunkSource>([
+    ['conv-1', { title: 'Renting vs buying ad', authorEmail: 'ross@fundd.com.au' }],
+  ]);
 
   it('shows the conversation it came from, the date and the audience', () => {
     const [view] = buildChunkList([chunk({ id: 'c1' })], titles, ACTOR);
     expect(view).toMatchObject({
       id: 'c1',
       conversationId: 'conv-1',
-      conversationTitle: 'Renting vs buying ad',
+      conversationName: 'ross — Renting vs buying ad',
       audience: 'renters aspiring to homeownership',
       when: '26 Aug 2026',
       byYou: true,
@@ -376,7 +381,7 @@ describe('buildChunkList', () => {
       titles,
       ACTOR,
     );
-    expect(view?.conversationTitle).toBeNull();
+    expect(view?.conversationName).toBeNull();
   });
 
   it('never shows a deleted note, whatever the query returned', () => {

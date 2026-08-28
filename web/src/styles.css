@@ -1091,6 +1091,35 @@ p {
   margin: 8px 12px 0;
 }
 
+/* The author prefix on a rename field: visibly part of the name, visibly not editable. */
+.convos__rename-row,
+.thread-pane__rename-prefix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.convos__rename-row .field__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.convos__rename-prefix,
+.thread-pane__rename-prefix {
+  /* Shrinkable: a long local part must not squeeze the field it labels. The row in the list
+     is the authoritative statement of whose this is; here it is an adornment. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
 /* ---------- team (Stage 3 part 4) ---------- */
 
 .team {

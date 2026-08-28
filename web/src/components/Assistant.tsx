@@ -19,7 +19,12 @@ import {
   type SyntheticEvent,
 } from 'react';
 
-import { CONVERSATION_TITLE_MAX_CHARS, type MemoryActor } from '../../../src/lib/memory/access.js';
+import type { MemoryActor } from '../../../src/lib/memory/access.js';
+import {
+  CONVERSATION_PREFIX_SEPARATOR,
+  CONVERSATION_TITLE_MAX_CHARS,
+} from '../../../src/lib/memory/naming.js';
+import { buildConversationList } from '../lib/conversationsView.js';
 import { streamTurn, type ChatFailure } from '../lib/chatApi.js';
 import { webConfig } from '../lib/env.js';
 import { loadDraft, saveDraft, takePending, type PendingDraft } from '../lib/draft.js';
@@ -62,6 +67,12 @@ export function Assistant({
   onSessionExpired,
 }: Props): ReactElement {
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
+  /**
+   * user_id -> email, for the author prefix every conversation is named with (part 4a).
+   * Read under RLS from the roster policy part 4 widened (D56); a failure leaves the map
+   * empty and the list shows bare names rather than nothing.
+   */
+  const [emailsById, setEmailsById] = useState<ReadonlyMap<string, string>>(new Map());
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -99,6 +110,12 @@ export function Assistant({
     return data;
   }, []);
 
+  const loadRoster = useCallback(async (): Promise<void> => {
+    const { data, error } = await supabase.from('app_users').select('user_id, email').limit(500);
+    if (error !== null) return;
+    setEmailsById(new Map(data.map((row): [string, string] => [row.user_id, row.email])));
+  }, []);
+
   const loadMessages = useCallback(async (conversationId: string): Promise<void> => {
     setThreadState('loading');
     const { data, error } = await supabase
@@ -131,6 +148,7 @@ export function Assistant({
   // unsent draft is left where it is rather than consumed, so it survives for next time.
   useEffect(() => {
     void loadConversations();
+    void loadRoster();
     if (pendingRestored.current) return;
     pendingRestored.current = true;
     if (openConversationId !== undefined && openConversationId !== null) {
@@ -145,7 +163,7 @@ export function Assistant({
       setDraft(pending.text);
       if (pending.conversationId !== null) void loadMessages(pending.conversationId);
     }
-  }, [loadConversations, loadMessages, openConversationId]);
+  }, [loadConversations, loadRoster, loadMessages, openConversationId]);
 
   const selectConversation = useCallback(
     (id: string | null): void => {
@@ -346,8 +364,14 @@ export function Assistant({
     [activeId, loadConversations, manage],
   );
 
-  const active = conversations.find((c) => c.id === activeId) ?? null;
-  const title = active?.title ?? (activeId === null ? 'New conversation' : 'Conversation');
+  const views = useMemo(
+    () => buildConversationList(conversations, emailsById),
+    [conversations, emailsById],
+  );
+  const active = views.find((c) => c.id === activeId) ?? null;
+  // The header shows exactly what the list shows, prefix and all — a conversation must not
+  // be called two different things one tap apart.
+  const title = active?.displayName ?? (activeId === null ? 'New conversation' : 'Conversation');
 
   const submitRename = (event: SyntheticEvent): void => {
     event.preventDefault();
@@ -363,7 +387,7 @@ export function Assistant({
   return (
     <div className="assistant">
       <ConversationList
-        conversations={conversations}
+        conversations={views}
         state={listState}
         activeId={activeId}
         actor={actor}
@@ -396,6 +420,12 @@ export function Assistant({
               <label className="sr-only" htmlFor="thread-rename">
                 Name this conversation
               </label>
+              {active?.prefix != null && (
+                <span className="thread-pane__rename-prefix" aria-hidden="true">
+                  {active.prefix}
+                  {CONVERSATION_PREFIX_SEPARATOR}
+                </span>
+              )}
               <input
                 id="thread-rename"
                 name="thread-rename"
@@ -440,15 +470,20 @@ export function Assistant({
               )}
             </>
           )}
-          <button
-            className="button button--ghost"
-            type="button"
-            onClick={() => {
-              selectConversation(null);
-            }}
-          >
-            + New
-          </button>
+          {/* While renaming, the bar belongs to the rename: at 375 px a prefix, a field, Save,
+              Cancel AND "+ New" do not fit, and the one that must never be hard to reach is
+              the one that saves. */}
+          {!renaming && (
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => {
+                selectConversation(null);
+              }}
+            >
+              + New
+            </button>
+          )}
         </div>
         {notice !== null && (
           <p className="notice thread-pane__notice" role="status">

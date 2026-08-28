@@ -72,11 +72,11 @@ import type { Logger } from '../logger.js';
 import {
   canRemoveMemory,
   CONVERSATION_DELETE_DENIED_MESSAGE,
-  CONVERSATION_TITLE_MAX_CHARS,
   MEMORY_NOTE_MAX_INPUT_CHARS,
   REMOVAL_DENIED_MESSAGE,
   type MemoryActor,
 } from './access.js';
+import { CONVERSATION_TITLE_MAX_CHARS, stripConversationPrefix } from './naming.js';
 import { captureFact, overrideClaim } from './capture.js';
 import { FACT_VALUE_MAX_CHARS, type FactStore, type MemoryScope } from './facts.js';
 import { accessClaim } from './summarise.js';
@@ -110,6 +110,13 @@ export interface ChunkForAction {
 export interface ConversationForAction {
   readonly id: string;
   readonly authorId: string;
+  /**
+   * The author's email, for the derived display prefix (naming.ts). Null when their
+   * allowlist row cannot be read — the conversation is still actionable, it just shows its
+   * bare name. Read here rather than trusted from the client: the prefix a title is stripped
+   * of must be the AUTHOR's, and only the server knows who that is.
+   */
+  readonly authorEmail: string | null;
   readonly scope: MemoryScope;
   readonly title: string | null;
   readonly deletedAt: string | null;
@@ -228,9 +235,20 @@ export function supabaseMemoryPageStore(client: ServiceClient): MemoryPageStore 
         if (row === undefined) return ok(null);
         const scope = toScope(row.scope, row.id, 'conversations');
         if (!scope.ok) return err(scope.error);
+
+        // A second read rather than an embedded select: `conversations.user_id` references
+        // auth.users, not app_users, so PostgREST has no relationship to embed through. The
+        // author's email is only ever used to derive the display prefix; a failure to read
+        // it degrades the label, never the action, so it is not an error path.
+        const author = await client
+          .from('app_users')
+          .select('email')
+          .eq('user_id', row.user_id)
+          .limit(1);
         return ok({
           id: row.id,
           authorId: row.user_id,
+          authorEmail: author.error === null ? (author.data[0]?.email ?? null) : null,
           scope: scope.value,
           title: row.title,
           deletedAt: row.deleted_at,
@@ -906,19 +924,27 @@ async function renameConversation(
   if (typeof rawTitle !== 'string' || rawTitle.trim() === '') {
     return failure(400, 'BAD_REQUEST', 'Give the conversation a name.');
   }
-  const title = rawTitle.trim().replace(/\s+/g, ' ');
+  const found = await liveConversation(deps, actor, rawId, log);
+  if (!found.ok) return found.result;
+  const conversation = found.conversation;
+  if (conversation.deletedAt !== null) {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+
+  // The displayed name carries the author's prefix, which is DERIVED (naming.ts). Only the
+  // part after it is the person's to set, so anything that arrives carrying the prefix is
+  // stripped before it is stored — otherwise the next render reads "ross — ross — …". The
+  // browser strips it too; this is the half that holds when the browser is not ours.
+  const title = stripConversationPrefix(rawTitle.replace(/\s+/g, ' '), conversation.authorEmail);
+  if (title === '') {
+    return failure(400, 'BAD_REQUEST', 'Give the conversation a name.');
+  }
   if (title.length > CONVERSATION_TITLE_MAX_CHARS) {
     return failure(
       400,
       'BAD_REQUEST',
       `A name is at most ${String(CONVERSATION_TITLE_MAX_CHARS)} characters.`,
     );
-  }
-  const found = await liveConversation(deps, actor, rawId, log);
-  if (!found.ok) return found.result;
-  const conversation = found.conversation;
-  if (conversation.deletedAt !== null) {
-    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
   }
 
   // Already called that: no write, no audit row, and no "saved" for a no-op.

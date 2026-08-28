@@ -161,11 +161,11 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
         return err(mapThrown(caught, 'conversations.get'));
       }
     },
-    create: async (userId) => {
+    create: async (userId, title) => {
       try {
         const { data, error } = await client
           .from('conversations')
-          .insert({ user_id: userId })
+          .insert(title === null ? { user_id: userId } : { user_id: userId, title })
           .select(CONVERSATION_COLUMNS)
           .single();
         if (error !== null) {

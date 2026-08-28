@@ -13,6 +13,7 @@
  * argument of a write.
  */
 import { canRemoveMemory, type MemoryActor } from '../../../src/lib/memory/access.js';
+import { conversationDisplayName } from '../../../src/lib/memory/naming.js';
 
 /**
  * Stage 3 part 3: what the memory page selects. Both tables are read directly under RLS
@@ -189,8 +190,12 @@ export function buildFactLists(rows: readonly MemoryFactRow[], actor: MemoryActo
 export interface MemoryChunkView {
   readonly id: string;
   readonly conversationId: string;
-  /** Null when the conversation it came from is gone, so the page can say so. */
-  readonly conversationTitle: string | null;
+  /**
+   * The conversation this note came from, named the way the conversations list names it —
+   * `ross — Meta ad about offsets` (part 4a). Null when that conversation is gone, so the
+   * page can say so instead of showing a dangling name.
+   */
+  readonly conversationName: string | null;
   readonly audience: string | null;
   readonly summary: string;
   readonly preview: string;
@@ -214,22 +219,32 @@ export function chunkPreview(summary: string, max = CHUNK_PREVIEW_CHARS): string
   return `${kept.replace(/[\s.,;:!?-]+$/, '')}…`;
 }
 
+/** One conversation, as the chunk list needs it: what it is called and who wrote it. */
+export interface ChunkSource {
+  readonly title: string | null;
+  readonly authorEmail: string | null;
+}
+
 export function buildChunkList(
   rows: readonly MemoryChunkRow[],
-  titles: ReadonlyMap<string, string | null>,
+  sources: ReadonlyMap<string, ChunkSource>,
   actor: MemoryActor,
 ): readonly MemoryChunkView[] {
   return rows
     .filter((row) => row.deleted_at === null)
-    .map((row) => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      conversationTitle: titles.get(row.conversation_id) ?? null,
-      audience: row.audience,
-      summary: row.summary,
-      preview: chunkPreview(row.summary),
-      when: formatMemoryDate(row.created_at),
-      byYou: row.user_id === actor.userId,
-      canRemove: canRemoveMemory({ authorId: row.user_id }, actor).allowed,
-    }));
+    .map((row) => {
+      const source = sources.get(row.conversation_id);
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        conversationName:
+          source === undefined ? null : conversationDisplayName(source.title, source.authorEmail),
+        audience: row.audience,
+        summary: row.summary,
+        preview: chunkPreview(row.summary),
+        when: formatMemoryDate(row.created_at),
+        byYou: row.user_id === actor.userId,
+        canRemove: canRemoveMemory({ authorId: row.user_id }, actor).allowed,
+      };
+    });
 }

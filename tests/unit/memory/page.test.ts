@@ -917,6 +917,7 @@ function liveConversation(overrides: Partial<ConversationForAction> = {}): Conve
   return {
     id: CONV_ID,
     authorId: USER_ID,
+    authorEmail: 'ross@example.com',
     scope: 'workspace',
     title: null,
     deletedAt: null,
@@ -985,6 +986,50 @@ describe('rename_conversation', () => {
       const result = await handleMemoryRequest(h.deps, { token: TOKEN, body });
       expect(result.status).toBe(400);
     }
+    expect(h.store.renamed).toStrictEqual([]);
+  });
+
+  it('strips the author prefix, so the stored title never contains its own prefix', async () => {
+    // The displayed name is "ross — X". A client that sent the whole thing back — a paste, a
+    // stale build, something that is not our browser — must not produce "ross — ross — X".
+    const h = harness();
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: {
+        action: 'rename_conversation',
+        conversationId: CONV_ID,
+        title: 'ross — ross — Refinance ads',
+      },
+    });
+    expect(result.status).toBe(200);
+    expect(h.store.renamed).toStrictEqual([{ conversationId: CONV_ID, title: 'Refinance ads' }]);
+    expect((result.body as { title: string }).title).toBe('Refinance ads');
+  });
+
+  it('strips against the AUTHOR prefix, not the caller\u2019s', async () => {
+    // Someone else's conversation, renamed by this caller: the prefix that must come off is
+    // the author's, because that is the one the list will put back on.
+    const h = harness();
+    h.store.conversation = liveConversation({
+      authorId: OTHER_ID,
+      authorEmail: 'zoe@example.com',
+    });
+    await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'zoe — Her thread' },
+    });
+    expect(h.store.renamed).toStrictEqual([{ conversationId: CONV_ID, title: 'Her thread' }]);
+  });
+
+  it('refuses a title that was nothing but the prefix', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'ross — ' },
+    });
+    expect(result.status).toBe(400);
     expect(h.store.renamed).toStrictEqual([]);
   });
 
