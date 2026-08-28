@@ -19,12 +19,12 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug). Six delivery stages, not five phases. The B2B outbound lead-research engine is **out of scope** — see D23 |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au` |
-| Active stage | **Stage 3 — Memory + dashboard** (client approved the start after using the deployed Stage 2 app; Stage 2 part 7 acceptance evidence is recorded, sign-off/payment 2 still to be confirmed in writing). **Parts 1–3 of 5 are pushed, migrated and deployed (26–27 Aug). Part 4 of 5 (FND-330, the Team page + conversation management) is BUILT and green locally — staged, not committed, migration `20260828010000` NOT applied, the `admin` function NOT deployed** |
+| Active stage | **Stage 3 — Memory + dashboard** (client approved the start after using the deployed Stage 2 app; Stage 2 part 7 acceptance evidence is recorded, sign-off/payment 2 still to be confirmed in writing). **Parts 1–4 of 5 are pushed, migrated and DEPLOYED. Part 4 (FND-330, the Team page + conversation management) went live 28 Aug: migration `20260828010000` applied, `admin` v1 / `memory` v2 / `chat` v8 all ACTIVE, Vercel serving the new bundle, live sign-in verified** |
 | Last completed | **Stage 1 — GHL + Meta. Complete, signed off, paid** (198 of 1320). Finance Pipeline (10 stages), 10 custom fields, 5 live workflows, Refi Pixel + Conversions API |
-| Next task | **Stage 3 part 4 (FND-330) is built and staged, NOT committed and NOT deployed** — reviewer reads the report → push → CI (`checks` + `integration`: `db reset` from zero with **15** migrations, `users.test.ts`, `conversations.test.ts`, `rls.test.ts` 9 + 10 + `browser`: `users.spec.ts` 27 and `conversations.spec.ts` 30) → **`supabase db push` + `functions:bundle` + deploy `admin` AND `memory` + `web:build` + `vercel deploy --prod`, in the order RUNBOOK §1c gives** → the manual pass on a phone, including creating a second account and signing in as it → **part 5** (end-to-end test, cost measurement, acceptance, deploy) |
+| Next task | **Stage 3 part 4 (FND-330) is pushed, CI green (run 33184069083) and fully deployed (28 Aug).** What remains is the **manual pass on a phone** — report §Manual, 19 steps, and step 6 is the one that has never been done: create a second account and sign in as it. Then **part 5** (end-to-end test, cost measurement, acceptance, deploy) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
-| Known broken | Nothing outstanding on the memory layer. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6, **14 migrations applied (27 Aug)**; `chat` and `memory` deployed; Vercel serving the part-3 bundle (444,266 bytes, 0 React dev markers). **Part 4's 15th migration `20260828010000` is written but NOT applied and NOT validated live, and the `admin` function is bundled but NOT deployed** — until both happen the live app has no Team page and its Rename would answer 400. Notion databases exist but hold no rows and have no views |
+| Last regression run | **CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Known broken | Nothing outstanding. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
 ---
@@ -174,12 +174,37 @@ did not ask for, a live write this session); `supabase db push` and the two func
 are the reviewer's, in the order RUNBOOK §1c gives. **Nothing is committed** — the tree is
 staged for review.
 
-**Next:** reviewer reads the report → push → CI (`checks` + `integration`: `db reset` from
-zero with **15** migrations, `users.test.ts`, `conversations.test.ts`, `rls.test.ts` 9 and 10
-+ `browser`: `users.spec.ts` 9 × 3 and `conversations.spec.ts` 10 × 3) → apply the migration
-and deploy `admin` **and** `memory` (RUNBOOK §1c) → the manual pass on a phone, **including
-creating a second account and signing in as it**, which has never actually been done →
-**part 5** (end-to-end test, cost measurement, acceptance, deploy).
+**Deployed the same day, on the reviewer's go (RUNBOOK §1c order).** `db push` applied
+exactly one migration (15 remote, 0 pending) and the live catalog confirms every object:
+both `app_users` policies, `is_active_staff` as `security definer`, and
+`set_staff_active` / `set_staff_admin` / `delete_conversation` executable by `service_role`
+and by nobody else. All three functions ACTIVE — `admin` v1, `memory` v2, and **`chat`
+redeployed to v8**, which RUNBOOK §1c did not call for and should have: part 4 changed
+`wiring.ts`, which `chat` imports, so its deployed bundle had drifted from the repo (sha
+`e710…` → `e216…`). Live smoke: `admin` answers 204 with the Vercel origin on preflight, 401
+to an anonymous POST, 405 to GET; the deployed `memory` recognises both new actions (404
+"no longer there" on a non-existent id, not 400 "unknown action"). Web bundle 463,625 bytes,
+0 React dev markers, no key of any kind, pointing at the linked project. **Live sign-in
+verified end to end** — GoTrue accepted, the own `app_users` row read back under the NEW
+policy with `is_active` true, the roster readable (2 rows), memory still readable, and a
+never-authenticated anon client reads **zero** rows from all six tables.
+
+**Three things went wrong during the deploy, all mine, all caught before they mattered:**
+(1) `vercel env pull` returns `VITE_SUPABASE_URL=""` — those vars are marked sensitive in
+Vercel, so their values are not retrievable; an unnoticed empty value would have built an app
+that throws in the browser (`resolveWebConfig` runs at RUNTIME, so the build does not fail).
+Built from `.env`'s server-side names for the same linked project instead, which is what
+RUNBOOK §1a already records. (2) My build wrapper forwarded `NODE_ENV=development` from
+`.env` into the child process and produced a **678 kB development bundle** — exactly the D55
+failure mode, caught by the `nodeEnv` line in the build's own output before `web:check` even
+ran. (3) My first live boundary check reported "anon reads 2 rows from app_users"; the client
+in that script had signed in earlier in the same file, so it was carrying a user JWT, not the
+anon key. Re-run with a never-authenticated client: zero rows everywhere. **A false alarm I
+nearly reported as a security regression.**
+
+**Next:** the manual pass on a phone (report §Manual, 19 steps), **including creating a
+second account and signing in as it**, which has never actually been done → **part 5**
+(end-to-end test, cost measurement, acceptance, deploy).
 
 ---
 
