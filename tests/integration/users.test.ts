@@ -224,13 +224,13 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
     passwords.push(String(body(second)['oneTimePassword']));
     expect((await post({ action: 'promote', userId: secondId })).status).toBe(200);
 
-    // The workspace now has: the two seeded admins plus this one. Deactivate everyone else
-    // so exactly ONE active administrator remains, then try every route to zero.
-    await db.query(
-      `update public.app_users set is_active = false
-       where is_admin and user_id <> $1`,
-      [secondId],
-    );
+    // Reduce the workspace to exactly ONE active administrator by DEMOTING the others —
+    // never by deactivating them, and never the caller. The acting admin's token is what
+    // every later test uses, so deactivating them here (as the first version of this test
+    // did) turns any failure in this test into five unrelated 403s. Demotion keeps the
+    // caller able to call while still producing the one-admin state under test.
+    const soleAdmin = SEEDED_STAFF.developer.userId;
+    await db.query(`update public.app_users set is_admin = false where user_id <> $1`, [soleAdmin]);
     try {
       const activeAdmins = await db.query<{ n: string }>(
         `select count(*) as n from public.app_users where is_admin and is_active`,
@@ -238,39 +238,44 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
       expect(activeAdmins.rows[0]?.n).toBe('1');
 
       // Directly at the database, which is where the guarantee lives — the application
-      // checks are asserted in tests/unit/auth. Both must raise.
+      // checks are asserted in tests/unit/auth. Both routes to zero must raise.
       await expect(
-        db.query(`select * from public.set_staff_admin($1, false)`, [secondId]),
+        db.query(`select * from public.set_staff_admin($1, false)`, [soleAdmin]),
       ).rejects.toThrow(/at least one active administrator/);
       await expect(
-        db.query(`select * from public.set_staff_active($1, false)`, [secondId]),
+        db.query(`select * from public.set_staff_active($1, false)`, [soleAdmin]),
       ).rejects.toThrow(/at least one active administrator/);
 
-      // THE RACE. Two admins, two connections, each demoting the other at the same moment.
-      // Without the shared advisory lock both read "two admins", both pass, both commit.
-      await db.query(
-        `update public.app_users set is_active = true, is_admin = true
-                      where user_id = $1`,
-        [SEEDED_STAFF.ross.userId],
-      );
-      const a = new pg.Client({ connectionString: env?.dbUrl });
-      const b = new pg.Client({ connectionString: env?.dbUrl });
+      // THE RACE: two administrators, two connections, each demoting the other. Without the
+      // shared advisory lock both read "two admins", both pass their own check, and both
+      // commit — the lockout no application-level check can prevent.
+      await db.query(`update public.app_users set is_admin = true where user_id = $1`, [secondId]);
+
+      // `statement_timeout` so a blocked query can never hang the suite: if the lock does not
+      // behave as designed this fails in seconds with a clear error, instead of running out
+      // the test timeout and leaving an open transaction holding row locks behind it.
+      const a = new pg.Client({ connectionString: env?.dbUrl, statement_timeout: 15_000 });
+      const b = new pg.Client({ connectionString: env?.dbUrl, statement_timeout: 15_000 });
       await a.connect();
       await b.connect();
       try {
+        // ORDER MATTERS, and it has to be forced rather than hoped for. Issuing both calls
+        // and awaiting the first deadlocks whenever `b` reaches the lock first: `b` then
+        // holds it until a commit this code only performs after `a` returns. So `a`'s call
+        // is AWAITED first — its transaction stays open, and `pg_advisory_xact_lock` is
+        // transaction-scoped, so the lock is still held when `b` goes for it.
         await a.query('begin');
+        await a.query(`select * from public.set_staff_admin($1, false)`, [soleAdmin]);
+
         await b.query('begin');
-        const first = a.query(`select * from public.set_staff_admin($1, false)`, [
-          SEEDED_STAFF.ross.userId,
-        ]);
-        // b's call blocks on the lock until a commits, then re-reads and is refused.
-        const secondCall = b
+        const blocked = b
           .query(`select * from public.set_staff_admin($1, false)`, [secondId])
           .then(() => 'allowed' as const)
           .catch((error: unknown) => (error instanceof Error ? error.message : 'failed'));
-        await first;
+
+        // Releasing the lock. `b` then re-reads under it and finds itself the last one.
         await a.query('commit');
-        const outcome = await secondCall;
+        const outcome = await blocked;
         expect(outcome).toContain('at least one active administrator');
         await b.query('rollback');
       } finally {
@@ -283,12 +288,14 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
       );
       expect(Number(after.rows[0]?.n ?? '0')).toBeGreaterThanOrEqual(1);
     } finally {
+      // Restore every seeded administrator, whatever happened above.
       await db.query(
-        `update public.app_users set is_active = true, is_admin = true where user_id = any($1::uuid[])`,
+        `update public.app_users set is_active = true, is_admin = true
+         where user_id = any($1::uuid[])`,
         [[SEEDED_STAFF.ross.userId, SEEDED_STAFF.developer.userId]],
       );
     }
-  }, 180_000);
+  }, 60_000);
 
   it('5. a deactivated user is refused at the database, and their contributions survive', async () => {
     // Something of theirs in shared memory first, written the way the assistant would.
