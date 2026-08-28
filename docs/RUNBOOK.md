@@ -140,6 +140,65 @@ Notes that will otherwise cost an hour:
 
 ---
 
+### 1c. Deploying the Team page and conversation management (Stage 3 part 4)
+
+Same shape again, with a **third** Edge Function. In order, from the repo root:
+
+```bash
+supabase db push                 # 20260828010000 (roster read policy + is_active_staff;
+                                 #   delete_conversation; set_staff_active / set_staff_admin)
+npm run functions:bundle         # writes all THREE supabase/functions/{chat,memory,admin}/index.ts
+supabase functions deploy admin --no-verify-jwt
+supabase functions deploy memory --no-verify-jwt   # gained the two conversation actions
+npm run web:build && npm run web:check && vercel deploy --prod
+```
+
+Notes that will otherwise cost an hour:
+
+- `admin` reads the **same** `CHAT_ALLOWED_ORIGIN` as the other two — one app, one origin, no
+  new secret. It needs `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`
+  (all injected by the platform) and **nothing else**: no Anthropic key, no Voyage key.
+  Managing people has to keep working on a day when the model is down or the cap has tripped,
+  because that is exactly the day someone needs their access restored.
+- `memory` **must** be redeployed too: rename and delete are new actions on that function. A
+  page whose Rename returns 400 `action must be one of add, edit, forget, delete_chunk` is
+  the symptom of skipping this line.
+- Order matters: the function before `db push` means every conversation delete answers 500
+  (`delete_conversation` does not exist yet) and the Team page lists one person (the roster
+  policy is not there yet). Applying the migration first is harmless.
+- After the migration, **check that you can still sign in** before doing anything else. The
+  migration touches the policy `App.tsx`'s sign-in check depends on; `tests/security/rls.test.ts`
+  test 9 asserts a deactivated account still reads zero rows, but the live smoke test is a
+  sign-out and a sign-in.
+
+### Adding a person — what the admin actually does
+
+1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.
+2. The password appears **once**, on a panel that says so. Copy it.
+3. Hand it over the way you would a door code: in person, or by a message you are
+   comfortable with. **Not by email** — there is no email sender configured, and adding one is
+   a scope decision, not a quiet one (D57).
+4. Tap **Done — I've handed it over**. The password is gone from the page and from the
+   system; if it is lost, **Reset password** issues a new one the same way.
+5. They sign in at the same address with their email and that password. They get the
+   assistant, everything it remembers, and the Team list, read-only. They are **not** an
+   administrator — tap **Make administrator** only if they should be able to add and remove
+   people.
+
+The break-glass path is unchanged and still works: `npm run staff -- add-user <email>`,
+`deactivate`, `reactivate`, `promote`, `demote`, `reset-password`, `bootstrap`. Same library,
+same checks, same audit rows — see `npm run staff -- help`.
+
+### Nobody can administer any more
+
+Should be impossible: nobody can deactivate or demote themselves, and the database refuses
+any write that would leave zero active administrators (`SCHEMA.md` §7). If it somehow
+happens, the recovery is `npm run staff -- bootstrap ross` (or `developer`), which attaches a
+fresh password to a seeded fixed-UUID account without a signed-in admin — that is what it is
+for. Then `promote` whoever should hold it.
+
+---
+
 ## 2. Daily checks (2 minutes)
 
 1. Dashboard (Notion until Stage 3 ships it): anything stuck in the review queue more than 24h?

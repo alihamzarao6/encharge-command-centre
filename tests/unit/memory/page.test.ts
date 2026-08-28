@@ -29,6 +29,8 @@ import {
   refuseUnsafeNote,
   supabaseMemoryPageStore,
   type ChunkForAction,
+  type ConversationDeletion,
+  type ConversationForAction,
   type FactForAction,
   type MemoryPageDeps,
   type MemoryPageStore,
@@ -107,8 +109,11 @@ function fakeFacts(): FakeFacts {
 interface FakeStore extends MemoryPageStore {
   fact: FactForAction | null;
   chunk: ChunkForAction | null;
+  conversation: ConversationForAction | null;
   readonly forgotten: string[];
   readonly deleted: { chunkId: string; actorId: string }[];
+  readonly renamed: { conversationId: string; title: string }[];
+  readonly deletedConversations: { conversationId: string; actorId: string }[];
   failForget: boolean;
 }
 
@@ -116,8 +121,11 @@ function fakeStore(): FakeStore {
   const store: FakeStore = {
     fact: null,
     chunk: null,
+    conversation: null,
     forgotten: [],
     deleted: [],
+    renamed: [],
+    deletedConversations: [],
     failForget: false,
     getFact: (): Promise<Result<FactForAction | null>> => Promise.resolve(ok(store.fact)),
     getChunk: (): Promise<Result<ChunkForAction | null>> => Promise.resolve(ok(store.chunk)),
@@ -129,6 +137,18 @@ function fakeStore(): FakeStore {
     deleteChunk: (chunkId, actorId): Promise<Result<'deleted' | 'already'>> => {
       store.deleted.push({ chunkId, actorId });
       return Promise.resolve(ok('deleted'));
+    },
+    getConversation: (): Promise<Result<ConversationForAction | null>> =>
+      Promise.resolve(ok(store.conversation)),
+    renameConversation: (conversationId, title): Promise<Result<'renamed' | 'gone'>> => {
+      store.renamed.push({ conversationId, title });
+      return Promise.resolve(ok('renamed'));
+    },
+    deleteConversation: (conversationId, actorId): Promise<Result<ConversationDeletion>> => {
+      store.deletedConversations.push({ conversationId, actorId });
+      return Promise.resolve(
+        ok({ already: false, messagesDeleted: 12, chunksTombstoned: 2, factsUnlinked: 1 }),
+      );
     },
   };
   return store;
@@ -885,5 +905,227 @@ describe('supabaseMemoryPageStore', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('INTERNAL');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Conversations (Stage 3 part 4). Renaming is a correction — open to everyone allowlisted;
+// deleting is a removal — the author's or an admin's, the same rule as removing a note.
+// ---------------------------------------------------------------------------------------
+
+function liveConversation(overrides: Partial<ConversationForAction> = {}): ConversationForAction {
+  return {
+    id: CONV_ID,
+    authorId: USER_ID,
+    scope: 'workspace',
+    title: null,
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
+describe('rename_conversation', () => {
+  it('names a conversation, audits it, and spends nothing', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: '  October   ads  ' },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).toStrictEqual({
+      action: 'rename_conversation',
+      outcome: 'renamed',
+      conversationId: CONV_ID,
+      title: 'October ads',
+    });
+    expect(h.store.renamed).toStrictEqual([{ conversationId: CONV_ID, title: 'October ads' }]);
+    expect(h.audit.rows).toStrictEqual([
+      {
+        actor: USER_ID,
+        action: 'CONVERSATION_RENAMED',
+        entityType: 'conversations',
+        entityId: CONV_ID,
+      },
+    ]);
+    expect(h.httpCalls()).toBe(0); // no extractor, no spend
+  });
+
+  it('is open to a member who did not start it — renaming is a correction, not a removal', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ authorId: OTHER_ID });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'Not mine' },
+    });
+    expect(result.status).toBe(200);
+  });
+
+  it('renaming to the name it already has writes nothing and audits nothing', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ title: 'October ads' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'October ads' },
+    });
+    expect(result.status).toBe(200);
+    expect((result.body as { outcome: string }).outcome).toBe('unchanged');
+    expect(h.store.renamed).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('refuses an empty name, an over-long name and a non-UUID id', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    for (const body of [
+      { action: 'rename_conversation', conversationId: CONV_ID, title: '   ' },
+      { action: 'rename_conversation', conversationId: CONV_ID, title: 'x'.repeat(81) },
+      { action: 'rename_conversation', conversationId: 'not-a-uuid', title: 'fine' },
+    ]) {
+      const result = await handleMemoryRequest(h.deps, { token: TOKEN, body });
+      expect(result.status).toBe(400);
+    }
+    expect(h.store.renamed).toStrictEqual([]);
+  });
+
+  it('a private conversation belonging to someone else is 404, never 403', async () => {
+    // 403 would confirm the id exists. Absent and invisible must answer identically.
+    const h = harness();
+    h.store.conversation = liveConversation({ scope: 'user', authorId: OTHER_ID });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'peek' },
+    });
+    expect(result.status).toBe(404);
+  });
+
+  it('a conversation deleted under the caller is 404, and nothing comes back to life', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ deletedAt: '2026-08-28T00:00:00Z' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'zombie' },
+    });
+    expect(result.status).toBe(404);
+    expect(h.store.renamed).toStrictEqual([]);
+  });
+
+  it('the new name never reaches a log line — it is a person\u2019s words about their own work', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: {
+        action: 'rename_conversation',
+        conversationId: CONV_ID,
+        title: 'Mrs Nguyen settlement',
+      },
+    });
+    for (const line of h.lines) expect(line).not.toContain('Nguyen');
+  });
+});
+
+describe('delete_conversation', () => {
+  it('deletes through the one-transaction function and reports what went', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).toStrictEqual({
+      action: 'delete_conversation',
+      outcome: 'deleted',
+      conversationId: CONV_ID,
+      messagesDeleted: 12,
+      chunksTombstoned: 2,
+    });
+    expect(h.store.deletedConversations).toStrictEqual([
+      { conversationId: CONV_ID, actorId: USER_ID },
+    ]);
+    expect(h.audit.rows).toStrictEqual([
+      {
+        actor: USER_ID,
+        action: 'CONVERSATION_DELETED',
+        entityType: 'conversations',
+        entityId: CONV_ID,
+      },
+    ]);
+    expect(h.httpCalls()).toBe(0);
+  });
+
+  it('refuses a member deleting a conversation they did not start', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ authorId: OTHER_ID });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(403);
+    const body = result.body as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('NOT_YOURS');
+    expect(body.error.message).toContain('administrator');
+    expect(h.store.deletedConversations).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('lets an ADMIN delete a conversation somebody else started — the same rule as a note', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+    expect(h.store.deletedConversations).toHaveLength(1);
+  });
+
+  it('is idempotent: a conversation already deleted reports `already` and writes nothing', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ deletedAt: '2026-08-28T00:00:00Z' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+    expect((result.body as { outcome: string }).outcome).toBe('already');
+    expect(h.store.deletedConversations).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('a deactivated caller is refused before the conversation is even read', async () => {
+    const h = harness([], verifyFor(staff({ is_active: false })));
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(403);
+    expect(h.store.deletedConversations).toStrictEqual([]);
+  });
+
+  it('logs counts and ids, never the words that were deleted', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ title: 'Mrs Nguyen settlement' });
+    await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    const line = h.lines.find((l) => l.includes('conversation deleted'));
+    expect(line).toBeDefined();
+    expect(line).toContain('"messagesDeleted":12');
+    expect(line).not.toContain('Nguyen');
+  });
+});
+
+describe('the chunk tombstone marker', () => {
+  it('is the same string the conversation-delete migration writes', async () => {
+    // Two places tombstone a chunk — the memory page (TypeScript) and delete_conversation
+    // (SQL). If they ever disagreed, half the tombstones would carry a different marker and
+    // nobody would notice, so the migration is read and checked here.
+    const { readFile } = await import('node:fs/promises');
+    const sql = await readFile('supabase/migrations/20260828010000_users_page.sql', 'utf8');
+    expect(sql).toContain("'" + CHUNK_TOMBSTONE_SUMMARY + "'");
   });
 });

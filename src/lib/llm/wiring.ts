@@ -14,12 +14,14 @@
  * got it wrong, and a wrong cap must not be guessed at.
  */
 import {
+  createAdminDeps,
   createServiceClient,
   loadSupabaseAuthConfig,
   supabaseAuditWriter,
   supabaseVerifyDeps,
   type ServiceClient,
 } from '../auth/clients.js';
+import type { UsersPageDeps } from '../auth/page.js';
 import { ok, type ConfigError, type Result } from '../errors.js';
 import { createHttpClient } from '../http.js';
 import type { Logger } from '../logger.js';
@@ -144,6 +146,18 @@ export function createMemoryPageDeps(env: Env, log: Logger): Result<MemoryPageDe
     audit: supabaseAuditWriter(service),
     log,
   });
+}
+
+/**
+ * Stage 3 part 4: the users page's write endpoint. The narrowest wiring in the repo — no
+ * Claude, no Voyage, no memory config. Managing people must keep working on a day when the
+ * model is down, the spend cap has tripped or the embedding provider is refusing calls,
+ * because that is exactly the day someone needs their access restored.
+ */
+export function createUsersPageDeps(env: Env, log: Logger): Result<UsersPageDeps, ConfigError> {
+  const supabase = loadSupabaseAuthConfig(env);
+  if (!supabase.ok) return supabase;
+  return ok({ ...createAdminDeps(supabase.value, log), log });
 }
 
 /** The on-path half of memory (part 2): recall for a turn, plus the fact-source back-fill. */

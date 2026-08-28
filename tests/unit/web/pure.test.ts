@@ -133,7 +133,7 @@ describe('login messages', () => {
 });
 
 describe('web config', () => {
-  it('derives the chat and memory URLs and strips a trailing slash', () => {
+  it('derives the chat, memory and admin URLs and strips a trailing slash', () => {
     expect(
       resolveWebConfig({
         VITE_SUPABASE_URL: 'https://x.supabase.co/',
@@ -143,6 +143,7 @@ describe('web config', () => {
       supabaseUrl: 'https://x.supabase.co',
       anonKey: 'k',
       memoryUrl: 'https://x.supabase.co/functions/v1/memory',
+      adminUrl: 'https://x.supabase.co/functions/v1/admin',
       chatUrl: 'https://x.supabase.co/functions/v1/chat',
     });
   });

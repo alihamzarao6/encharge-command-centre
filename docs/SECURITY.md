@@ -162,6 +162,28 @@ untrusted-content treatment, not a pass:
   **deactivation, never deletion**: `is_active = false` (RLS returns zero rows to a
   still-valid JWT) plus an auth-level ban (no new sign-in). Generated passwords are shown
   once to the admin and exist in no log line and no table — proven by test, not asserted.
+- **Stage 3 part 4 (28 Aug): the same operations are now reachable from the dashboard, and
+  reach nothing new.** The Team page is an interface over the *same* `src/lib/auth/admin.ts`
+  the CLI drives, behind a third Edge Function (`admin`) built exactly like `chat` and
+  `memory`: `verify_jwt = false` because the library verifies the bearer token itself and
+  answers 401/403 with a body the UI can show; the service role read from the function's
+  environment at request time; nothing new in the browser. The one-time password leaves the
+  process once, in the response to the create or reset that generated it, over TLS, with
+  `cache-control: no-store` so it cannot sit in a proxy or a phone's back/forward cache. It
+  is held only in React state and is gone on refresh — asserted in the browser suite against
+  `localStorage` and `sessionStorage`, and against every text column of every table by
+  `tests/integration/users.test.ts`.
+- **The workspace cannot be locked out of its own administration** (D58). Nobody may
+  deactivate or demote themselves, and no write may leave zero active administrators — held
+  at the database under an advisory lock, because two admins acting simultaneously defeat any
+  application-level check. `tests/integration/users.test.ts` proves it with two real
+  connections racing.
+- **The staff roster is readable by every active allowlisted member** (D56, migration
+  `20260828010000`). That is a deliberate widening of `app_users` from self-row-only, stated
+  precisely in `SCHEMA.md` §7: SELECT only, active members only, nothing for `anon`, nothing
+  for a deactivated account — including its own row, which is what the sign-in check depends
+  on. What it costs is that colleagues can see the list of colleagues; what it buys is a
+  staff page and a memory page that can say who wrote a note.
 - Connection strings never logged. The logger redacts by key name (`password`, `key`,
   `token`, `secret`, `authorization`) at the serialiser level, not per call site.
 - Backups: **the free plan has no automated backups** (found in Stage 2 part 2 — RUNBOOK §6
@@ -245,6 +267,13 @@ Not "we enabled RLS" — proven by test. `tests/security/rls.test.ts` iterates e
 3. An anon client `select *` returns zero rows
 4. An authenticated but non-allowlisted client returns zero rows
 5. No `authenticated` role has insert/update/delete policies on core tables
+6. *(part 4)* The roster read is **exactly** as wide as the users page needs: an active
+   allowlisted member reads every `app_users` row; a deactivated one reads none, its own
+   included; `is_active_staff()` is not executable by `anon`
+7. *(part 4)* User management and conversation deletion cannot be done from a session at
+   all — promote, add, remove, rename and message-delete are each attempted through
+   PostgREST as a signed-in user and each refused, and the three new functions are
+   executable by `service_role` only
 
 A new table added without RLS — or without its grant, or with too broad a grant — fails
 CI. That is the point. The same suite asserts `service_role` holds full DML on every table
@@ -260,6 +289,13 @@ caller cannot create users and the attempt mints no identity; no generated passw
 appears in any captured log line or in any row of any table; and an anonymous `signUp`
 is refused and mints no user (so re-enabling public signup fails CI instead of passing
 quietly).
+
+`tests/integration/users.test.ts` (part 4) does the same for the dashboard path: an admin
+creates a user *through the endpoint*, that user signs in and reads workspace memory and the
+roster; a non-admin is refused all seven actions and nothing moves; the workspace cannot
+reach zero administrators, including under a two-connection race; a deactivated user is
+refused at the database while the note they contributed stays live and readable by everyone
+else; and every action lands in `audit_log` naming the human, never `service_role`.
 
 ---
 

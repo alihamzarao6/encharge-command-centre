@@ -16,7 +16,9 @@ import {
   attachSeededCredentials,
   createStaffUser,
   deactivateStaffUser,
+  reactivateStaffUser,
   resetStaffPassword,
+  setStaffAdmin,
 } from '../src/lib/auth/admin.js';
 import type { CreatedStaffUser } from '../src/lib/auth/admin.js';
 import { STAFF_CLI_USAGE, formatOneTimePassword, parseStaffCommand } from '../src/lib/auth/cli.js';
@@ -81,16 +83,46 @@ switch (command.kind) {
     break;
   }
   case 'deactivate': {
-    const result = unwrap(await deactivateStaffUser(deps, await adminToken(), command.email));
+    const result = unwrap(
+      await deactivateStaffUser(deps, await adminToken(), { email: command.email }),
+    );
     process.stdout.write(
-      result.alreadyInactive
-        ? `already inactive: ${result.userId} (no change)\n`
-        : `deactivated ${result.userId} — allowlist row and memory rows retained, auth account banned\n`,
+      result.changed
+        ? `deactivated ${result.userId} — allowlist row and memory rows retained, auth account banned\n`
+        : `already inactive: ${result.userId} (no change)\n`,
+    );
+    break;
+  }
+  case 'reactivate': {
+    const result = unwrap(
+      await reactivateStaffUser(deps, await adminToken(), { email: command.email }),
+    );
+    process.stdout.write(
+      result.changed
+        ? `reactivated ${result.userId} — their existing password works again\n`
+        : `already active: ${result.userId} (no change)\n`,
+    );
+    break;
+  }
+  case 'promote':
+  case 'demote': {
+    const result = unwrap(
+      await setStaffAdmin(
+        deps,
+        await adminToken(),
+        { email: command.email },
+        command.kind === 'promote',
+      ),
+    );
+    process.stdout.write(
+      `${result.changed ? command.kind + 'd' : 'no change'}: ${result.userId} — ${String(result.activeAdmins)} active administrator(s)\n`,
     );
     break;
   }
   case 'reset-password': {
-    const reset = unwrap(await resetStaffPassword(deps, await adminToken(), command.email));
+    const reset = unwrap(
+      await resetStaffPassword(deps, await adminToken(), { email: command.email }),
+    );
     process.stdout.write(`password reset for ${reset.userId}\n`);
     showPassword(reset);
     break;

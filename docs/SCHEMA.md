@@ -283,6 +283,26 @@ user B's `user`-scoped rows.
 `id · user_id not null · scope not null default 'workspace' · title · created_at ·
 last_active_at · deleted_at`
 
+`title` is null on every conversation the assistant has ever created — nothing generates one.
+**Stage 3 part 4** makes renaming the way a conversation gets a name at all
+(`rename_conversation`, open to every active allowlisted member because naming is a
+correction, not a removal — D52's open half).
+
+**Deleting a conversation** (D59, migration `20260828010000`, one transaction in
+`delete_conversation(uuid, uuid)`) treats the four tables that hang off it differently,
+because they are not the same kind of thing:
+
+| Table | What happens | Why |
+|---|---|---|
+| `conversations` | **soft** — `deleted_at` set | Every read path already excludes it, and the row must survive so the surviving children and the audit row point at something real |
+| `messages` | **hard** — permanently deleted | The words are the thing being deleted; a "delete" that left them selectable by anyone holding the id would be a lie. Safe here precisely because `messages` carries **no audit trigger** — the same reasoning that made a chunk delete content-destroying (D50) |
+| `memory_chunks` | **tombstoned**, identically to a memory-page delete | `turn_range` kept so the range is never re-summarised; `summary` replaced with the marker, `audience` and `embedding` destroyed. One mechanism, one promise |
+| `memory_facts` | **kept, live, unchanged** except `source_message_id → null` | A standing note is not a by-product of the conversation it was said in: someone deliberately told the business to remember it, it is workspace knowledge in its own right, and it is visible and removable on the Memory page. Deleting a conversation must not silently empty the brain. The FK cannot dangle once the message is gone, so the pointer — and only the pointer — is cleared |
+
+Who may: **the author's or an admin's**, the same `canRemoveMemory` that gates removing a
+note (D52). Idempotent, `service_role`-only, and the counts it returns are the counts the
+page reports afterwards.
+
 ### messages
 `id · conversation_id FK · user_id not null · scope not null · role (user|assistant|tool) ·
 content · tool_calls jsonb · tool_results jsonb · model · input_tokens · output_tokens ·
@@ -643,10 +663,44 @@ permission semantics; deriving permissions from labels would be a roles system, 
 3 explicitly does not build. Deactivation is `is_active = false` plus an auth-level ban —
 never a delete, so a person leaving cannot take the workspace's memory with them (D33).)*
 
+**Stage 3 part 4 (28 Aug, migration `20260828010000`) — the roster read, and exactly how far
+it widened.** `app_users` was self-row-only, which is right while the only question is "may
+this account in?" and impossible to build a staff list on. It is now readable in full by
+**every ACTIVE allowlisted member** — one additional permissive policy, `app_users_select_roster`,
+`using (public.is_active_staff())`. Nothing else moved (D56):
+
+- `anon` still holds no grant and no policy, here or anywhere;
+- `authenticated` still holds SELECT and nothing else — creating, deactivating, promoting and
+  resetting all still go through the verified server path with the service role;
+- a **non-allowlisted** account still reads zero rows (the predicate needs a row);
+- a **deactivated** account still reads zero rows, *including its own* — `is_active_staff()`
+  requires `is_active`, and `App.tsx`'s sign-in check depends on that staying true.
+
+The self-row policy is kept beside it: permissive policies are OR'd, so it changes nothing
+today and is the floor that keeps sign-in working if the roster policy is ever narrowed.
+
+`is_active_staff()` is `security definer` for one reason: the allowlist EXISTS-subquery every
+other policy uses cannot be written *inside* a policy on `app_users` — Postgres re-applies the
+policy to the subquery and raises "infinite recursion detected in policy for relation
+app_users". A definer function evaluates as its owner (postgres, BYPASSRLS) and breaks the
+cycle. It is `stable`, its `search_path` is pinned, and `anon` has no EXECUTE on it.
+
+**The last-admin invariant lives in the database, not in the application** (D58). Two admins
+demoting each other at the same moment both read "two admins" under READ COMMITTED, both pass
+an application check, and both commit — a lockout arrived at by two people who each did
+something the interface allowed. So `set_staff_active(uuid, boolean)` and
+`set_staff_admin(uuid, boolean)` take the same transaction-scoped advisory lock
+(`hashtext('app_users|admins')`), re-read under it, and raise `23514` rather than leave zero
+active administrators. Both are `service_role`-only, both idempotent, and both return the
+resulting count. `src/lib/auth/access.ts` checks the same rule first so a person gets a
+sentence instead of a constraint violation — that is the politeness; this is the guarantee.
+
 **Verification requirement:** `tests/security/rls.test.ts` asserts an anon client and a
 non-allowlisted authenticated client receive zero rows from every table, and that on memory
 tables an allowlisted user sees every `workspace` row (the default) plus only their own
-`user`-scoped rows. Runs
+`user`-scoped rows. Since part 4 it also asserts the roster read is exactly as wide as
+described above (test 9) and that user management and conversation deletion cannot be done
+from a session at all (test 10). Runs
 in the regression suite; a **Stage 2 (part 2) acceptance criterion** — the claim "RLS is
 enabled" is not accepted, the test output is.
 
@@ -679,3 +733,9 @@ enabled" is not accepted, the test output is.
   the local stack inherits nothing; same environment-divergence class as the CI 42501).
   Any later migration that adds a table must carry its own service_role grant —
   `tests/security/rls.test.ts` asserts full DML per table and fails CI if one is missing.
+- **Stage 3 part 4 addition — written 28 Aug:** `20260828010000_users_page.sql` — the roster
+  read policy plus `is_active_staff()` (§7), `delete_conversation(uuid, uuid)` (§4), and
+  `set_staff_active` / `set_staff_admin`, the two flag writes that hold the last-admin
+  invariant under an advisory lock. All three functions are `service_role`-only by grant and
+  asserted as such by `tests/security/rls.test.ts` test 10. Reversible; the drops are listed
+  at the top of the file.

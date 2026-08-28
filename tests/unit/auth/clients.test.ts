@@ -57,7 +57,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-const requests: { method: string; path: string; body: string }[] = [];
+const requests: { method: string; path: string; search: string; body: string }[] = [];
 
 function stubFetch(handler: Handler): void {
   vi.stubGlobal(
@@ -69,6 +69,7 @@ function stubFetch(handler: Handler): void {
       const request = {
         method: init?.method ?? 'GET',
         path: url.pathname,
+        search: url.search,
         body: typeof init?.body === 'string' ? init.body : '',
       };
       requests.push(request);
@@ -203,13 +204,78 @@ describe('supabaseStaffStore', () => {
     expect(result.error.code).toBe('CONFLICT');
   });
 
-  it('insert and setActive succeed on 2xx', async () => {
+  it('insert succeeds on 2xx', async () => {
     stubFetch(() => new Response(null, { status: 204 }));
     const store = supabaseStaffStore(createServiceClient(CONFIG));
     expect((await store.insert(STAFF_ROW)).ok).toBe(true);
-    expect((await store.setActive(USER_ID, false)).ok).toBe(true);
-    const patch = requests.find((r) => r.method === 'PATCH');
-    expect(patch?.body).toContain('"is_active":false');
+    expect(requests.find((r) => r.method === 'POST')?.body).toContain(USER_ID);
+  });
+
+  it('list reads the roster ordered by email', async () => {
+    stubFetch((url) => (url.pathname === '/rest/v1/app_users' ? json([STAFF_ROW]) : undefined));
+    const store = supabaseStaffStore(createServiceClient(CONFIG));
+    const result = await store.list();
+    expect(result).toStrictEqual({ ok: true, value: [STAFF_ROW] });
+    expect(requests[0]?.search).toContain('order=email');
+  });
+
+  // Stage 3 part 4: both flag writes go through their database function, not a PATCH — the
+  // last-admin invariant needs an advisory lock and a PATCH cannot take one.
+  it('setActive and setAdmin call their function and return changed + the admin count', async () => {
+    stubFetch((url) =>
+      url.pathname.startsWith('/rest/v1/rpc/set_staff_')
+        ? json([{ changed: true, active_admins: 2 }])
+        : undefined,
+    );
+    const store = supabaseStaffStore(createServiceClient(CONFIG));
+    expect(await store.setActive(USER_ID, false)).toStrictEqual({
+      ok: true,
+      value: { changed: true, activeAdmins: 2 },
+    });
+    expect(await store.setAdmin(USER_ID, true)).toStrictEqual({
+      ok: true,
+      value: { changed: true, activeAdmins: 2 },
+    });
+    expect(requests.map((r) => r.path)).toStrictEqual([
+      '/rest/v1/rpc/set_staff_active',
+      '/rest/v1/rpc/set_staff_admin',
+    ]);
+    expect(requests[0]?.body).toContain('"p_active":false');
+    expect(requests[1]?.body).toContain('"p_is_admin":true');
+  });
+
+  it("maps the function's 23514 to a FORBIDDEN the interface can show as written", async () => {
+    stubFetch(() =>
+      json(
+        { code: '23514', message: 'the workspace must keep at least one active administrator' },
+        400,
+      ),
+    );
+    const store = supabaseStaffStore(createServiceClient(CONFIG));
+    const result = await store.setAdmin(USER_ID, false);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected err');
+    expect(result.error.code).toBe('FORBIDDEN');
+    expect(result.error.context['reason']).toBe('last_admin');
+    expect(result.error.message).toContain('at least one administrator');
+  });
+
+  it('maps the other 23514 — promoting someone who cannot sign in — to its own reason', async () => {
+    stubFetch(() => json({ code: '23514', message: 'cannot promote a deactivated member' }, 400));
+    const store = supabaseStaffStore(createServiceClient(CONFIG));
+    const result = await store.setAdmin(USER_ID, true);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected err');
+    expect(result.error.context['reason']).toBe('inactive_target');
+  });
+
+  it('a function that returns no row is INTERNAL, never a silent success', async () => {
+    stubFetch(() => json([]));
+    const store = supabaseStaffStore(createServiceClient(CONFIG));
+    const result = await store.setActive(USER_ID, true);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected err');
+    expect(result.error.code).toBe('INTERNAL');
   });
 });
 

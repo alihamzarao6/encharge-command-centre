@@ -12,8 +12,15 @@ function expectOk<T>(result: { ok: boolean; value?: T }): T {
 }
 
 describe('parseStaffCommand', () => {
-  it('parses the three email commands', () => {
-    for (const kind of ['add-user', 'deactivate', 'reset-password'] as const) {
+  it('parses every email command, including the three added in Stage 3 part 4', () => {
+    for (const kind of [
+      'add-user',
+      'deactivate',
+      'reactivate',
+      'promote',
+      'demote',
+      'reset-password',
+    ] as const) {
       const command = expectOk(parseStaffCommand([kind, 'x@y.com']));
       expect(command).toStrictEqual({ kind, email: 'x@y.com' });
     }
@@ -59,6 +66,9 @@ describe('formatOneTimePassword', () => {
     for (const needle of [
       'add-user',
       'deactivate',
+      'reactivate',
+      'promote',
+      'demote',
       'reset-password',
       'bootstrap',
       'STAFF_ADMIN_EMAIL',

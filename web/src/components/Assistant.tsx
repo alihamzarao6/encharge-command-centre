@@ -9,18 +9,30 @@
  * across the login screen (App.onSessionExpired).
  */
 import type { Session } from '@supabase/supabase-js';
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type SyntheticEvent,
+} from 'react';
 
+import { CONVERSATION_TITLE_MAX_CHARS, type MemoryActor } from '../../../src/lib/memory/access.js';
 import { streamTurn, type ChatFailure } from '../lib/chatApi.js';
 import { webConfig } from '../lib/env.js';
 import { loadDraft, saveDraft, takePending, type PendingDraft } from '../lib/draft.js';
-import { supabase, type ConversationListRow } from '../lib/supabase.js';
+import { callMemory, type MemoryRequest } from '../lib/memoryApi.js';
+import { supabase, type AppUserRow, type ConversationListRow } from '../lib/supabase.js';
 import { Composer } from './Composer.js';
 import { ConversationList } from './ConversationList.js';
 import { Thread, type LocalMessage } from './Thread.js';
 
 interface Props {
   readonly session: Session;
+  /** Stage 3 part 4: who is asking, so the list offers Delete only where the server allows it. */
+  readonly staff: AppUserRow;
   /**
    * Stage 3 part 3: a conversation the Memory page asked to open, because a note came from
    * it. Read once when this section mounts; the shell clears it on any other navigation.
@@ -43,7 +55,12 @@ function nextLocalId(): string {
   return `local-${String(localCounter)}`;
 }
 
-export function Assistant({ session, openConversationId, onSessionExpired }: Props): ReactElement {
+export function Assistant({
+  session,
+  staff,
+  openConversationId,
+  onSessionExpired,
+}: Props): ReactElement {
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -53,7 +70,18 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
   const [waiting, setWaiting] = useState(false);
   const [draft, setDraft] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Stage 3 part 4: renaming and deleting a conversation. `managing` is the id being written
+  // right now, so one slow rename never freezes the whole list; `notice` is the one sentence
+  // the change earned, shown above the thread rather than in a toast that scrolls away.
+  const [managing, setManaging] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const pendingRestored = useRef(false);
+
+  const actor: MemoryActor = useMemo(
+    () => ({ userId: staff.user_id, isAdmin: staff.is_admin }),
+    [staff.user_id, staff.is_admin],
+  );
 
   const loadConversations = useCallback(async (): Promise<ConversationListRow[]> => {
     const { data, error } = await supabase
@@ -256,8 +284,81 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
     setMessages((current) => current.filter((m) => m.localId !== localId));
   }, []);
 
+  /** One conversation change, through the same verified endpoint every other write uses. */
+  const manage = useCallback(
+    async (request: MemoryRequest, conversationId: string): Promise<boolean> => {
+      setManaging(conversationId);
+      setNotice(null);
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data.session?.access_token ?? session.access_token;
+      const outcome = await callMemory(
+        {
+          memoryUrl: webConfig.memoryUrl,
+          anonKey: webConfig.anonKey,
+          fetch: fetch.bind(globalThis),
+        },
+        accessToken,
+        request,
+      );
+      setManaging(null);
+      if (outcome.kind === 'error') {
+        if (outcome.failure === 'unauthenticated') {
+          await onSessionExpired(null);
+          return false;
+        }
+        setNotice(outcome.message);
+        // Someone else got there first: the list on screen is describing a past.
+        if (outcome.failure === 'stale') void loadConversations();
+        return false;
+      }
+      return true;
+    },
+    [loadConversations, onSessionExpired, session.access_token],
+  );
+
+  const renameConversation = useCallback(
+    async (conversationId: string, newTitle: string): Promise<void> => {
+      const done = await manage(
+        { action: 'rename_conversation', conversationId, title: newTitle },
+        conversationId,
+      );
+      if (!done) return;
+      await loadConversations();
+    },
+    [loadConversations, manage],
+  );
+
+  const deleteConversation = useCallback(
+    async (conversationId: string): Promise<void> => {
+      const done = await manage({ action: 'delete_conversation', conversationId }, conversationId);
+      if (!done) return;
+      // Whatever was on screen is now describing rows that are gone.
+      if (conversationId === activeId) {
+        setActiveId(null);
+        setMessages([]);
+        setThreadState('idle');
+      }
+      setNotice(
+        'Conversation deleted. Its messages are gone for good; anything you asked the assistant to remember is still on the Memory page.',
+      );
+      await loadConversations();
+    },
+    [activeId, loadConversations, manage],
+  );
+
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const title = active?.title ?? (activeId === null ? 'New conversation' : 'Conversation');
+
+  const submitRename = (event: SyntheticEvent): void => {
+    event.preventDefault();
+    const form = event.target as HTMLFormElement;
+    const field = form.elements.namedItem('thread-rename');
+    const value = field instanceof HTMLInputElement ? field.value.trim() : '';
+    if (value === '' || activeId === null) return;
+    void renameConversation(activeId, value).then(() => {
+      setRenaming(false);
+    });
+  };
 
   return (
     <div className="assistant">
@@ -265,6 +366,8 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
         conversations={conversations}
         state={listState}
         activeId={activeId}
+        actor={actor}
+        busyId={managing}
         open={sheetOpen}
         onSelect={selectConversation}
         onClose={() => {
@@ -273,6 +376,8 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
         onReload={() => {
           void loadConversations();
         }}
+        onRename={renameConversation}
+        onDelete={deleteConversation}
       />
       <section className="thread-pane" aria-label="Assistant conversation">
         <div className="thread-pane__bar">
@@ -286,9 +391,55 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
           >
             ☰ Conversations
           </button>
-          <h1 className="thread-pane__title" title={title}>
-            {title}
-          </h1>
+          {renaming && activeId !== null ? (
+            <form className="thread-pane__rename" onSubmit={submitRename}>
+              <label className="sr-only" htmlFor="thread-rename">
+                Name this conversation
+              </label>
+              <input
+                id="thread-rename"
+                name="thread-rename"
+                className="field__input"
+                defaultValue={active?.title ?? ''}
+                maxLength={CONVERSATION_TITLE_MAX_CHARS}
+                placeholder="e.g. Refinance ads for October"
+                autoFocus
+              />
+              <button
+                className="button button--primary button--small"
+                type="submit"
+                disabled={managing !== null}
+              >
+                Save
+              </button>
+              <button
+                className="button button--small"
+                type="button"
+                onClick={() => {
+                  setRenaming(false);
+                }}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <>
+              <h1 className="thread-pane__title" title={title}>
+                {title}
+              </h1>
+              {activeId !== null && (
+                <button
+                  className="button button--ghost button--small"
+                  type="button"
+                  onClick={() => {
+                    setRenaming(true);
+                  }}
+                >
+                  Rename
+                </button>
+              )}
+            </>
+          )}
           <button
             className="button button--ghost"
             type="button"
@@ -299,6 +450,11 @@ export function Assistant({ session, openConversationId, onSessionExpired }: Pro
             + New
           </button>
         </div>
+        {notice !== null && (
+          <p className="notice thread-pane__notice" role="status">
+            {notice}
+          </p>
+        )}
         <Thread
           messages={messages}
           state={threadState}

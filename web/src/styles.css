@@ -322,7 +322,11 @@ p {
 .nav {
   grid-area: nav;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Auto-columns rather than a hard count: sections arrive one stage at a time (Team in
+     Stage 3 part 4), and a nav that has to be re-counted by hand is a nav that gets it
+     wrong once. Equal widths, whatever the count. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--surface);
   border-top: 1px solid var(--line);
   padding-bottom: var(--safe-bottom);
@@ -1021,6 +1025,197 @@ p {
 
 /* ---------- tablet and up: sidebar nav, docked conversation list ---------- */
 
+/* ---------- conversations: rename and delete (Stage 3 part 4) ---------- */
+
+.convos__filter .field__input {
+  font-size: 15px;
+  padding: 8px 10px;
+}
+
+.convos__row {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+
+.convos__row--active {
+  background: #e6ecf7;
+}
+
+.convos__item {
+  width: 100%;
+}
+
+.convos__actions {
+  display: flex;
+  gap: 14px;
+  padding: 0 12px 8px;
+}
+
+.convos__action {
+  font-size: 13px;
+}
+
+.convos__action--danger {
+  color: var(--danger);
+}
+
+.convos__confirm,
+.convos__rename {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.convos__confirm p {
+  font-size: 14px;
+}
+
+.thread-pane__rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thread-pane__rename .field__input {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  padding: 6px 10px;
+}
+
+.thread-pane__notice {
+  margin: 8px 12px 0;
+}
+
+/* ---------- team (Stage 3 part 4) ---------- */
+
+.team {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.team__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team__title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.team__banner {
+  font-size: 14px;
+}
+
+.team__none,
+.team__hint,
+.team__count {
+  font-size: 14px;
+}
+
+.team__count {
+  margin-top: 4px;
+}
+
+.team__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+}
+
+.team__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team__card--inactive {
+  opacity: 0.72;
+}
+
+.team__card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.team__email {
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.team__meta {
+  font-size: 13px;
+}
+
+.team__actions {
+  margin-top: 2px;
+}
+
+.team__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.team__confirm p {
+  font-size: 14px;
+}
+
+.team__add,
+.team__handover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The one-time password. Deliberately the loudest thing on the page while it is there: it
+   exists for a few seconds and then never again. */
+.team__handover {
+  border-color: var(--navy);
+  border-width: 2px;
+}
+
+.team__handover-title {
+  font-size: 17px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.team__handover-value code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 19px;
+  letter-spacing: 0.06em;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.team__handover-promise {
+  font-size: 14px;
+}
+
 @media (min-width: 768px) {
   .shell {
     grid-template-columns: 200px minmax(0, 1fr);
@@ -1121,8 +1316,17 @@ p {
   .mem__add-open,
   .mem__empty,
   .mem__warning,
-  .mem__banner {
+  .mem__banner,
+  .team__list,
+  .team__add,
+  .team__add-open,
+  .team__handover,
+  .team__banner {
     max-width: 720px;
+  }
+
+  .team {
+    padding: 20px 24px;
   }
 }
 
@@ -1152,7 +1356,16 @@ p {
   .mem__add-open,
   .mem__empty,
   .mem__warning,
-  .mem__banner {
+  .mem__banner,
+  .team__list,
+  .team__add,
+  .team__add-open,
+  .team__handover,
+  .team__banner {
     max-width: 840px;
+  }
+
+  .team {
+    padding: 24px 32px;
   }
 }

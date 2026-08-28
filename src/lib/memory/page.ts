@@ -33,6 +33,18 @@
  *   delete_chunk — the tombstone update (see the migration). The range stays claimed so the
  *           summariser cannot silently rebuild what was removed.
  *
+ * Stage 3 part 4 adds the container those three live in — the conversation itself:
+ *
+ *   rename_conversation — `title`, and nothing else. A correction, so it is open to every
+ *           active allowlisted member, exactly as adding and correcting a note are (D52).
+ *           Nothing has ever generated a title, so this is the only way one exists.
+ *   delete_conversation — one transaction in the database (`delete_conversation`, migration
+ *           20260828010000): the conversation is soft-deleted, its MESSAGES are permanently
+ *           deleted, its conversation notes are tombstoned exactly as delete_chunk tombstones
+ *           one, and its standing notes SURVIVE — a note somebody deliberately asked the
+ *           business to remember is not a by-product of the conversation it was said in.
+ *           Removal, so it is the author's or an admin's (the same canRemoveMemory).
+ *
  * WHO: adding and correcting are open to every active allowlisted member; removing is the
  * author's or an admin's (access.ts, and the browser calls the same function so it never
  * offers a button this will refuse).
@@ -59,6 +71,8 @@ import type { ClaudeClient } from '../llm/client.js';
 import type { Logger } from '../logger.js';
 import {
   canRemoveMemory,
+  CONVERSATION_DELETE_DENIED_MESSAGE,
+  CONVERSATION_TITLE_MAX_CHARS,
   MEMORY_NOTE_MAX_INPUT_CHARS,
   REMOVAL_DENIED_MESSAGE,
   type MemoryActor,
@@ -93,14 +107,39 @@ export interface ChunkForAction {
   readonly deletedAt: string | null;
 }
 
+export interface ConversationForAction {
+  readonly id: string;
+  readonly authorId: string;
+  readonly scope: MemoryScope;
+  readonly title: string | null;
+  readonly deletedAt: string | null;
+}
+
+/** What a delete actually removed. The confirm step promised these numbers; these are them. */
+export interface ConversationDeletion {
+  readonly already: boolean;
+  readonly messagesDeleted: number;
+  readonly chunksTombstoned: number;
+  /** Standing notes that lost their pointer to a deleted message. The notes themselves stay. */
+  readonly factsUnlinked: number;
+}
+
 export interface MemoryPageStore {
   /** One fact by id, whatever its state. `ok(null)` = no such row. */
   getFact(factId: string): Promise<Result<FactForAction | null>>;
   getChunk(chunkId: string): Promise<Result<ChunkForAction | null>>;
+  getConversation(conversationId: string): Promise<Result<ConversationForAction | null>>;
   /** Self-reference the live row. Idempotent: a second call reports `already`. */
   forgetFact(factId: string): Promise<Result<'forgotten' | 'already'>>;
   /** Tombstone the chunk and destroy its content. Idempotent. */
   deleteChunk(chunkId: string, actorId: string): Promise<Result<'deleted' | 'already'>>;
+  /** Title only. `gone` when the row vanished or was deleted between read and write. */
+  renameConversation(conversationId: string, title: string): Promise<Result<'renamed' | 'gone'>>;
+  /** The one-transaction delete. Idempotent: a second call reports `already`. */
+  deleteConversation(
+    conversationId: string,
+    actorId: string,
+  ): Promise<Result<ConversationDeletion>>;
 }
 
 function mapPostgrest(error: PostgrestError, operation: string): AppError {
@@ -177,6 +216,70 @@ export function supabaseMemoryPageStore(client: ServiceClient): MemoryPageStore 
         return err(mapThrown(caught, 'memory_chunks.get'));
       }
     },
+    getConversation: async (conversationId) => {
+      try {
+        const { data, error } = await client
+          .from('conversations')
+          .select('id, user_id, scope, title, deleted_at')
+          .eq('id', conversationId)
+          .limit(1);
+        if (error !== null) return err(mapPostgrest(error, 'conversations.get'));
+        const row = data[0];
+        if (row === undefined) return ok(null);
+        const scope = toScope(row.scope, row.id, 'conversations');
+        if (!scope.ok) return err(scope.error);
+        return ok({
+          id: row.id,
+          authorId: row.user_id,
+          scope: scope.value,
+          title: row.title,
+          deletedAt: row.deleted_at,
+        });
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'conversations.get'));
+      }
+    },
+    renameConversation: async (conversationId, title) => {
+      try {
+        // `is('deleted_at', null)` rather than a bare id match: a conversation deleted
+        // between the read and this write must not quietly come back with a new name.
+        const { data, error } = await client
+          .from('conversations')
+          .update({ title })
+          .eq('id', conversationId)
+          .is('deleted_at', null)
+          .select('id');
+        if (error !== null) return err(mapPostgrest(error, 'conversations.rename'));
+        return ok(data.length === 0 ? 'gone' : 'renamed');
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'conversations.rename'));
+      }
+    },
+    deleteConversation: async (conversationId, actorId) => {
+      try {
+        const { data, error } = await client.rpc('delete_conversation', {
+          p_conversation_id: conversationId,
+          p_actor: actorId,
+        });
+        if (error !== null) return err(mapPostgrest(error, 'conversations.delete'));
+        const row = data[0];
+        if (row === undefined) {
+          return err(
+            new AppError('INTERNAL', 'delete_conversation returned no row', {
+              context: { conversationId },
+            }),
+          );
+        }
+        return ok({
+          already: row.already,
+          messagesDeleted: row.messages_deleted,
+          chunksTombstoned: row.chunks_tombstoned,
+          factsUnlinked: row.facts_unlinked,
+        });
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'conversations.delete'));
+      }
+    },
     forgetFact: async (factId) => {
       try {
         // One statement, so two callers racing cannot both "forget" the same row: the
@@ -221,7 +324,8 @@ export function supabaseMemoryPageStore(client: ServiceClient): MemoryPageStore 
 // of 401 / 402 / 403 is one shape, not two.
 // ---------------------------------------------------------------------------------------
 
-export type MemoryActionName = 'add' | 'edit' | 'forget' | 'delete_chunk';
+export type MemoryActionName =
+  'add' | 'edit' | 'forget' | 'delete_chunk' | 'rename_conversation' | 'delete_conversation';
 
 export interface MemoryRequestBody {
   readonly action?: unknown;
@@ -229,6 +333,8 @@ export interface MemoryRequestBody {
   readonly factId?: unknown;
   readonly value?: unknown;
   readonly chunkId?: unknown;
+  readonly conversationId?: unknown;
+  readonly title?: unknown;
 }
 
 export interface MemoryPageInput {
@@ -264,6 +370,19 @@ export type MemoryPageReply =
       readonly action: 'delete_chunk';
       readonly outcome: 'deleted' | 'already';
       readonly chunkId: string;
+    }
+  | {
+      readonly action: 'rename_conversation';
+      readonly outcome: 'renamed' | 'unchanged';
+      readonly conversationId: string;
+      readonly title: string;
+    }
+  | {
+      readonly action: 'delete_conversation';
+      readonly outcome: 'deleted' | 'already';
+      readonly conversationId: string;
+      readonly messagesDeleted: number;
+      readonly chunksTombstoned: number;
     };
 
 export interface MemoryErrorBody {
@@ -396,8 +515,16 @@ async function route(deps: MemoryPageDeps, input: MemoryPageInput): Promise<Memo
       return forgetNote(deps, actor, input.body.factId, log);
     case 'delete_chunk':
       return deleteChunk(deps, actor, input.body.chunkId, log);
+    case 'rename_conversation':
+      return renameConversation(deps, actor, input.body.conversationId, input.body.title, log);
+    case 'delete_conversation':
+      return deleteConversation(deps, actor, input.body.conversationId, log);
     default:
-      return failure(400, 'BAD_REQUEST', 'action must be one of add, edit, forget, delete_chunk.');
+      return failure(
+        400,
+        'BAD_REQUEST',
+        'action must be one of add, edit, forget, delete_chunk, rename_conversation, delete_conversation.',
+      );
   }
 }
 
@@ -406,7 +533,7 @@ async function record(
   deps: MemoryPageDeps,
   actor: MemoryActor,
   action: AuditAction,
-  entityType: Extract<AuditEntityType, 'memory_facts' | 'memory_chunks'>,
+  entityType: Extract<AuditEntityType, 'memory_facts' | 'memory_chunks' | 'conversations'>,
   entityId: string,
   log: Logger,
 ): Promise<MemoryPageResult | null> {
@@ -721,4 +848,208 @@ async function deleteChunk(
     as: verdict.because,
   });
   return { status: 200, body: { action: 'delete_chunk', outcome: 'deleted', chunkId: chunk.id } };
+}
+
+// ---------------------------------------------------------------------------------------
+// Conversations (Stage 3 part 4)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Read a conversation for an action. Absent and invisible answer identically, for the same
+ * reason `liveFact` does: this endpoint must not be an oracle for "does a conversation with
+ * this id exist in someone else's private history".
+ */
+async function liveConversation(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  rawId: unknown,
+  log: Logger,
+): Promise<
+  | { readonly ok: true; readonly conversation: ConversationForAction }
+  | { readonly ok: false; readonly result: MemoryPageResult }
+> {
+  if (typeof rawId !== 'string' || !UUID.test(rawId)) {
+    return { ok: false, result: failure(400, 'BAD_REQUEST', 'conversationId must be a UUID.') };
+  }
+  const found = await deps.store.getConversation(rawId);
+  if (!found.ok) {
+    log.error('conversation read failed', { error: found.error });
+    return { ok: false, result: unavailable(found.error) };
+  }
+  const conversation = found.value;
+  if (
+    conversation === null ||
+    (conversation.scope !== 'workspace' && conversation.authorId !== actor.userId)
+  ) {
+    return {
+      ok: false,
+      result: failure(404, 'NOT_FOUND', 'That conversation is no longer there.'),
+    };
+  }
+  return { ok: true, conversation };
+}
+
+/**
+ * Renaming is a CORRECTION, not a removal, so it follows D52's open half: any active
+ * allowlisted member who can see the conversation may name it. Nothing else about the
+ * conversation changes — not its messages, not its summaries, not the standing notes that
+ * came out of it — and the title is not read by retrieval, so a rename cannot alter what the
+ * assistant knows. It only alters what a person can find.
+ */
+async function renameConversation(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  rawId: unknown,
+  rawTitle: unknown,
+  log: Logger,
+): Promise<MemoryPageResult> {
+  if (typeof rawTitle !== 'string' || rawTitle.trim() === '') {
+    return failure(400, 'BAD_REQUEST', 'Give the conversation a name.');
+  }
+  const title = rawTitle.trim().replace(/\s+/g, ' ');
+  if (title.length > CONVERSATION_TITLE_MAX_CHARS) {
+    return failure(
+      400,
+      'BAD_REQUEST',
+      `A name is at most ${String(CONVERSATION_TITLE_MAX_CHARS)} characters.`,
+    );
+  }
+  const found = await liveConversation(deps, actor, rawId, log);
+  if (!found.ok) return found.result;
+  const conversation = found.conversation;
+  if (conversation.deletedAt !== null) {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+
+  // Already called that: no write, no audit row, and no "saved" for a no-op.
+  if (conversation.title === title) {
+    return {
+      status: 200,
+      body: {
+        action: 'rename_conversation',
+        outcome: 'unchanged',
+        conversationId: conversation.id,
+        title,
+      },
+    };
+  }
+
+  const renamed = await deps.store.renameConversation(conversation.id, title);
+  if (!renamed.ok) {
+    log.error('conversation rename failed', {
+      error: renamed.error,
+      conversationId: conversation.id,
+    });
+    return mapMemoryFailure(renamed.error);
+  }
+  if (renamed.value === 'gone') {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+  const audited = await record(
+    deps,
+    actor,
+    'CONVERSATION_RENAMED',
+    'conversations',
+    conversation.id,
+    log,
+  );
+  if (audited !== null) return audited;
+  // The new title is not logged: it is a person's words about their own work, and rule 20
+  // keeps content out of log lines. audit_log has the before/after through no trigger here
+  // either — `conversations` is not audited row-wise, so this row is the whole record.
+  log.info('conversation renamed', { conversationId: conversation.id, actorId: actor.userId });
+  return {
+    status: 200,
+    body: {
+      action: 'rename_conversation',
+      outcome: 'renamed',
+      conversationId: conversation.id,
+      title,
+    },
+  };
+}
+
+/**
+ * Deleting is a REMOVAL — it takes something away from everyone who could see it — so it is
+ * gated exactly as removing a note is: the author's, or an admin's (`canRemoveMemory`, D52).
+ *
+ * What it does is decided in the database, in one transaction, so a half-delete is not a
+ * state this system can be in. See migration 20260828010000 for why each of the four tables
+ * is treated differently; the short version is that the WORDS go and the KNOWLEDGE someone
+ * deliberately kept stays.
+ */
+async function deleteConversation(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  rawId: unknown,
+  log: Logger,
+): Promise<MemoryPageResult> {
+  const found = await liveConversation(deps, actor, rawId, log);
+  if (!found.ok) return found.result;
+  const conversation = found.conversation;
+  if (conversation.deletedAt !== null) {
+    return {
+      status: 200,
+      body: {
+        action: 'delete_conversation',
+        outcome: 'already',
+        conversationId: conversation.id,
+        messagesDeleted: 0,
+        chunksTombstoned: 0,
+      },
+    };
+  }
+  const verdict = canRemoveMemory({ authorId: conversation.authorId }, actor);
+  if (!verdict.allowed) {
+    return failure(403, 'NOT_YOURS', CONVERSATION_DELETE_DENIED_MESSAGE);
+  }
+
+  const deleted = await deps.store.deleteConversation(conversation.id, actor.userId);
+  if (!deleted.ok) {
+    log.error('conversation delete failed', {
+      error: deleted.error,
+      conversationId: conversation.id,
+    });
+    return mapMemoryFailure(deleted.error);
+  }
+  if (deleted.value.already) {
+    return {
+      status: 200,
+      body: {
+        action: 'delete_conversation',
+        outcome: 'already',
+        conversationId: conversation.id,
+        messagesDeleted: 0,
+        chunksTombstoned: 0,
+      },
+    };
+  }
+  const audited = await record(
+    deps,
+    actor,
+    'CONVERSATION_DELETED',
+    'conversations',
+    conversation.id,
+    log,
+  );
+  if (audited !== null) return audited;
+  // Counts, never content — the same discipline as the chunk delete above.
+  log.info('conversation deleted', {
+    conversationId: conversation.id,
+    actorId: actor.userId,
+    as: verdict.because,
+    messagesDeleted: deleted.value.messagesDeleted,
+    chunksTombstoned: deleted.value.chunksTombstoned,
+    factsUnlinked: deleted.value.factsUnlinked,
+  });
+  return {
+    status: 200,
+    body: {
+      action: 'delete_conversation',
+      outcome: 'deleted',
+      conversationId: conversation.id,
+      messagesDeleted: deleted.value.messagesDeleted,
+      chunksTombstoned: deleted.value.chunksTombstoned,
+    },
+  };
 }

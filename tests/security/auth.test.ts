@@ -221,7 +221,7 @@ describe.skipIf(env === null)(
     }, 60_000);
 
     it('password reset issues a fresh working credential and audits it', async () => {
-      const reset = await resetStaffPassword(deps, devToken, staffEmail);
+      const reset = await resetStaffPassword(deps, devToken, { email: staffEmail });
       expect(reset.ok).toBe(true);
       if (!reset.ok) return;
       generatedPasswords.push(reset.value.generatedPassword);
@@ -238,7 +238,7 @@ describe.skipIf(env === null)(
     }, 60_000);
 
     it('2. a deactivated user is refused at the database, and nothing is deleted', async () => {
-      const deactivated = await deactivateStaffUser(deps, devToken, staffEmail);
+      const deactivated = await deactivateStaffUser(deps, devToken, { email: staffEmail });
       expect(deactivated.ok).toBe(true);
 
       // Their PRE-deactivation JWT is still cryptographically valid — the refusal below can

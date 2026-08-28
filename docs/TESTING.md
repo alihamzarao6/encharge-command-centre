@@ -179,6 +179,29 @@ Coverage required:
   is the person, and no removed summary text appears in `audit_log` at all; a deactivated
   member is refused. `rls.test.ts` 8: a real session's attempts to forget a note, tombstone a
   chunk, insert or delete a fact through PostgREST are all refused, and nothing moves
+- **The Team page (`tests/integration/users.test.ts`, Stage 3 part 4):** through
+  `handleUsersRequest` with no substitutions at all — an admin creates a user, the password
+  handed back signs in, and that account reads workspace memory and the roster; the password
+  is then searched for in **every text, varchar and jsonb column of every public table**,
+  taken from the catalog rather than a hand-written list, and in every captured log line; a
+  non-admin is refused all seven actions and no identity is minted; a deactivated user's
+  still-valid JWT reads zero rows while the note they contributed stays live; reactivating
+  makes their existing password work again; every action leaves one `audit_log` row naming
+  the admin, never `service_role`
+- **The last-admin invariant, raced (same file):** the two flag functions are called from
+  **two real connections at once**, each demoting the other's admin. The second blocks on the
+  advisory lock, re-reads, and raises — the case an application-level check cannot hold and
+  the reason the rule lives in the database (D58). `rls.test.ts` 9 and 10 cover the policy
+  half: the roster read is exactly as wide as described, and promote / add / remove / rename /
+  message-delete are each refused through PostgREST as a signed-in user
+- **Conversation management (`tests/integration/conversations.test.ts`, Stage 3 part 4):** a
+  rename touches one column and nothing else (message, chunk and fact counts identical, the
+  chunk's embedding untouched); a delete is asserted **row by row** against the four tables —
+  the conversation soft-deleted, its messages *gone*, its chunk tombstoned with `turn_range`
+  intact, its standing note still live with only `source_message_id` cleared; the deleted
+  conversation is invisible to `match_memory_chunks` and its range cannot be re-claimed; a
+  second delete reports `already` and writes no second audit row; renaming a deleted
+  conversation is refused; and no message text reaches `audit_log` or any log line
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL
@@ -278,11 +301,17 @@ run-scopes in its fetch stub. The unit suite is unaffected and still parallel.
 value) and **fails on a React development bundle** — `npm run web:build` forces
 `NODE_ENV=production` (`scripts/build-web.ts`, D55) and this is the assertion that says it
 did. `tests/unit/web/bundleCheck.test.ts` covers the predicate; importing `check-bundle.ts`
-is side-effect free so the unit suite, which runs before the web build, is unaffected; `functions:bundle` now builds two functions, so a broken import in either fails CI;
-the `browser` job gains `tests/e2e/memory.spec.ts` (11 tests × 3 widths) and the screenshots
+is side-effect free so the unit suite, which runs before the web build, is unaffected; `functions:bundle` now builds THREE functions (part 4 added `admin`), so a broken import in any of them fails CI;
+the `browser` job gains `tests/e2e/memory.spec.ts` (11 tests × 3 widths) and, in part 4,
+`users.spec.ts` (9 × 3) and `conversations.spec.ts` (10 × 3), with the screenshots
 under `docs/assets/stage-3/`. The e2e mock answers **403 / 42501 to any non-GET PostgREST
 request** and records it, so "the page changes memory only through the verified server path"
-is an assertion in the browser as well as in `rls.test.ts`.
+is an assertion in the browser as well as in `rls.test.ts` — and since part 4 the same
+assertion covers user management (`state.postgrestWrites` must stay empty in every test).
+Two part-4 properties are proved only in the browser, because only the browser can:
+a one-time password is **absent from `localStorage`, `sessionStorage` and the DOM** the moment
+its panel is dismissed, and a non-admin's Team page makes **no call to the admin endpoint at
+all** — the controls are not merely hidden, they are never reachable.
 
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →

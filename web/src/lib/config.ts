@@ -11,6 +11,8 @@ export interface WebConfig {
   readonly chatUrl: string;
   /** Stage 3 part 3: the memory page's write endpoint. Reads go straight to PostgREST. */
   readonly memoryUrl: string;
+  /** Stage 3 part 4: the users page's write endpoint. The roster is read under RLS. */
+  readonly adminUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -26,5 +28,6 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
     anonKey,
     chatUrl: `${supabaseUrl}/functions/v1/chat`,
     memoryUrl: `${supabaseUrl}/functions/v1/memory`,
+    adminUrl: `${supabaseUrl}/functions/v1/admin`,
   };
 }

@@ -17,6 +17,12 @@
  *   8. the Stage 3 part 3 memory-page writes (forget a note, tombstone a summary, insert or
  *      delete a fact) are all refused through PostgREST, so the page cannot bypass the
  *      verified server path
+ *   9. the Stage 3 part 4 roster read is exactly as wide as it was widened to: every ACTIVE
+ *      allowlisted member reads every app_users row, a non-allowlisted account reads none,
+ *      and a DEACTIVATED account reads none — including its own, which is what the sign-in
+ *      check depends on
+ *  10. the Stage 3 part 4 user-management and conversation writes are all refused through
+ *      PostgREST, and the three new functions are executable by service_role only
  *
  * All fixtures are synthetic (example.com users, run-scoped keys) and removed afterwards.
  */
@@ -40,6 +46,12 @@ interface TestUser {
 function extractIds(data: unknown): string[] {
   if (!Array.isArray(data)) return [];
   return data.map((row) => String((row as Record<string, unknown>)['id']));
+}
+
+/** app_users is keyed on user_id, not id — the roster read needs its own extractor. */
+function extractUserIds(data: unknown): string[] {
+  if (!Array.isArray(data)) return [];
+  return data.map((row) => String((row as Record<string, unknown>)['user_id']));
 }
 
 // The describe body always runs (vitest registers tests even for a skipped suite), so the
@@ -480,6 +492,120 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       [`process:rls-web-${RUN}`],
     );
     expect(landed.rows[0]?.n).toBe('0');
+  });
+
+  it('9. Stage 3 part 4: the roster read is exactly as wide as the users page needs', async () => {
+    // Widened from self-row-only to the whole roster (migration 20260828010000). Every
+    // ACTIVE allowlisted member sees everyone; that is the entire change.
+    const asA = await userA.client.from('app_users').select('user_id, email, is_active, is_admin');
+    expect(asA.error).toBeNull();
+    const idsSeenByA = extractUserIds(asA.data);
+    expect(idsSeenByA).toContain(userA.id);
+    expect(idsSeenByA, 'an allowlisted member sees their colleagues').toContain(userB.id);
+
+    // Nothing but SELECT came with it, and no column was added that should not be readable.
+    for (const row of (asA.data ?? []) as Record<string, unknown>[]) {
+      expect(Object.keys(row).sort()).toStrictEqual(
+        ['email', 'is_active', 'is_admin', 'user_id'].sort(),
+      );
+    }
+
+    // The outsider case is test 3, which iterates every table. This is the one the sign-in
+    // path depends on and which the widening could plausibly have broken: a DEACTIVATED
+    // account must read zero rows, including its own.
+    await db.query(`update public.app_users set is_active = false where user_id = $1`, [userB.id]);
+    try {
+      const asDeactivated = await userB.client
+        .from('app_users')
+        .select('user_id', { count: 'exact', head: true });
+      expect(asDeactivated.count ?? 0, 'a deactivated member reads no rows at all').toBe(0);
+    } finally {
+      await db.query(`update public.app_users set is_active = true where user_id = $1`, [userB.id]);
+    }
+
+    // is_active_staff() is the definer function the policy leans on; anon must not hold it.
+    const fn = await db.query<{ role: string; can: boolean }>(
+      `select role, has_function_privilege(role, 'public.is_active_staff()', 'execute') as can
+       from (values ('anon'), ('authenticated'), ('service_role')) r(role)`,
+    );
+    for (const row of fn.rows) {
+      expect(row.can, `${row.role} on is_active_staff`).toBe(row.role !== 'anon');
+    }
+  });
+
+  it('10. Stage 3 part 4: user management and conversation deletion cannot be done from a session', async () => {
+    // Part C item 3, at the database rather than at the endpoint. Even an admin's session
+    // holds only SELECT, so these are refused for everyone — which is why the admin Edge
+    // Function exists at all.
+    const promote = await userA.client
+      .from('app_users')
+      .update({ is_admin: true })
+      .eq('user_id', userA.id);
+    expect(promote.error).not.toBeNull();
+
+    const addSelf = await userA.client.from('app_users').insert({
+      user_id: userA.id,
+      email: `rls-sneak-${RUN}@example.com`,
+      role: 'staff',
+      is_active: true,
+      is_admin: true,
+    });
+    expect(addSelf.error).not.toBeNull();
+
+    const removeSomeone = await userA.client.from('app_users').delete().eq('user_id', userB.id);
+    expect(removeSomeone.error).not.toBeNull();
+
+    const rename = await userA.client
+      .from('conversations')
+      .update({ title: 'renamed from a browser' })
+      .eq('id', fixtureIds.convWorkspaceA);
+    expect(rename.error).not.toBeNull();
+
+    const wipeMessages = await userA.client
+      .from('messages')
+      .delete()
+      .eq('conversation_id', fixtureIds.convWorkspaceA);
+    expect(wipeMessages.error).not.toBeNull();
+
+    // The three functions: catalog first, then behaviourally through PostgREST.
+    const privileges = await db.query<{ fn: string; role: string; can: boolean }>(
+      `select fn, role, has_function_privilege(role, fn, 'execute') as can
+       from (values
+         ('public.set_staff_active(uuid,boolean)'),
+         ('public.set_staff_admin(uuid,boolean)'),
+         ('public.delete_conversation(uuid,uuid)')
+       ) f(fn)
+       cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)`,
+    );
+    for (const row of privileges.rows) {
+      expect(row.can, `${row.role} on ${row.fn}`).toBe(row.role === 'service_role');
+    }
+    expect(
+      (await userA.client.rpc('set_staff_admin', { p_user_id: userA.id, p_is_admin: true })).error,
+    ).not.toBeNull();
+    expect(
+      (
+        await userA.client.rpc('delete_conversation', {
+          p_conversation_id: fixtureIds.convWorkspaceA,
+          p_actor: userA.id,
+        })
+      ).error,
+    ).not.toBeNull();
+
+    // Nothing moved.
+    const after = await db.query<{
+      is_admin: boolean;
+      title: string | null;
+      deleted_at: string | null;
+    }>(
+      `select u.is_admin, c.title, c.deleted_at
+       from public.app_users u, public.conversations c
+       where u.user_id = $1 and c.id = $2`,
+      [userA.id, fixtureIds.convWorkspaceA],
+    );
+    expect(after.rows[0]?.is_admin).toBe(false);
+    expect(after.rows[0]?.title).toBe(`rls-ws-conv-${RUN}`);
+    expect(after.rows[0]?.deleted_at).toBeNull();
   });
 
   it('anon policies do not exist at all', async () => {

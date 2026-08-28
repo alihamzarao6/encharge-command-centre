@@ -12,7 +12,10 @@ import {
   attachSeededCredentials,
   createStaffUser,
   deactivateStaffUser,
+  listStaffUsers,
+  reactivateStaffUser,
   resetStaffPassword,
+  setStaffAdmin,
 } from '../../../src/lib/auth/admin.js';
 import { STAFF_PASSWORD_LENGTH } from '../../../src/lib/auth/password.js';
 import type { StaffRow } from '../../../src/lib/auth/verify.js';
@@ -39,7 +42,14 @@ interface Harness {
     audit?: AppError;
     setBanned?: AppError;
     createUser?: AppError;
+    /** What the database function raises when the write would leave zero admins. */
+    setFlag?: AppError;
   };
+}
+
+/** Active administrators, as the database function counts them. */
+function activeAdmins(rows: Map<string, StaffRow>): number {
+  return [...rows.values()].filter((r) => r.is_active && r.is_admin).length;
 }
 
 function makeHarness(): Harness {
@@ -87,6 +97,13 @@ function makeHarness(): Harness {
         if (failures.setBanned !== undefined) return Promise.resolve(err(failures.setBanned));
         return Promise.resolve(ok(undefined));
       },
+      lastSignIns: () =>
+        Promise.resolve(
+          ok([
+            { userId: ADMIN_ID, lastSignInAt: '2026-08-27T01:00:00Z' },
+            { userId: STAFF_ID, lastSignInAt: null },
+          ]),
+        ),
     },
     staff: {
       getByEmail: (email) => Promise.resolve(ok(byEmail(email))),
@@ -97,10 +114,20 @@ function makeHarness(): Harness {
         return Promise.resolve(ok(undefined));
       },
       setActive: (userId, active) => {
+        if (failures.setFlag !== undefined) return Promise.resolve(err(failures.setFlag));
         const row = rows.get(userId);
+        const changed = row !== undefined && row.is_active !== active;
         if (row !== undefined) rows.set(userId, { ...row, is_active: active });
-        return Promise.resolve(ok(undefined));
+        return Promise.resolve(ok({ changed, activeAdmins: activeAdmins(rows) }));
       },
+      setAdmin: (userId, admin) => {
+        if (failures.setFlag !== undefined) return Promise.resolve(err(failures.setFlag));
+        const row = rows.get(userId);
+        const changed = row !== undefined && row.is_admin !== admin;
+        if (row !== undefined) rows.set(userId, { ...row, is_admin: admin });
+        return Promise.resolve(ok({ changed, activeAdmins: activeAdmins(rows) }));
+      },
+      list: () => Promise.resolve(ok([...rows.values()])),
     },
     audit: {
       write: (entry) => {
@@ -234,11 +261,14 @@ describe('createStaffUser', () => {
 describe('deactivateStaffUser', () => {
   it('flips is_active, bans the auth account, audits, and never deletes', async () => {
     const h = makeHarness();
-    const result = expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'staff@x.com'));
+    const result = expectOk(
+      await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }),
+    );
     expect(result).toStrictEqual({
       userId: STAFF_ID,
       email: 'staff@x.com',
-      alreadyInactive: false,
+      changed: true,
+      activeAdmins: 1,
     });
     expect(h.rows.get(STAFF_ID)?.is_active).toBe(false);
     expect(h.rows.has(STAFF_ID)).toBe(true); // the row survives
@@ -255,15 +285,17 @@ describe('deactivateStaffUser', () => {
 
   it('is idempotent: deactivating an already-inactive user reports it and does not error', async () => {
     const h = makeHarness();
-    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'staff@x.com'));
-    const second = expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'staff@x.com'));
-    expect(second.alreadyInactive).toBe(true);
+    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
+    const second = expectOk(
+      await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }),
+    );
+    expect(second.changed).toBe(false);
   });
 
   it('refuses self-deactivation, so the workspace can never reach zero active admins', async () => {
     const h = makeHarness();
     const error = expectErrCode(
-      await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'admin@x.com'),
+      await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'admin@x.com' }),
       'FORBIDDEN',
     );
     expect(error.context['reason']).toBe('self_deactivation');
@@ -273,15 +305,21 @@ describe('deactivateStaffUser', () => {
 
   it('refuses a non-admin caller and an unknown email', async () => {
     const h = makeHarness();
-    expectErrCode(await deactivateStaffUser(h.deps, STAFF_TOKEN, 'admin@x.com'), 'FORBIDDEN');
-    expectErrCode(await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'nobody@x.com'), 'VALIDATION');
+    expectErrCode(
+      await deactivateStaffUser(h.deps, STAFF_TOKEN, { email: 'admin@x.com' }),
+      'FORBIDDEN',
+    );
+    expectErrCode(
+      await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'nobody@x.com' }),
+      'VALIDATION',
+    );
   });
 
   it('reports a ban failure instead of pretending, with the DB refusal already in force', async () => {
     const h = makeHarness();
     h.failures.setBanned = new NetworkError('auth down');
     const error = expectErrCode(
-      await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'staff@x.com'),
+      await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }),
       'INTERNAL',
     );
     expect(error.context['userId']).toBe(STAFF_ID);
@@ -292,7 +330,7 @@ describe('deactivateStaffUser', () => {
 describe('resetStaffPassword', () => {
   it('sets a fresh generated password on an active user and audits it', async () => {
     const h = makeHarness();
-    const reset = expectOk(await resetStaffPassword(h.deps, ADMIN_TOKEN, 'staff@x.com'));
+    const reset = expectOk(await resetStaffPassword(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
     expect(reset.userId).toBe(STAFF_ID);
     expect(h.authCalls).toStrictEqual([`setPassword:${STAFF_ID}:${reset.generatedPassword}`]);
     expect(h.audit.map((a) => a.action)).toStrictEqual(['PASSWORD_RESET']);
@@ -301,9 +339,15 @@ describe('resetStaffPassword', () => {
 
   it('refuses for a deactivated user and for a non-admin caller', async () => {
     const h = makeHarness();
-    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, 'staff@x.com'));
-    expectErrCode(await resetStaffPassword(h.deps, ADMIN_TOKEN, 'staff@x.com'), 'FORBIDDEN');
-    expectErrCode(await resetStaffPassword(h.deps, STAFF_TOKEN, 'admin@x.com'), 'FORBIDDEN');
+    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
+    expectErrCode(
+      await resetStaffPassword(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }),
+      'FORBIDDEN',
+    );
+    expectErrCode(
+      await resetStaffPassword(h.deps, STAFF_TOKEN, { email: 'admin@x.com' }),
+      'FORBIDDEN',
+    );
   });
 });
 
@@ -351,5 +395,148 @@ describe('attachSeededCredentials', () => {
     h.rows.set(seeded.user_id, { ...seeded, email: 'attacker@evil.com' });
     expectErrCode(await attachSeededCredentials(h.deps, 'developer'), 'CONFIG');
     expect(h.authCalls).toStrictEqual([]);
+  });
+});
+
+describe('reactivateStaffUser', () => {
+  it('flips is_active back, lifts the ban, audits, and reports the admin count', async () => {
+    const h = makeHarness();
+    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
+    const result = expectOk(await reactivateStaffUser(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }));
+    expect(result).toStrictEqual({
+      userId: STAFF_ID,
+      email: 'staff@x.com',
+      changed: true,
+      activeAdmins: 1,
+    });
+    expect(h.rows.get(STAFF_ID)?.is_active).toBe(true);
+    expect(h.authCalls).toContain(`setBanned:${STAFF_ID}:false`);
+    expect(h.audit.map((a) => a.action)).toStrictEqual(['USER_DEACTIVATED', 'USER_REACTIVATED']);
+  });
+
+  it('is idempotent on someone who already has access, and refuses a non-admin caller', async () => {
+    const h = makeHarness();
+    const again = expectOk(await reactivateStaffUser(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }));
+    expect(again.changed).toBe(false);
+    expectErrCode(
+      await reactivateStaffUser(h.deps, STAFF_TOKEN, { userId: ADMIN_ID }),
+      'FORBIDDEN',
+    );
+  });
+
+  it('reports a failed unban rather than pretending the person can sign in', async () => {
+    const h = makeHarness();
+    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
+    h.failures.setBanned = new NetworkError('auth down');
+    const error = expectErrCode(
+      await reactivateStaffUser(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }),
+      'INTERNAL',
+    );
+    expect(error.message).toContain('unban');
+  });
+});
+
+describe('setStaffAdmin — and the last-admin invariant', () => {
+  it('promotes, audits as USER_PROMOTED, and reports two administrators', async () => {
+    const h = makeHarness();
+    const result = expectOk(await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, true));
+    expect(result.changed).toBe(true);
+    expect(result.activeAdmins).toBe(2);
+    expect(h.rows.get(STAFF_ID)?.is_admin).toBe(true);
+    expect(h.audit.map((a) => a.action)).toStrictEqual(['USER_PROMOTED']);
+    // Promotion changes exactly one flag: it is not a roles system by another name.
+    expect(h.rows.get(STAFF_ID)?.role).toBe('staff');
+    expect(h.authCalls).toStrictEqual([]); // no GoTrue involvement at all
+  });
+
+  it('demotes ANOTHER admin once there are two, and audits as USER_DEMOTED', async () => {
+    const h = makeHarness();
+    expectOk(await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, true));
+    const demoted = expectOk(await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, false));
+    expect(demoted.changed).toBe(true);
+    expect(demoted.activeAdmins).toBe(1);
+    expect(h.audit.map((a) => a.action)).toStrictEqual(['USER_PROMOTED', 'USER_DEMOTED']);
+  });
+
+  it('Part C 4: refuses self-demotion, so an admin cannot remove their own rights', async () => {
+    const h = makeHarness();
+    const error = expectErrCode(
+      await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: ADMIN_ID }, false),
+      'FORBIDDEN',
+    );
+    expect(error.context['reason']).toBe('self_demotion');
+    expect(h.rows.get(ADMIN_ID)?.is_admin).toBe(true);
+    expect(h.audit).toStrictEqual([]);
+  });
+
+  it('Part C 4: refuses to demote the last active admin even from another admin account', async () => {
+    // Two admins; one is then deactivated, so only one ACTIVE admin remains. The other
+    // admin's token is still valid (a session outlives the row it came from), and it is
+    // exactly this path — a stale admin session — that could otherwise reach zero.
+    const h = makeHarness();
+    h.rows.set(STAFF_ID, {
+      user_id: STAFF_ID,
+      email: 'staff@x.com',
+      role: 'staff',
+      is_active: false,
+      is_admin: true,
+    });
+    const error = expectErrCode(
+      await setStaffAdmin(h.deps, STAFF_TOKEN, { userId: ADMIN_ID }, false),
+      'FORBIDDEN',
+    );
+    // The caller is deactivated, so they never get as far as the count — refused at the door.
+    expect(error.context['reason']).toBe('deactivated');
+    expect(h.rows.get(ADMIN_ID)?.is_admin).toBe(true);
+  });
+
+  it('refuses to promote someone who no longer has access', async () => {
+    const h = makeHarness();
+    expectOk(await deactivateStaffUser(h.deps, ADMIN_TOKEN, { email: 'staff@x.com' }));
+    const error = expectErrCode(
+      await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, true),
+      'FORBIDDEN',
+    );
+    expect(error.context['reason']).toBe('inactive_target');
+  });
+
+  it("surfaces the database's own last-admin refusal rather than swallowing it", async () => {
+    // The application check passes and the DATABASE refuses — the concurrent case the
+    // advisory lock exists for. The error reaches the caller intact.
+    const h = makeHarness();
+    expectOk(await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, true));
+    h.audit.length = 0;
+    h.failures.setFlag = new AppError('FORBIDDEN', 'at least one active administrator', {
+      context: { reason: 'last_admin' },
+    });
+    const error = expectErrCode(
+      await setStaffAdmin(h.deps, ADMIN_TOKEN, { userId: STAFF_ID }, false),
+      'FORBIDDEN',
+    );
+    expect(error.context['reason']).toBe('last_admin');
+    expect(h.audit).toStrictEqual([]); // nothing changed, so nothing is recorded
+  });
+
+  it('refuses a non-admin caller before reading the roster', async () => {
+    const h = makeHarness();
+    const error = expectErrCode(
+      await setStaffAdmin(h.deps, STAFF_TOKEN, { userId: ADMIN_ID }, false),
+      'FORBIDDEN',
+    );
+    expect(error.context['reason']).toBe('not_admin');
+  });
+});
+
+describe('listStaffUsers', () => {
+  it('returns the roster to an admin and nothing credential-shaped with it', async () => {
+    const h = makeHarness();
+    const rows = expectOk(await listStaffUsers(h.deps, ADMIN_TOKEN));
+    expect(rows.map((r) => r.email).sort()).toStrictEqual(['admin@x.com', 'staff@x.com']);
+    expect(JSON.stringify(rows)).not.toContain('password');
+  });
+
+  it('refuses a non-admin caller', async () => {
+    const h = makeHarness();
+    expectErrCode(await listStaffUsers(h.deps, STAFF_TOKEN), 'FORBIDDEN');
   });
 });

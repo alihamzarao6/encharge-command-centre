@@ -50,6 +50,13 @@ export function canRemoveMemory(owned: MemoryOwned, actor: MemoryActor): Removal
 export const REMOVAL_DENIED_MESSAGE =
   'Only the person who added this, or an administrator, can remove it.';
 
+/**
+ * Stage 3 part 4: the same rule, applied to a whole conversation. Deleting one destroys its
+ * messages for everybody, so it is the strongest case for the gate, not the weakest.
+ */
+export const CONVERSATION_DELETE_DENIED_MESSAGE =
+  'Only the person who started this conversation, or an administrator, can delete it.';
+
 // ---------------------------------------------------------------------------------------
 // The two limits both sides need. They live here for the same reason the rule above does:
 // an interface that lets someone type 900 characters into a field the server caps at 400 is
@@ -58,6 +65,14 @@ export const REMOVAL_DENIED_MESSAGE =
 
 /** What a person may type into "add a note" before it is an essay, not a note. */
 export const MEMORY_NOTE_MAX_INPUT_CHARS = 1_000;
+
+/**
+ * Stage 3 part 4: a conversation's name. Short on purpose — it is read in a list on a
+ * 375 px screen, where anything longer is truncated and therefore not a name but a
+ * paragraph. Nothing generates titles today (`conversations.title` has been null since the
+ * first turn was ever saved), so renaming is the ONLY way a conversation has a name at all.
+ */
+export const CONVERSATION_TITLE_MAX_CHARS = 80;
 
 /**
  * The longest a stored note may be. MIRRORS `FACT_VALUE_MAX_CHARS` in facts.ts, which is

@@ -11,6 +11,9 @@ import type { SeededStaffKey } from './admin.js';
 export type StaffCommand =
   | { readonly kind: 'add-user'; readonly email: string }
   | { readonly kind: 'deactivate'; readonly email: string }
+  | { readonly kind: 'reactivate'; readonly email: string }
+  | { readonly kind: 'promote'; readonly email: string }
+  | { readonly kind: 'demote'; readonly email: string }
   | { readonly kind: 'reset-password'; readonly email: string }
   | { readonly kind: 'bootstrap'; readonly who: SeededStaffKey }
   | { readonly kind: 'help' };
@@ -22,6 +25,11 @@ Usage:
                                            generated password ONCE (admin session required)
   npm run staff -- deactivate <email>      is_active = false + auth ban; memory rows survive
                                            (admin session required; never deletes)
+  npm run staff -- reactivate <email>      is_active = true + unban; their existing password
+                                           works again (admin session required)
+  npm run staff -- promote <email>         is_admin = true (admin session required)
+  npm run staff -- demote <email>          is_admin = false — refused for your own account
+                                           and for the last active admin
   npm run staff -- reset-password <email>  generate + set a new password, print it ONCE
                                            (admin session required)
   npm run staff -- bootstrap <ross|developer>
@@ -29,7 +37,10 @@ Usage:
                                            account (no admin exists before this has run)
   npm run staff -- help
 
-Admin session (add-user / deactivate / reset-password):
+Everything the Users page in the dashboard does, this does too — it is the break-glass
+path when the browser cannot be used, and the two share every check (src/lib/auth).
+
+Admin session (everything except bootstrap):
   Set STAFF_ADMIN_EMAIL and STAFF_ADMIN_PASSWORD in the environment (not on the command
   line — argv leaks into shell history and process listings). The CLI signs in as that
   admin and every operation is authorized against THEIR account, then audited under it.
@@ -48,6 +59,9 @@ export function parseStaffCommand(argv: readonly string[]): Result<StaffCommand,
       return ok({ kind: 'help' });
     case 'add-user':
     case 'deactivate':
+    case 'reactivate':
+    case 'promote':
+    case 'demote':
     case 'reset-password': {
       if (arg === undefined || arg.trim() === '') {
         return err(new ValidationError(`${command} requires an email argument`));

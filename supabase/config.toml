@@ -450,3 +450,17 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/memory/index.ts"
 import_map = "./functions/memory/deno.json"
+
+# Stage 3 part 4 (FND-330): the users page's write endpoint. The roster itself is a
+# PostgREST select under RLS (migration 20260828010000 widened that policy to the whole
+# roster); this function exists because `authenticated` holds SELECT and nothing else, so
+# creating, deactivating, promoting or resetting a password has to come through a verified
+# server path holding the service role. Same generation rule as the other two: the
+# entrypoint is written by `npm run functions:bundle` and is gitignored. verify_jwt stays
+# off because the library verifies the bearer token itself and answers 401/403 with a body
+# the UI shows.
+[functions.admin]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/admin/index.ts"
+import_map = "./functions/admin/deno.json"

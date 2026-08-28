@@ -248,6 +248,53 @@ one live row authored by the editor, with a direct second insert refused by
 actor; anonymous POST 401, GET 405, CORS echoing the Vercel origin; the production alias
 serving 444,266 bytes with zero React dev markers and no key of any kind.
 
+**Part 4 (FND-330, 28 Aug 2026) evidence, code level — the nine Part C assertions:**
+(1) an admin creates a user from the page and that user signs in and reads workspace memory —
+`users.test.ts` "1." (through `handleUsersRequest`, then a real `signInWithPassword`, then a
+PostgREST read of the workspace conversation *and* of the roster), `page.test.ts` "create",
+browser "adding someone shows the password once"; (2) the generated password appears in no
+log line, no table and no later response body — `users.test.ts` "2." (searched for in **every
+text/varchar/jsonb column of every public table**, taken from the catalog, plus every captured
+log line), `page.test.ts` "Part C 2" (and four later responses re-checked), browser (absent
+from the DOM, `localStorage` and `sessionStorage` the moment the panel is dismissed);
+(3) a non-admin cannot create, deactivate, promote or reset — refused at the SERVER —
+`page.test.ts` "Part C 3" (all seven actions 403 `NOT_ADMIN`, nothing written, no password
+generated), `users.test.ts` "3." (same against a real stack, and no identity minted),
+`rls.test.ts` 10 (the same writes attempted straight through PostgREST as a signed-in user,
+each refused), browser "a non-admin sees the roster and no controls at all" (and the endpoint
+is never called at all); (4) the workspace cannot reach zero admins by any path the page
+offers — `access.test.ts` "Part C 4" (every action against a one-admin workspace),
+`admin.test.ts` (self-demotion, self-deactivation, the last admin, and the database's own
+refusal surfaced intact), `page.test.ts` "Part C 4" (the full sequence: promote a second,
+demote the first from the second's account, then be refused), `users.test.ts` "4." — the
+proof that matters: **two connections racing**, each demoting the other under the shared
+advisory lock, the second refused with `23514`; browser (the two actions are not offered, and
+a server refusal is shown in words); (5) a deactivated user is refused at the database and
+their contributions survive — `users.test.ts` "5." (still-valid JWT → zero rows from three
+tables, ban refuses a fresh sign-in, the row and their live workspace note both intact and
+still readable by everyone else), plus reactivation restoring access with the same password;
+(6) a renamed conversation keeps its messages, chunks and facts — `conversations.test.ts` "6."
+(counts identical before and after, the chunk's embedding untouched), `page.test.ts` rename
+group, browser "a rename shows straight away"; (7) a deleted conversation behaves exactly as
+decided — `conversations.test.ts` "7.", **asserted row by row**: `conversations` soft-deleted
+and still present, `messages` count 0, `memory_chunks` tombstoned with `turn_range` `[1,3)`
+intact and `summary` = the marker and `embedding` null and `deleted_by` = the caller,
+`memory_facts` still live with its value, author and date and only `source_message_id`
+cleared; plus the range cannot be re-claimed, `match_memory_chunks` returns nothing for it, a
+second delete reports `already`, and no message text is anywhere in `audit_log`;
+(8) every user and conversation action lands in `audit_log` with the right actor —
+`users.test.ts` "8." (five actions, actor = the admin's email, never `service_role`),
+`conversations.test.ts` "6."/"7." (actor = the person's user id, `before`/`after` null),
+`page.test.ts` and `admin.test.ts` per action; (9) 375 / 768 / 1280 with no horizontal scroll
+— `users.spec.ts` (9 tests × 3 widths, including a 22-person roster with 60-character email
+addresses) and `conversations.spec.ts` (10 × 3, including **fifty** conversations with the
+filter), screenshots in `docs/assets/stage-3/`.
+
+Items in `users.test.ts`, `conversations.test.ts` and `rls.test.ts` need a stack and were
+**not run on the developer's machine** (no Docker) — CI's `integration` job is the evidence,
+and the migration `20260828010000` is **unapplied and unvalidated live**: `supabase db push`
+is the reviewer's, per RUNBOOK §1c.
+
 ---
 
 ## Stage 4 — Website reading and storage · Payment 4 of 5 (198)

@@ -12,8 +12,9 @@ import type { AppUserRow } from '../lib/supabase.js';
 import { Assistant } from './Assistant.js';
 import { Memory } from './Memory.js';
 import { NotYet } from './NotYet.js';
+import { Users } from './Users.js';
 
-export type SectionId = 'assistant' | 'memory' | 'content' | 'ads';
+export type SectionId = 'assistant' | 'memory' | 'team' | 'content' | 'ads';
 
 export interface Section {
   readonly id: SectionId;
@@ -43,6 +44,14 @@ export const SECTIONS: readonly Section[] = [
       'What the assistant remembers about the business, and the facts it has learned from you — reviewable and correctable.',
   },
   {
+    id: 'team',
+    label: 'Team',
+    live: true,
+    stage: 'Stage 3',
+    blurb:
+      'Who can use the Command Centre. Administrators add people, restore access and reset passwords here.',
+  },
+  {
     id: 'content',
     label: 'Content',
     live: false,
@@ -69,6 +78,7 @@ interface Props {
 const ICONS: Readonly<Record<SectionId, string>> = {
   assistant: '💬',
   memory: '🧠',
+  team: '👥',
   content: '📝',
   ads: '📣',
 };
@@ -144,6 +154,7 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
         {section === 'assistant' && (
           <Assistant
             session={session}
+            staff={staff}
             openConversationId={pendingConversationId}
             onSessionExpired={onSessionExpired}
           />
@@ -155,6 +166,9 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
             onOpenConversation={openConversation}
             onSessionExpired={() => onSessionExpired(null)}
           />
+        )}
+        {section === 'team' && (
+          <Users session={session} staff={staff} onSessionExpired={() => onSessionExpired(null)} />
         )}
         {!active.live && <NotYet section={active} />}
       </main>

@@ -27,6 +27,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'chat', entry: 'src/functions/chat/index.ts' },
   // Stage 3 part 3 (FND-320): the memory page's write endpoint.
   { name: 'memory', entry: 'src/functions/memory/index.ts' },
+  // Stage 3 part 4 (FND-330): the users page's write endpoint.
+  { name: 'admin', entry: 'src/functions/admin/index.ts' },
 ];
 
 const BANNER = [

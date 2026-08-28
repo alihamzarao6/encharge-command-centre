@@ -20,7 +20,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Result } from '../errors.js';
 import { AppError, ConfigError, NetworkError, ensureError, err, ok } from '../errors.js';
-import type { AdminDeps, AuditWriter, AuthAdminApi, StaffStore } from './admin.js';
+import type {
+  AdminDeps,
+  AuditWriter,
+  AuthAdminApi,
+  SignInAt,
+  StaffFlagChange,
+  StaffStore,
+} from './admin.js';
 import type { Logger } from '../logger.js';
 import type { StaffRow, VerifyDeps } from './verify.js';
 
@@ -171,7 +178,27 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     // Stage 3 part 2 (migration 20260827010000): the fact write path and the chunk search.
+    // Stage 3 part 4 (migration 20260828010000): the two staff-flag writes that hold the
+    // last-admin invariant under an advisory lock, and the one-transaction conversation
+    // delete. All three are service_role-only by grant.
     Functions: {
+      set_staff_active: {
+        Args: { p_user_id: string; p_active: boolean };
+        Returns: { changed: boolean; active_admins: number }[];
+      };
+      set_staff_admin: {
+        Args: { p_user_id: string; p_is_admin: boolean };
+        Returns: { changed: boolean; active_admins: number }[];
+      };
+      delete_conversation: {
+        Args: { p_conversation_id: string; p_actor: string };
+        Returns: {
+          already: boolean;
+          messages_deleted: number;
+          chunks_tombstoned: number;
+          facts_unlinked: number;
+        }[];
+      };
       upsert_memory_fact: {
         Args: {
           p_user_id: string;
@@ -294,6 +321,20 @@ function mapSupabaseError(error: SupabaseErrorLike, operation: string): AppError
       context: { operation, supabaseCode: error.code },
     });
   }
+  // Stage 3 part 4: set_staff_active / set_staff_admin raise 23514 for the two things they
+  // refuse — leaving the workspace with no administrator, and promoting someone who cannot
+  // sign in. They are authorization outcomes, not transport failures, and the sentence they
+  // carry is the one written for the person (the SQL wording matches access.ts's intent).
+  if (error.code === '23514') {
+    const lastAdmin = error.message.includes('at least one active administrator');
+    return new AppError(
+      'FORBIDDEN',
+      lastAdmin
+        ? 'The Command Centre must always have at least one administrator. Make someone else an administrator first.'
+        : 'This person no longer has access. Restore their access first.',
+      { context: { operation, reason: lastAdmin ? 'last_admin' : 'inactive_target' } },
+    );
+  }
   return new AppError('HTTP_STATUS', `${operation}: ${error.message}`, {
     context: { operation, supabaseCode: error.code ?? null, status: error.status ?? null },
   });
@@ -309,6 +350,9 @@ function mapThrown(caught: unknown, operation: string): AppError {
 // ---------------------------------------------------------------------------------------
 
 const STAFF_COLUMNS = 'user_id, email, role, is_active, is_admin';
+
+/** 5 pages × 200 = 1,000 auth accounts. See lastSignIns for why that is the right shape. */
+const AUTH_USER_PAGE_LIMIT = 5;
 
 export function supabaseVerifyDeps(client: ServiceClient): VerifyDeps {
   return {
@@ -362,6 +406,38 @@ async function getStaffRowBy(
   }
 }
 
+/**
+ * Both flag writes go through their database function rather than a plain UPDATE. The
+ * function is where the last-admin invariant can actually hold: two admins demoting each
+ * other at the same moment both read "two admins" under READ COMMITTED and both pass, so
+ * the two writes take a shared advisory lock and the second one is refused (migration
+ * 20260828010000). A plain UPDATE from here could not do that.
+ */
+async function staffFlagRpc(
+  client: ServiceClient,
+  operation: 'set_staff_active' | 'set_staff_admin',
+  args: { p_user_id: string; p_active: boolean } | { p_user_id: string; p_is_admin: boolean },
+): Promise<Result<StaffFlagChange>> {
+  try {
+    const { data, error } =
+      operation === 'set_staff_active'
+        ? await client.rpc(operation, args as { p_user_id: string; p_active: boolean })
+        : await client.rpc(operation, args as { p_user_id: string; p_is_admin: boolean });
+    if (error !== null) {
+      return err(mapSupabaseError(error, operation));
+    }
+    const row = data[0];
+    if (row === undefined) {
+      return err(
+        new AppError('INTERNAL', `${operation}: returned no row`, { context: { operation } }),
+      );
+    }
+    return ok({ changed: row.changed, activeAdmins: row.active_admins });
+  } catch (caught: unknown) {
+    return err(mapThrown(caught, operation));
+  }
+}
+
 export function supabaseStaffStore(client: ServiceClient): StaffStore {
   return {
     getByEmail: async (email) => getStaffRowBy(client, 'email', email),
@@ -377,18 +453,25 @@ export function supabaseStaffStore(client: ServiceClient): StaffStore {
         return err(mapThrown(caught, 'app_users.insert'));
       }
     },
-    setActive: async (userId, active) => {
+    setActive: async (userId, active) =>
+      staffFlagRpc(client, 'set_staff_active', { p_user_id: userId, p_active: active }),
+    setAdmin: async (userId, admin) =>
+      staffFlagRpc(client, 'set_staff_admin', { p_user_id: userId, p_is_admin: admin }),
+    list: async () => {
       try {
-        const { error } = await client
+        // One workspace, tens of people: an unpaged read with a generous ceiling is honest
+        // here, and a ceiling that is ever reached would be a different product.
+        const { data, error } = await client
           .from('app_users')
-          .update({ is_active: active })
-          .eq('user_id', userId);
+          .select(STAFF_COLUMNS)
+          .order('email', { ascending: true })
+          .limit(1000);
         if (error !== null) {
-          return err(mapSupabaseError(error, 'app_users.setActive'));
+          return err(mapSupabaseError(error, 'app_users.list'));
         }
-        return ok(undefined);
+        return ok(data);
       } catch (caught: unknown) {
-        return err(mapThrown(caught, 'app_users.setActive'));
+        return err(mapThrown(caught, 'app_users.list'));
       }
     },
   };
@@ -434,6 +517,27 @@ export function supabaseAuthAdminApi(client: ServiceClient): AuthAdminApi {
         return ok(undefined);
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'auth.admin.setBanned'));
+      }
+    },
+    lastSignIns: async () => {
+      try {
+        const out: SignInAt[] = [];
+        // Paged, with a hard ceiling: this is a brokerage's staff list, not a directory. If
+        // the ceiling were ever reached the page would be showing a truncated roster, so it
+        // is set an order of magnitude above the number the client has described (35).
+        for (let page = 1; page <= AUTH_USER_PAGE_LIMIT; page += 1) {
+          const { data, error } = await client.auth.admin.listUsers({ page, perPage: 200 });
+          if (error !== null) {
+            return err(mapSupabaseError(error, 'auth.admin.listUsers'));
+          }
+          for (const user of data.users) {
+            out.push({ userId: user.id, lastSignInAt: user.last_sign_in_at ?? null });
+          }
+          if (data.users.length < 200) break;
+        }
+        return ok(out);
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'auth.admin.listUsers'));
       }
     },
   };

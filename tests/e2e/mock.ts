@@ -1,7 +1,7 @@
 /**
  * A scripted Supabase for the browser tests. Intercepts every request the built app makes —
  * GoTrue (sign-in, session, sign-out), PostgREST (app_users, conversations, messages,
- * memory_facts, memory_chunks) and the two Edge Functions — and answers from an in-memory
+ * memory_facts, memory_chunks) and the three Edge Functions — and answers from an in-memory
  * script. Nothing leaves the machine; the app cannot tell the difference because the URLs and
  * shapes are the real ones.
  *
@@ -102,11 +102,25 @@ export interface ScriptedChunk {
   deleted_at: string | null;
 }
 
+/** Stage 3 part 4: a colleague on the roster the users page lists. */
+export interface ScriptedStaff {
+  user_id: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+}
+
 export interface MockOptions {
   /** 'active' → app_users row readable; 'deactivated' → zero rows (RLS); 'banned' → GoTrue refuses. */
   account?: 'active' | 'deactivated' | 'banned' | 'wrong-password';
   admin?: boolean;
-  conversations?: { id: string; title: string | null; last_active_at: string }[];
+  /** Everyone BESIDES the signed-in user. Their own row is always present when active. */
+  roster?: ScriptedStaff[];
+  /** Force one status/body from the admin endpoint instead of the faithful default. */
+  adminFailure?: { status: number; body: unknown };
+  conversations?: { id: string; title: string | null; last_active_at: string; user_id?: string }[];
   messages?: Record<string, ScriptedMessage[]>;
   chat?: ChatScript;
   facts?: ScriptedFact[];
@@ -121,10 +135,22 @@ export interface MockState {
   signOuts: number;
   /** Every POST to /functions/v1/memory — the only sanctioned way memory changes. */
   readonly memoryCalls: { body: Record<string, unknown>; authorization: string | null }[];
-  /** Any non-GET/HEAD request to PostgREST. Part C item 6: this must stay empty. */
+  /** Every POST to /functions/v1/admin — the only sanctioned way an account changes. */
+  readonly adminCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  /** Any non-GET/HEAD request to PostgREST. This must stay empty in every test. */
   readonly postgrestWrites: { method: string; path: string }[];
   readonly facts: ScriptedFact[];
   readonly chunks: ScriptedChunk[];
+  readonly staff: ScriptedStaff[];
+  readonly conversations: {
+    id: string;
+    title: string | null;
+    last_active_at: string;
+    user_id?: string;
+    deleted_at?: string | null;
+  }[];
+  /** Every password the scripted admin endpoint has generated, so a test can look for leaks. */
+  readonly issuedPasswords: string[];
 }
 
 function json(
@@ -163,19 +189,31 @@ function sessionBody(): unknown {
 
 export async function installMock(page: Page, options: MockOptions = {}): Promise<MockState> {
   const account = options.account ?? 'active';
-  const conversations = options.conversations ?? [];
   const messages = options.messages ?? {};
+  const me: ScriptedStaff = {
+    user_id: USER_ID,
+    email: EMAIL,
+    role: 'staff',
+    is_active: true,
+    is_admin: options.admin === true,
+    created_at: '2026-08-01T02:00:00Z',
+  };
   const state: MockState = {
     chatCalls: [],
     anthropicCalls: 0,
     signOuts: 0,
     memoryCalls: [],
+    adminCalls: [],
     postgrestWrites: [],
     facts: [...(options.facts ?? [])],
     chunks: [...(options.chunks ?? [])],
+    staff: [me, ...(options.roster ?? [])],
+    conversations: (options.conversations ?? []).map((c) => ({ deleted_at: null, ...c })),
+    issuedPasswords: [],
   };
   let chatCall = 0;
   let newRow = 0;
+  let newPerson = 0;
 
   // The assertion behind Part C item 2 and PHASE-ACCEPTANCE item 6: the browser never
   // talks to Anthropic. Any request there is counted and refused.
@@ -246,18 +284,11 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     }
 
     if (path === '/rest/v1/app_users') {
-      const rows =
-        account === 'active'
-          ? [
-              {
-                user_id: USER_ID,
-                email: EMAIL,
-                role: 'staff',
-                is_active: true,
-                is_admin: options.admin === true,
-              },
-            ]
-          : [];
+      // A deactivated account reads ZERO rows — including its own. That is RLS, and it is
+      // what App.tsx's sign-in check depends on (migration 20260828010000 kept it true).
+      // An active one reads the whole roster: that is the part-4 widening, and nothing more.
+      const single = url.search.includes(`user_id=eq.${USER_ID}`);
+      const rows = account !== 'active' ? [] : single ? [me] : state.staff;
       await json(route, 200, rows);
       return;
     }
@@ -265,7 +296,15 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       await json(
         route,
         200,
-        conversations.map((c) => ({ ...c, scope: 'workspace', user_id: USER_ID })),
+        state.conversations
+          .filter((c) => (c.deleted_at ?? null) === null)
+          .map((c) => ({
+            id: c.id,
+            title: c.title,
+            last_active_at: c.last_active_at,
+            scope: 'workspace',
+            user_id: c.user_id ?? USER_ID,
+          })),
       );
       return;
     }
@@ -355,6 +394,55 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         await json(route, 200, { action: 'forget', outcome: 'forgotten', factId: row.id });
         return;
       }
+      if (action === 'rename_conversation') {
+        const row = state.conversations.find((c) => c.id === body['conversationId']);
+        if (row === undefined) {
+          await json(route, 404, {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'That conversation is no longer there.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        const title = String(body['title']).trim();
+        const unchanged = row.title === title;
+        row.title = title;
+        await json(route, 200, {
+          action,
+          outcome: unchanged ? 'unchanged' : 'renamed',
+          conversationId: row.id,
+          title,
+        });
+        return;
+      }
+      if (action === 'delete_conversation') {
+        const row = state.conversations.find((c) => c.id === body['conversationId']);
+        const already = row === undefined || (row.deleted_at ?? null) !== null;
+        // Faithful to the transaction: the conversation is soft-deleted, its conversation
+        // notes are tombstoned, and standing notes are untouched.
+        let tombstoned = 0;
+        if (row !== undefined && !already) {
+          row.deleted_at = now;
+          for (const chunk of state.chunks) {
+            if (chunk.conversation_id === row.id && chunk.deleted_at === null) {
+              chunk.deleted_at = now;
+              chunk.summary = '(removed from memory by a user)';
+              chunk.audience = null;
+              tombstoned += 1;
+            }
+          }
+        }
+        await json(route, 200, {
+          action,
+          outcome: already ? 'already' : 'deleted',
+          conversationId: String(body['conversationId']),
+          messagesDeleted: already ? 0 : 2,
+          chunksTombstoned: tombstoned,
+        });
+        return;
+      }
       if (action === 'delete_chunk') {
         const row = state.chunks.find((c) => c.id === body['chunkId']);
         if (row !== undefined) row.deleted_at = now;
@@ -368,6 +456,157 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       await json(route, 400, {
         error: { code: 'BAD_REQUEST', message: 'unknown action', retryable: false },
       });
+      return;
+    }
+
+    // ---- the admin Edge Function (Stage 3 part 4) ----
+    // Faithful to src/lib/auth/page.ts on everything the interface depends on: admin-only,
+    // a one-time password returned exactly once, idempotent flag writes, and the refusals
+    // that keep the workspace from reaching zero administrators.
+    if (path === '/functions/v1/admin' && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.adminCalls.push({
+        body,
+        authorization: request.headers()['authorization'] ?? null,
+      });
+      if (options.adminFailure !== undefined) {
+        await json(route, options.adminFailure.status, options.adminFailure.body);
+        return;
+      }
+      const refuse = (status: number, code: string, message: string): Promise<void> =>
+        json(route, status, { error: { code, message, retryable: false } });
+
+      if (!me.is_admin) {
+        await refuse(403, 'NOT_ADMIN', 'Only an administrator can add or change people.');
+        return;
+      }
+      const action = body['action'];
+      const activeAdmins = (): number =>
+        state.staff.filter((u) => u.is_active && u.is_admin).length;
+
+      if (action === 'sign_ins') {
+        await json(route, 200, {
+          action,
+          signIns: state.staff.map((u) => ({
+            userId: u.user_id,
+            lastSignInAt: u.user_id === USER_ID ? '2026-08-27T01:00:00Z' : null,
+          })),
+        });
+        return;
+      }
+      if (action === 'create') {
+        const raw = body['email'];
+        const email = (typeof raw === 'string' ? raw : '').trim().toLowerCase();
+        if (email === '') {
+          await refuse(400, 'BAD_REQUEST', 'Enter their email address.');
+          return;
+        }
+        if (state.staff.some((u) => u.email === email)) {
+          await refuse(
+            409,
+            'ALREADY_EXISTS',
+            'Someone with that email address is already on the list. Look for them below — they may just need their access restored.',
+          );
+          return;
+        }
+        newPerson += 1;
+        const userId = `e2e00000-0000-4000-8000-00000000000${String(newPerson)}`;
+        const password = `Zx7Kp2Qm9Rt4Vn6Ws8Yb3Hd${String(newPerson)}`.slice(0, 24);
+        state.issuedPasswords.push(password);
+        state.staff.push({
+          user_id: userId,
+          email,
+          role: 'staff',
+          is_active: true,
+          is_admin: false,
+          created_at: new Date().toISOString(),
+        });
+        await json(route, 200, { action, userId, email, oneTimePassword: password });
+        return;
+      }
+
+      const target = state.staff.find((u) => u.user_id === body['userId']);
+      if (target === undefined) {
+        await refuse(400, 'BAD_REQUEST', 'userId must be a UUID.');
+        return;
+      }
+      if (action === 'reset_password') {
+        if (!target.is_active) {
+          await refuse(
+            403,
+            'INACTIVE_TARGET',
+            'This person no longer has access. Restore their access first.',
+          );
+          return;
+        }
+        const password = `Nq5Jw8Ct3Fy6Lm2Pd9Sb4Kg${String(state.issuedPasswords.length + 1)}`.slice(
+          0,
+          24,
+        );
+        state.issuedPasswords.push(password);
+        await json(route, 200, {
+          action,
+          userId: target.user_id,
+          email: target.email,
+          oneTimePassword: password,
+        });
+        return;
+      }
+      if (
+        action === 'deactivate' ||
+        action === 'reactivate' ||
+        action === 'promote' ||
+        action === 'demote'
+      ) {
+        if (action === 'deactivate' && target.user_id === USER_ID) {
+          await refuse(
+            403,
+            'SELF_DEACTIVATION',
+            'You cannot remove your own access. Ask another administrator to do it for you.',
+          );
+          return;
+        }
+        if (action === 'demote' && target.user_id === USER_ID) {
+          await refuse(
+            403,
+            'SELF_DEMOTION',
+            'You cannot remove your own administrator rights. Ask another administrator to do it.',
+          );
+          return;
+        }
+        const removesAnAdmin =
+          (action === 'deactivate' || action === 'demote') && target.is_admin && target.is_active;
+        if (removesAnAdmin && activeAdmins() <= 1) {
+          await refuse(
+            403,
+            'LAST_ADMIN',
+            'The Command Centre must always have at least one administrator. Make someone else an administrator first.',
+          );
+          return;
+        }
+        if (action === 'promote' && !target.is_active) {
+          await refuse(
+            403,
+            'INACTIVE_TARGET',
+            'This person no longer has access. Restore their access first.',
+          );
+          return;
+        }
+        const before =
+          action === 'promote' || action === 'demote' ? target.is_admin : target.is_active;
+        const after = action === 'promote' || action === 'reactivate';
+        if (action === 'promote' || action === 'demote') target.is_admin = after;
+        else target.is_active = after;
+        await json(route, 200, {
+          action,
+          outcome: before === after ? 'unchanged' : 'changed',
+          userId: target.user_id,
+          email: target.email,
+          activeAdmins: activeAdmins(),
+        });
+        return;
+      }
+      await refuse(400, 'BAD_REQUEST', 'action must be one of create, deactivate, …');
       return;
     }
 

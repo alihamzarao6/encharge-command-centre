@@ -37,7 +37,7 @@ function sessionStorageOrNull(): Storage | null {
 async function verifyStaff(session: Session): Promise<AppUserRow | 'refused' | 'unavailable'> {
   const { data, error } = await supabase
     .from('app_users')
-    .select('user_id, email, role, is_active, is_admin')
+    .select('user_id, email, role, is_active, is_admin, created_at')
     .eq('user_id', session.user.id)
     .limit(1);
   if (error !== null) return 'unavailable';

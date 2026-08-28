@@ -1,5 +1,10 @@
 /**
- * The four calls the memory page makes that CHANGE something: POST our memory endpoint.
+ * Every call that CHANGES something the workspace has stored: POST our memory endpoint.
+ * Four for the Memory page (add, edit, forget, delete a conversation note) and, since
+ * Stage 3 part 4, two for the conversations themselves (rename, delete) — the same endpoint
+ * because a conversation is the container the other two live in and the rule about who may
+ * remove one is literally the same function.
+ *
  * Reading is a plain PostgREST select under RLS (see supabase.ts) and never comes through
  * here — the browser holds the anon key and a session, which grant SELECT and nothing else,
  * so a change has to be made by a server that has verified who is asking.
@@ -14,7 +19,13 @@ export type MemoryRequest =
   | { readonly action: 'add'; readonly text: string }
   | { readonly action: 'edit'; readonly factId: string; readonly value: string }
   | { readonly action: 'forget'; readonly factId: string }
-  | { readonly action: 'delete_chunk'; readonly chunkId: string };
+  | { readonly action: 'delete_chunk'; readonly chunkId: string }
+  | {
+      readonly action: 'rename_conversation';
+      readonly conversationId: string;
+      readonly title: string;
+    }
+  | { readonly action: 'delete_conversation'; readonly conversationId: string };
 
 /** What the server did. `declined` is a normal answer, not a failure: it was understood. */
 export type MemoryReply =
@@ -43,6 +54,19 @@ export type MemoryReply =
       readonly action: 'delete_chunk';
       readonly outcome: 'deleted' | 'already';
       readonly chunkId: string;
+    }
+  | {
+      readonly action: 'rename_conversation';
+      readonly outcome: 'renamed' | 'unchanged';
+      readonly conversationId: string;
+      readonly title: string;
+    }
+  | {
+      readonly action: 'delete_conversation';
+      readonly outcome: 'deleted' | 'already';
+      readonly conversationId: string;
+      readonly messagesDeleted: number;
+      readonly chunksTombstoned: number;
     };
 
 export interface MemorySuccess {
@@ -86,6 +110,7 @@ export const MEMORY_MESSAGES = {
   timeout: 'That took too long. Nothing was changed — try again.',
   unknown: 'Something went wrong on our side. Nothing was changed — try again.',
   gone: 'That note is no longer there. Refresh to see what memory holds now.',
+  conversationGone: 'That conversation is no longer there.',
 } as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -124,6 +149,26 @@ function readReply(body: unknown): MemoryReply | null {
   if (action === 'delete_chunk' && (outcome === 'deleted' || outcome === 'already')) {
     const chunkId = str('chunkId');
     return chunkId === null ? null : { action, outcome, chunkId };
+  }
+  if (action === 'rename_conversation' && (outcome === 'renamed' || outcome === 'unchanged')) {
+    const conversationId = str('conversationId');
+    const title = str('title');
+    return conversationId === null || title === null
+      ? null
+      : { action, outcome, conversationId, title };
+  }
+  if (action === 'delete_conversation' && (outcome === 'deleted' || outcome === 'already')) {
+    const conversationId = str('conversationId');
+    const messagesDeleted = body['messagesDeleted'];
+    const chunksTombstoned = body['chunksTombstoned'];
+    if (
+      conversationId === null ||
+      typeof messagesDeleted !== 'number' ||
+      typeof chunksTombstoned !== 'number'
+    ) {
+      return null;
+    }
+    return { action, outcome, conversationId, messagesDeleted, chunksTombstoned };
   }
   return null;
 }
