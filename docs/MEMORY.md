@@ -174,12 +174,17 @@ mentions the conversation. **Run 33261767108 (`28324fc`) is fully green:** unit 
 `db reset --local` from zero with 16 migrations, integration 75/75 (privacy 12/12), security
 37/37, browser 177/177, zero skipped.
 
-**Applied live.** `supabase db push --linked` applied `20260829010000`; the ledger now reads
-`local 20260829010000 / remote 20260829010000`. **Still outstanding:** an object-level look at
-the live trigger, function and constraint, and a live functional pass — `supabase db dump`
-needs Docker and the MCP is down, so the evidence today is the ledger (which only records a
-migration whose statements committed) plus CI's from-zero replay of the identical file. Both
-belong with the acceptance run, where privacy has to be demonstrated live anyway.
+**Applied live, merged, and proven live.** `supabase db push --linked` applied
+`20260829010000`; `main` was fast-forwarded to `4052ae7` so the repo and the live schema are in
+step (a deploy from a `main` that predates the migration would ship code the database does not
+match). Then two live passes, because neither `db dump` nor the MCP was available: the OBJECTS
+read straight out of the live catalogs through the Management API query endpoint — the chunk
+trigger present and forcing the constant, the message trigger still copying the parent, the
+cascade carrying scope to messages and only `user_id` to chunks, `memory_chunks_scope_workspace`
+present with `convalidated = true`, and neither policy mentioning `is_admin` — and the
+BEHAVIOUR, 27 assertions against the live project with three throwaway accounts and real
+signed-in sessions, all passed, every fixture removed afterwards and the tables re-counted to
+prove it. Details in PHASE-ACCEPTANCE.
 
 **Next:** Part B — the twelve Stage 2 criteria re-run, the Stage 3 criteria, the real
 per-turn cost, the recall rate, and the client sign-off material.

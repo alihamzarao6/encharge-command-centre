@@ -368,11 +368,38 @@ control added (the shared sentence, same query shape, must still return one row)
 **Migration `20260829010000` is APPLIED to the live project** (`supabase db push --linked`,
 29 Aug): the CLI reported `Applying migration 20260829010000_private_conversations.sql...` and
 `supabase migration list --linked` now returns `local 20260829010000 / remote 20260829010000`.
-**Not yet done:** an object-level inspection of the live schema (the trigger, the function and
-the constraint) and a live functional pass. `supabase db dump` needs Docker and the Supabase
-MCP would not connect, so the evidence so far is the migration ledger — which only records a
-migration whose statements committed — and CI's from-zero replay of the identical file. The
-live functional check belongs with the Stage 3 acceptance run.
+**Proven LIVE, 29 Aug**, after `db push` and the merge to `main`. Two passes, because a
+migration applying cleanly is not the same as the objects being right, and neither is the same
+as the behaviour being right.
+
+**(a) The objects, read straight out of the live catalogs** (Management API query endpoint —
+`supabase db dump` needs Docker and the MCP would not connect):
+
+| Checked | Live result |
+|---|---|
+| `sync_chunk_ownership` exists and forces the constant | present · `forces_workspace` **true** · `copies_parent_scope` **false** |
+| `sync_child_ownership` still copies the parent's scope | `copies_parent_scope` **true** — messages unchanged |
+| trigger wiring | `memory_chunks → sync_chunk_ownership` · `messages → sync_child_ownership` · `conversations → cascade_conversation_ownership` |
+| the constraint | `memory_chunks_scope_workspace` · `CHECK ((scope = 'workspace'::text))` · **`convalidated = true`** (checked against every existing row, not NOT VALID) |
+| the cascade body | messages get `user_id` **and** `scope`; chunks get `user_id` **only** (`chunks_still_get_scope` **false**) |
+| the policies were not widened (D65) | `workspace_or_own_conversations` and `workspace_or_own_messages`, SELECT, **neither mentions `is_admin`** |
+| live data | 0 private chunks of 1 · 0 private conversations of 4 |
+
+**(b) The behaviour, against the live project — 27 assertions, all passed.** Three throwaway
+`example.com` accounts (author, an allowlisted non-admin outsider, an admin), one conversation
+with two messages and a chunk, one standing note; refusals proven with **real signed-in
+PostgREST sessions**, writes through the production `handleMemoryRequest`. Highlights: a chunk
+inserted deliberately as `scope='user'` **landed as `workspace`** (the live trigger, observed);
+the outsider read zero conversation rows and zero messages while still reading the shared
+conversation and the chunk (so not a vacuous pass); `match_memory_chunks` scoped to the
+outsider still returned the private conversation's note; the admin's **own** session read zero
+messages while the server path returned them and wrote `CONVERSATION_ADMIN_READ` naming them;
+the admin was refused the privacy flip with 403; three more flips moved conversation and
+messages together and never moved the chunk; the standing note was untouched. Every fixture
+was removed afterwards and the run re-counted the tables to prove it — `{"conversations":0,
+"messages":0,"chunks":0,"facts":0,"staff":0,"auth_users":0}` — and the project is back to the
+1 chunk / 4 conversations it held before. Neither action reaches Claude or Voyage, so the pass
+cost nothing.
 
 ---
 
