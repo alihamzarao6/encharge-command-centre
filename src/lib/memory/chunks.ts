@@ -42,6 +42,13 @@ export interface OrdinalMessage {
 export interface ChunkInsert {
   readonly conversationId: string;
   readonly userId: string;
+  /**
+   * Always `SHARED_MEMORY_SCOPE` since Stage 3 part 5 (R27) — a chunk of a private
+   * conversation is still workspace memory. The database says so too (the chunk trigger
+   * forces it and `memory_chunks_scope_workspace` refuses anything else); the field stays
+   * on the insert so the application states its intent rather than relying on being
+   * corrected. Do NOT wire `ConversationRef.scope` back into this.
+   */
   readonly scope: 'user' | 'workspace';
   readonly summary: string;
   /** Who the work was aimed at (review, 27 Aug); null when the summariser found none. */
@@ -53,6 +60,11 @@ export interface ChunkInsert {
 export interface ConversationRef {
   readonly id: string;
   readonly userId: string;
+  /**
+   * The CONVERSATION's own scope — whether its author made it private. Read and validated
+   * against the check constraint, and deliberately NOT what a chunk of it is written at
+   * (R27): see `ChunkInsert.scope`.
+   */
   readonly scope: 'user' | 'workspace';
   /** Embedded as the chunk's header (summarise.ts); null for an untitled conversation. */
   readonly title: string | null;

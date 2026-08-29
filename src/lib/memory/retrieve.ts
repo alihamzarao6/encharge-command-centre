@@ -255,6 +255,13 @@ export function renderRecalledContext(input: RenderInput): string {
 
 export interface RecallInput {
   readonly userId: string;
+  /**
+   * The scope a fact captured on this turn is WRITTEN at — not the conversation's. Since
+   * Stage 3 part 5 (R27) the caller always passes `SHARED_MEMORY_SCOPE`: what the assistant
+   * is told to remember reaches the whole team even when the conversation it was told in is
+   * private. The field stays a parameter rather than a constant so the day a private note
+   * is wanted, this is where it arrives.
+   */
   readonly scope: MemoryScope;
   readonly conversationId: string | null;
   readonly historyMessages: number;

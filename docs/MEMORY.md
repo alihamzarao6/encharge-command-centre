@@ -96,6 +96,11 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D59** | **Deleting a conversation: the WORDS go, the KNOWLEDGE someone chose to keep stays.** One transaction (`delete_conversation`): `conversations` soft-deleted · `messages` **permanently deleted** · `memory_chunks` tombstoned exactly as a memory-page delete tombstones one · `memory_facts` **kept live and unchanged** apart from `source_message_id`, which is nulled because the message it pointed at no longer exists | The tension is real and this is which way it falls. A person deleting a conversation means the conversation to be gone — a soft delete that leaves every message selectable by anyone holding the id would be a lie, and `messages` carries no audit trigger, so destroying them copies nothing into `audit_log` (the same reasoning that made a chunk delete content-destroying, D50). A conversation NOTE is a summary nobody asked for, and if the conversation is being deleted for what is in it, the summary is the most likely place that content survives — so it is tombstoned, keeping its `turn_range` so the range can never be re-summarised. A STANDING note is the opposite case: somebody deliberately told the business to remember it, it is workspace knowledge in its own right (D33), and it is visible and removable on the Memory page — deleting a conversation must not silently empty the brain. The confirm step says all three things before the tap, and `tests/unit/web/conversations.test.ts` reads the migration to check the sentence is still true | 28 Aug |
 | **D60** | **The Users page can promote and demote; only an admin may; renaming a conversation is open to everyone allowlisted and deleting one is the author's or an admin's** (`canRemoveMemory`, unchanged from D52) | `is_admin` has existed since `20260824020000` and until now only the seed could set it, which made every new administrator a developer's errand — the exact thing this part exists to end. Flipping one boolean that already exists is not a roles system. Conversations follow D52's shape without inventing a second rule: adding and correcting are open (naming a conversation is a correction, and nothing has ever generated a title, so renaming is the only way one has a name at all); removing is gated, because deleting a conversation destroys its messages for everybody — the strongest case for that gate, not the weakest | 28 Aug |
 | **D61** | **A conversation's displayed name is `<author's email local part> — <title>`, DERIVED at read time and never stored; `title` itself is auto-set on create from the first user message.** Renaming edits only the part after the prefix — the interface keeps it out of the field and the server strips it against the AUTHOR's email (`src/lib/memory/naming.ts`, imported by both) | Conversations are workspace-scoped (D33) and part 4 put staff on the system, so every allowlisted member now sees everyone's conversations in one list. With one user that was invisible; with twenty brokers it is a wall of identical rows nobody can attribute. The prefix is the author's, not the viewer's, so the same row reads the same to everyone — a viewer-relative "you" would make two people describing the same list disagree. Derived rather than stored because a stored prefix is stale the moment an email changes, and would owe a backfill for every row that already exists; deriving costs one roster read the page already makes (D56 widened exactly that policy). Auto-titling is literal and free — no model call for something a person fixes in one tap — and never runs again, so a rename is permanent. **Note what this makes visible:** the exposure was always there, and the prefix is what will make Ross notice it. See the open question on private conversations | 28 Aug |
+| **D62** | **R27 is answered by the client, and he chose option 2: a conversation can be PRIVATE to its author; an administrator can read anybody's; and what the assistant LEARNS still goes to the whole team.** Workspace stays the resting state and no existing conversation was migrated | His words: *"Each person's chats are their own. Nobody sees anyone else's. You, as the owner, can see everybody's. What the assistant learns still goes into the one shared brain, so the team still benefits from each other's work."* **This is not what the schema did.** Since the first migration a `memory_chunks` row took its conversation's scope by trigger, so making a conversation private made its summary private too — which is option THREE, and explicitly not what he chose. **The recommendation on file (R27, 28 Aug) said the same wrong thing** — "a private conversation stops contributing to shared recall" — and is corrected here rather than quietly dropped. Existing conversations stay workspace because that is their state, it is the resting state he chose, and moving them for him would be us making a privacy decision on somebody's behalf, silently, in the direction of less sharing than they had yesterday | 29 Aug |
+| **D63** | **Only the AUTHOR may change who sees a conversation — deliberately NOT an administrator** (`canSetConversationPrivacy`, `src/lib/memory/privacy.ts`; an admin may still rename and delete one, D52 unchanged) | The one place in this system where admin is not the wider power, and the asymmetry is the point. An admin sharing somebody's private conversation back to the team would publish that person's words to twenty colleagues in a single tap, asked for by nobody, with no undo — reading is oversight, publishing is something else. It is its own function rather than a flag on `canRemoveMemory` so the difference is legible at every call site instead of hiding in a boolean, and `tests/unit/memory/privacy.test.ts` asserts the two functions give OPPOSITE answers for the same admin on the same row | 29 Aug |
+| **D64** | **The chunk trigger is split off the message trigger and forces `scope = 'workspace'`; a check constraint backs it** (`sync_chunk_ownership`, `memory_chunks_scope_workspace`, migration `20260829010000`). The cascade still carries `user_id` + `scope` to messages, and only `user_id` to chunks. **Amends D41's scope clause; the Haiku routing and the Voyage caps are unchanged** | The alternative was a column on `conversations` saying what scope its chunks should take — rejected, because it is a second privacy dial settable independently of the first, with four combinations of which the client asked for one, and a setting that can be wrong is worse than no setting. "A chunk is workspace" is not a preference; it is what option two MEANS. What the trigger still guarantees: `user_id` is always exactly the conversation's author, in both directions, so attribution, `canRemoveMemory` and a reassigned conversation all keep working. `scope` is now a CONSTANT rather than a copy — a stronger guarantee than it had, because a copy can drift and a constant cannot. The constraint is deliberate friction: a genuinely private summary would be a client conversation and a migration, not a stray UPDATE. Existing rows: a normalising `update` runs first (expected 0 — nothing could ever set a conversation private), because a constraint added on the strength of "there cannot be any" fails on somebody's laptop at the worst moment | 29 Aug |
+| **D65** | **An administrator reads a private conversation through an AUDITED SERVER PATH, never through RLS. The policies on `conversations` and `messages` are not touched** — `admin_list_private` returns metadata with **no title** and is not audited; `admin_read_conversation` writes `CONVERSATION_ADMIN_READ` to `audit_log` BEFORE it returns a single message, and an audit write that fails refuses the read | One more `or <caller is admin>` in the policy would have been three words and made the whole existing interface work unchanged. It was rejected on one fact: **Postgres has no SELECT trigger.** An RLS bypass is invisible by construction — an owner could read every private conversation in the workspace, every day, and leave not one row anywhere saying so. Reading someone's private messages is exactly the act that should leave a trace, so it goes through the one path that can leave one. It also keeps the promise true against a stolen session: the database still refuses, whoever is asking. The listing carries no title because a title is auto-set from the first thing its author said (D61), so a titled listing would be a listing of content — that line is what lets the listing go unaudited and the read not. `rls.test.ts` 12 reads `pg_policies.qual` for both tables and fails if `is_admin` ever appears | 29 Aug |
+| **D66** | **What the assistant LEARNS is written at `SHARED_MEMORY_SCOPE` (workspace), not at the conversation's scope** — both the summariser (`trigger.ts`) and the fact capture on a turn (`chat.ts` → `retrieve.ts`). **Amends the scope clause of D41 and the `memory_facts.scope` rule in SCHEMA §4** | The brief for this part said "facts are unchanged", and the fact TABLE and its rows are. But the capture path passed `conversation.scope` into the fact write, so the moment a conversation could be private, a "remember that…" said in one would have become a private fact — starving the shared brain of exactly the notes somebody chose deliberately, which is option three arriving by the back door. It was invisible until now only because no conversation could ever be private. The column still accepts `'user'` and the CLI can still write one by hand; nothing on the chat or memory-page path does | 29 Aug |
 
 ---
 
@@ -110,6 +115,59 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-29 — [FND-340 · Stage 3 part 5, part A] Private conversations
+
+**Did:** closed **R27** with the client's own answer, which turned out not to be what the
+schema did. He chose option 2 — *each person's chats are their own, the owner can see
+everybody's, and what the assistant learns still goes into the one shared brain* — and since
+the first migration a `memory_chunks` row had taken its conversation's scope by trigger, so
+marking a conversation private would have made its summary private too. That is option
+three. Breaking that inheritance is the whole of this part.
+
+`src/lib/memory/privacy.ts` — the rules and the words, no imports, bundled into the browser
+and imported by the Edge Function, the same discipline as `access.ts` and `naming.ts`:
+`canSetConversationPrivacy` (the author's alone), `SHARED_MEMORY_SCOPE`, and
+`PRIVACY_EXPLANATION`, the sentence a person reads before the tap. Migration
+`20260829010000`: `sync_chunk_ownership` splits the chunk off `sync_child_ownership` and sets
+`scope := 'workspace'` unconditionally, `cascade_conversation_ownership` stops carrying scope
+to chunks, and `memory_chunks_scope_workspace` refuses any other value. **No policy is
+created, dropped or widened anywhere in it.** `page.ts` gains `set_conversation_privacy`
+(author only) and the two admin actions; `liveConversation` widens to admins so an admin can
+still rename and delete what they can already read. `chat.ts` and `trigger.ts` now write what
+the assistant learns at the shared scope rather than the conversation's. Browser: the toggle
+in the list row and in the thread bar, a *Just you* badge, the confirm carrying the whole
+sentence, an admin-only section listing other people's private conversations by author and
+date and by no name at all, a read-only view with a banner saying the read was recorded and
+no composer under it, and the Memory page naming a note's unreachable source as *A private
+conversation* rather than as one that was removed.
+
+**Decided:** D62 (the client's answer, and that the recommendation on file was wrong in the
+same way the schema was), D63 (the toggle is the author's, not an admin's), D64 (split the
+trigger rather than add a column, and back it with a constraint), D65 (admin access is an
+audited server path, not an RLS bypass, because Postgres has no SELECT trigger), D66 (what
+the assistant learns is written at the shared scope — the fact-capture half of this was a
+live bug the moment a conversation could be private).
+
+**Surprised by:** two things. **(1)** "Facts are unchanged" was true of the table and false
+of the path: `chat.ts` passed `conversation.scope` straight into the fact write, so the
+feature would have shipped making private conversations' explicit notes private — the exact
+outcome the client did not choose — and nothing would have reported a problem. **(2)** The
+Memory page's "A conversation that has since been removed" branch turned out to be nearly
+dead code: deleting a conversation tombstones its chunks and `buildChunkList` filters
+tombstones, so a missing source now means *private*, not *gone*. Left as it was, every
+private conversation would have produced a card telling the team something had been deleted
+when nothing had.
+
+**Not verified here:** the stack suites and `supabase db reset` from zero — no Docker on this
+machine, and the Supabase MCP failed to connect this session, so the usual rolled-back-
+transaction validation was not available either. CI's `integration` job is the evidence, and
+the migration is unapplied and unvalidated live.
+
+**Next:** Part B — the twelve Stage 2 criteria re-run, the Stage 3 criteria, the real
+per-turn cost, the recall rate, and the client sign-off material.
 
 ---
 

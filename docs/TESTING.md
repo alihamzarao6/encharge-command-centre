@@ -143,7 +143,10 @@ Coverage required:
 - Migrations replay from zero into a working schema
 - RLS suite (SECURITY.md section 6) across every table — including `memory_chunks`: a chunk
   under a workspace conversation is read by every allowlisted user with the parent's
-  ownership, a chunk under a private conversation only by its owner, none by an outsider
+  ownership. **Part 5 (R27) changed the chunk half:** a chunk under a private conversation is
+  workspace-scoped and readable by every allowlisted teammate, while not one word of that
+  conversation's `messages` is — that split is the client's own decision and `rls.test.ts`
+  4b/5/11/12 assert both sides of it
 - **Memory layer (`tests/integration/memory.test.ts`, Stage 3 part 1):** ten messages →
   exactly one chunk with `turn_range [1,11)`; the same run again → still one, no fetch, no
   new `api_usage` row; the stored vector is 1,024-d with a non-zero norm; one `voyage` and

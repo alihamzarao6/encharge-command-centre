@@ -7,6 +7,14 @@
  * A message that fails stays on screen as a failed bubble with the reason and a Retry that
  * resends the same text; it is never silently dropped. A 401 keeps the text and hands it
  * across the login screen (App.onSessionExpired).
+ *
+ * Stage 3 part 5 (R27) adds two things to this section. The author's own privacy control,
+ * in the list row and in the thread bar, with the whole sentence — including the half about
+ * summaries still being shared — shown BEFORE the change, not after. And, for an
+ * administrator only, a read-only view of somebody else's private conversation: its messages
+ * do not come from PostgREST (RLS refuses them, deliberately) but from the memory endpoint,
+ * which writes an audit row every time. There is no composer under it. An admin reads; they
+ * do not join in.
  */
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -21,17 +29,27 @@ import {
 
 import type { MemoryActor } from '../../../src/lib/memory/access.js';
 import {
+  conversationDisplayName,
   CONVERSATION_PREFIX_SEPARATOR,
   CONVERSATION_TITLE_MAX_CHARS,
 } from '../../../src/lib/memory/naming.js';
-import { buildConversationList } from '../lib/conversationsView.js';
+import {
+  buildConversationList,
+  formatWhen,
+  MAKE_PRIVATE_CONFIRM,
+  MAKE_SHARED_CONFIRM,
+  PRIVACY_EXPLANATION,
+  PRIVACY_NOTICE,
+  PRIVACY_TOGGLE_LABEL,
+  SHARED_EXPLANATION,
+} from '../lib/conversationsView.js';
 import { streamTurn, type ChatFailure } from '../lib/chatApi.js';
 import { webConfig } from '../lib/env.js';
 import { loadDraft, saveDraft, takePending, type PendingDraft } from '../lib/draft.js';
-import { callMemory, type MemoryRequest } from '../lib/memoryApi.js';
+import { callMemory, type MemoryRequest, type MemoryReply } from '../lib/memoryApi.js';
 import { supabase, type AppUserRow, type ConversationListRow } from '../lib/supabase.js';
 import { Composer } from './Composer.js';
-import { ConversationList } from './ConversationList.js';
+import { ConversationList, type AdminPrivateRow } from './ConversationList.js';
 import { Thread, type LocalMessage } from './Thread.js';
 
 interface Props {
@@ -87,6 +105,17 @@ export function Assistant({
   const [managing, setManaging] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  // Stage 3 part 5 (R27), admin only. `adminRows` is the metadata listing (no titles);
+  // `adminReading` is one conversation actually opened, which cost an audit row on the
+  // server. Held here rather than in the list because the thread pane is what renders it.
+  const [adminRows, setAdminRows] = useState<readonly AdminPrivateRow[]>([]);
+  const [adminState, setAdminState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [adminReading, setAdminReading] = useState<{
+    readonly conversationId: string;
+    readonly name: string;
+    readonly messages: readonly LocalMessage[];
+  } | null>(null);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const pendingRestored = useRef(false);
 
   const actor: MemoryActor = useMemo(
@@ -168,6 +197,10 @@ export function Assistant({
   const selectConversation = useCallback(
     (id: string | null): void => {
       saveDraft(storage(), activeId, draft);
+      // Leaving an administrator's read of someone else's private conversation. Nothing to
+      // save and nothing to keep: the messages were never this person's to hold on to.
+      setAdminReading(null);
+      setPrivacyOpen(false);
       setActiveId(id);
       setSheetOpen(false);
       setDraft(loadDraft(storage(), id));
@@ -302,9 +335,13 @@ export function Assistant({
     setMessages((current) => current.filter((m) => m.localId !== localId));
   }, []);
 
-  /** One conversation change, through the same verified endpoint every other write uses. */
+  /**
+   * One call to the verified endpoint every conversation change uses — and, since part 5,
+   * the two admin READS as well, because a read that has to be audited cannot come from
+   * PostgREST. Returns the reply rather than a boolean so the caller can use what came back.
+   */
   const manage = useCallback(
-    async (request: MemoryRequest, conversationId: string): Promise<boolean> => {
+    async (request: MemoryRequest, conversationId: string | null): Promise<MemoryReply | null> => {
       setManaging(conversationId);
       setNotice(null);
       const { data } = await supabase.auth.getSession();
@@ -322,14 +359,14 @@ export function Assistant({
       if (outcome.kind === 'error') {
         if (outcome.failure === 'unauthenticated') {
           await onSessionExpired(null);
-          return false;
+          return null;
         }
         setNotice(outcome.message);
         // Someone else got there first: the list on screen is describing a past.
         if (outcome.failure === 'stale') void loadConversations();
-        return false;
+        return null;
       }
-      return true;
+      return outcome.reply;
     },
     [loadConversations, onSessionExpired, session.access_token],
   );
@@ -340,7 +377,7 @@ export function Assistant({
         { action: 'rename_conversation', conversationId, title: newTitle },
         conversationId,
       );
-      if (!done) return;
+      if (done === null) return;
       await loadConversations();
     },
     [loadConversations, manage],
@@ -349,7 +386,7 @@ export function Assistant({
   const deleteConversation = useCallback(
     async (conversationId: string): Promise<void> => {
       const done = await manage({ action: 'delete_conversation', conversationId }, conversationId);
-      if (!done) return;
+      if (done === null) return;
       // Whatever was on screen is now describing rows that are gone.
       if (conversationId === activeId) {
         setActiveId(null);
@@ -364,6 +401,71 @@ export function Assistant({
     [activeId, loadConversations, manage],
   );
 
+  /**
+   * R27. The author's own toggle, through the same verified endpoint. The list is reloaded
+   * afterwards rather than patched in place: `scope` cascades to `messages` in the database,
+   * so what is on screen after the change should be what the database actually holds.
+   */
+  const setPrivacy = useCallback(
+    async (conversationId: string, isPrivate: boolean): Promise<void> => {
+      const done = await manage(
+        { action: 'set_conversation_privacy', conversationId, isPrivate },
+        conversationId,
+      );
+      if (done === null) return;
+      setNotice(isPrivate ? PRIVACY_NOTICE.nowPrivate : PRIVACY_NOTICE.nowShared);
+      await loadConversations();
+    },
+    [loadConversations, manage],
+  );
+
+  /** Admin only: the metadata listing. No titles come back, by design. */
+  const loadPrivate = useCallback(async (): Promise<void> => {
+    setAdminState('loading');
+    const reply = await manage({ action: 'admin_list_private' }, null);
+    if (reply?.action !== 'admin_list_private') {
+      setAdminState('error');
+      return;
+    }
+    setAdminRows(
+      reply.conversations.map((row) => ({
+        id: row.id,
+        author: row.authorEmail?.split('@')[0] ?? 'Someone',
+        when: formatWhen(row.lastActiveAt),
+      })),
+    );
+    setAdminState('ready');
+  }, [manage]);
+
+  /**
+   * Admin only: open one. This is the call that writes CONVERSATION_ADMIN_READ, so it is
+   * made once, deliberately, when a person taps a row — never on a list render.
+   */
+  const openPrivate = useCallback(
+    async (conversationId: string): Promise<void> => {
+      const reply = await manage(
+        { action: 'admin_read_conversation', conversationId },
+        conversationId,
+      );
+      if (reply?.action !== 'admin_read_conversation') return;
+      setSheetOpen(false);
+      setActiveId(null);
+      setMessages([]);
+      setAdminReading({
+        conversationId,
+        name: conversationDisplayName(reply.title, reply.authorEmail),
+        messages: reply.messages.map((m) => ({
+          localId: m.id,
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          status: 'saved' as const,
+        })),
+      });
+    },
+    [manage],
+  );
+
   const views = useMemo(
     () => buildConversationList(conversations, emailsById),
     [conversations, emailsById],
@@ -371,7 +473,10 @@ export function Assistant({
   const active = views.find((c) => c.id === activeId) ?? null;
   // The header shows exactly what the list shows, prefix and all — a conversation must not
   // be called two different things one tap apart.
-  const title = active?.displayName ?? (activeId === null ? 'New conversation' : 'Conversation');
+  const title =
+    adminReading?.name ??
+    active?.displayName ??
+    (activeId === null ? 'New conversation' : 'Conversation');
 
   const submitRename = (event: SyntheticEvent): void => {
     event.preventDefault();
@@ -402,6 +507,15 @@ export function Assistant({
         }}
         onRename={renameConversation}
         onDelete={deleteConversation}
+        onSetPrivacy={setPrivacy}
+        privateRows={adminRows}
+        privateState={adminState}
+        onLoadPrivate={() => {
+          void loadPrivate();
+        }}
+        onOpenPrivate={(id) => {
+          void openPrivate(id);
+        }}
       />
       <section className="thread-pane" aria-label="Assistant conversation">
         <div className="thread-pane__bar">
@@ -457,7 +571,7 @@ export function Assistant({
               <h1 className="thread-pane__title" title={title}>
                 {title}
               </h1>
-              {activeId !== null && (
+              {activeId !== null && adminReading === null && (
                 <button
                   className="button button--ghost button--small"
                   type="button"
@@ -466,6 +580,23 @@ export function Assistant({
                   }}
                 >
                   Rename
+                </button>
+              )}
+              {/* R27: the author's own control, in the thread as well as the list, because
+                  this is where a person is when they realise the conversation should not
+                  have been shared. */}
+              {active !== null && active.authorId === actor.userId && (
+                <button
+                  className="button button--ghost button--small thread-pane__privacy"
+                  type="button"
+                  aria-expanded={privacyOpen}
+                  onClick={() => {
+                    setPrivacyOpen((open) => !open);
+                  }}
+                >
+                  {active.isPrivate
+                    ? PRIVACY_TOGGLE_LABEL.makeShared
+                    : PRIVACY_TOGGLE_LABEL.makePrivate}
                 </button>
               )}
             </>
@@ -490,21 +621,77 @@ export function Assistant({
             {notice}
           </p>
         )}
+        {/* An administrator is reading somebody else's conversation. Say so, say it was
+            recorded, and give one way out. Nothing here is editable and there is no
+            composer below — an admin reads, and does not join in. */}
+        {adminReading !== null && (
+          <div className="notice thread-pane__notice" role="status">
+            <p>
+              You are reading a private conversation because you are an administrator. It belongs to
+              the person who started it, and this has been recorded.
+            </p>
+            <button
+              className="button button--small"
+              type="button"
+              onClick={() => {
+                selectConversation(null);
+              }}
+            >
+              Close it
+            </button>
+          </div>
+        )}
+        {privacyOpen && active !== null && active.authorId === actor.userId && (
+          <div className="notice thread-pane__notice" role="alert">
+            <p>{active.isPrivate ? PRIVACY_EXPLANATION : SHARED_EXPLANATION}</p>
+            <p>{active.isPrivate ? MAKE_SHARED_CONFIRM : MAKE_PRIVATE_CONFIRM}</p>
+            <div className="mem__row">
+              <button
+                className="button button--primary button--small"
+                type="button"
+                disabled={managing !== null}
+                onClick={() => {
+                  void setPrivacy(active.id, !active.isPrivate).then(() => {
+                    setPrivacyOpen(false);
+                  });
+                }}
+              >
+                {managing !== null
+                  ? 'Saving…'
+                  : active.isPrivate
+                    ? PRIVACY_TOGGLE_LABEL.makeShared
+                    : PRIVACY_TOGGLE_LABEL.makePrivate}
+              </button>
+              <button
+                className="button button--small"
+                type="button"
+                disabled={managing !== null}
+                onClick={() => {
+                  setPrivacyOpen(false);
+                }}
+              >
+                Leave it as it is
+              </button>
+            </div>
+          </div>
+        )}
         <Thread
-          messages={messages}
-          state={threadState}
-          waiting={waiting}
+          messages={adminReading === null ? messages : [...adminReading.messages]}
+          state={adminReading === null ? threadState : 'idle'}
+          waiting={adminReading === null && waiting}
           onRetry={retry}
           onDiscard={discardFailed}
         />
-        <Composer
-          value={draft}
-          disabled={sending}
-          onChange={onDraftChange}
-          onSend={() => {
-            void send(draft, null);
-          }}
-        />
+        {adminReading === null && (
+          <Composer
+            value={draft}
+            disabled={sending}
+            onChange={onDraftChange}
+            onSend={() => {
+              void send(draft, null);
+            }}
+          />
+        )}
       </section>
     </div>
   );

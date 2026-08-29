@@ -510,6 +510,15 @@ p {
   background: var(--surface);
 }
 
+/* Phone: the thread bar cannot hold a fifth control without collapsing the title to nothing
+   — a real regression the conversations and memory suites caught. The SAME toggle is on the
+   conversation's row in the list at every width, so nothing is out of reach; this is the
+   convenience copy, shown from 768 in the breakpoint below. Declared here rather than at the
+   end of the file so the media-query override, which comes later, actually wins. */
+.thread-pane__privacy {
+  display: none;
+}
+
 .thread-pane__title {
   flex: 1;
   min-width: 0;
@@ -1313,6 +1322,10 @@ p {
     padding-left: 8px;
   }
 
+  .thread-pane__privacy {
+    display: inline-flex;
+  }
+
   .thread {
     padding: 16px 20px 10px;
   }
@@ -1397,4 +1410,33 @@ p {
   .team {
     padding: 24px 32px;
   }
+}
+
+/* Stage 3 part 5 (R27): a private conversation says so at a glance, and the administrator's
+   view of other people's is visibly a separate thing rather than more of the same list. */
+.convos__item-private {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.convos__admin {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding: 12px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.convos__admin-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.convos__item--private {
+  border: 1px dashed var(--line);
 }

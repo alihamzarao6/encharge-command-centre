@@ -28,6 +28,7 @@ import {
   type ChunkSource,
   type MemoryChunkRow,
   type MemoryFactRow,
+  CHUNK_PRIVATE_SOURCE,
 } from '../../../web/src/lib/memoryView.js';
 
 const ME = '11111111-1111-4111-8111-111111111111';
@@ -375,13 +376,29 @@ describe('buildChunkList', () => {
     });
   });
 
-  it('a note whose conversation is gone still lists, with no title to open', () => {
+  it('a note whose conversation the viewer cannot read still lists, with no way in', () => {
+    // Since part 5 (R27) this is what a PRIVATE source looks like from the outside: the
+    // chunk is workspace memory and perfectly readable, its conversation is not. (A deleted
+    // conversation cannot reach here — deleting one tombstones its chunks, and the filter
+    // below drops tombstones.)
     const [view] = buildChunkList(
-      [chunk({ id: 'c1', conversation_id: 'vanished' })],
+      [chunk({ id: 'c1', conversation_id: 'not-readable' })],
       titles,
       ACTOR,
     );
     expect(view?.conversationName).toBeNull();
+    expect(view?.sourceIsPrivate).toBe(true);
+  });
+
+  it('a note whose conversation IS readable is not marked private', () => {
+    const [view] = buildChunkList([chunk({ id: 'c1' })], titles, ACTOR);
+    expect(view?.sourceIsPrivate).toBe(false);
+  });
+
+  it('the card names it as private, and never as removed', () => {
+    expect(CHUNK_PRIVATE_SOURCE.name).toBe('A private conversation');
+    expect(CHUNK_PRIVATE_SOURCE.hint).toContain('shared with the team');
+    expect(CHUNK_PRIVATE_SOURCE.hint).not.toContain('removed');
   });
 
   it('never shows a deleted note, whatever the query returned', () => {

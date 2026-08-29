@@ -301,6 +301,39 @@ last_active_at · deleted_at`
 Renaming is open to every active allowlisted member because naming is a correction, not a
 removal — D52's open half.
 
+**Who can see a conversation (part 5, R27, D62, migration `20260829010000`).** `scope` has
+accepted `'user'` since the first migration; nothing could set it until now. The client was
+given three options and chose the second: *each person's chats are their own, the owner can
+see everybody's, and what the assistant LEARNS still goes into the one shared brain.* What
+that means, table by table:
+
+| Table | When a conversation is `'user'` | Mechanism |
+|---|---|---|
+| `conversations` | readable by its author only | the existing RLS policy, unchanged |
+| `messages` | readable by its author only, **including everything already said in it** | `sync_child_ownership` + the cascade, both unchanged |
+| `memory_chunks` | **still `'workspace'`** — the note reaches the whole team | `sync_chunk_ownership` (new) forces it; `memory_chunks_scope_workspace` refuses anything else |
+| `memory_facts` | **still `'workspace'`** — a standing note is the business's | the turn writes at `SHARED_MEMORY_SCOPE`, not the conversation's scope |
+
+- **Workspace stays the resting state.** Private is the author's opt-in exception; nothing
+  defaults to it and no existing conversation was migrated into it.
+- **Only the AUTHOR may flip it** — `canSetConversationPrivacy`, deliberately *not*
+  `canRemoveMemory`. This is the one place an administrator is not the wider power: an admin
+  sharing someone's private conversation back to the team would publish that person's words
+  in a single tap, asked for by nobody. An admin may still rename and delete one (D52).
+- **An administrator reads a private conversation through an audited server path, never
+  through a policy.** The policies on `conversations` and `messages` were NOT widened, and
+  the migration adds none. Postgres has no SELECT trigger, so an RLS bypass would be
+  invisible by construction; the server path writes `CONVERSATION_ADMIN_READ` to `audit_log`
+  before it hands over a single message. The admin's *listing* (`admin_list_private`) carries
+  author and dates and **no title** — a title is the first thing its author said (D61) — which
+  is why the listing is not audited and the read is.
+- **What a staff member is told, on screen, before the tap** (`PRIVACY_EXPLANATION`,
+  `src/lib/memory/privacy.ts`, imported by both sides): *"Only you and an administrator can
+  open this conversation or read what is said in it. What the assistant learns here is still
+  shared: the short note it writes about this conversation, and anything you ask it to
+  remember, go to the whole team as usual."* Each clause is a claim about one of the four
+  rows above, and `tests/unit/memory/privacy.test.ts` checks each against the mechanism.
+
 **Deleting a conversation** (D59, migration `20260828010000`, one transaction in
 `delete_conversation(uuid, uuid)`) treats the four tables that hang off it differently,
 because they are not the same kind of thing:
@@ -346,8 +379,15 @@ A chunk is **a summary plus a pointer**, never a second copy of the messages. Wr
   is untrained and pgvector says to create it only once data exists and rebuild as it grows.
   HNSW needs no training, gives better recall for the same query time, and suits a table
   that grows one conversation at a time. Retrieval (part 2) queries with `<=>`.
-- `user_id` / `scope` are the parent conversation's (trigger, as for `messages`): a chunk of
-  a private conversation is private, a scope flip cascades, and the RLS policy needs no join.
+- `user_id` is the parent conversation's author (trigger, as for `messages`), so attribution
+  and `canRemoveMemory` work without a join and a reassigned conversation moves its notes
+  with it. **`scope` is ALWAYS `'workspace'`** — since part 5 (R27, migration
+  `20260829010000`) it is not copied from the parent at all: `sync_chunk_ownership` sets the
+  constant and `memory_chunks_scope_workspace` refuses any other value, so a private
+  conversation still feeds the shared brain. The cascade carries `user_id` to chunks and
+  `user_id` + `scope` to messages.
+  *(Superseded: until 28 Aug both children shared `sync_child_ownership` and a chunk of a
+  private conversation was private — which is option THREE, and not what the client chose.)*
 
 **What is embedded** is the note under a header — `Conversation: <title>`, `Date: <Perth
 calendar date of the range's newest message>` and, when there is one, `Audience: <who the
@@ -419,8 +459,11 @@ each hold a live `writing:tone`, both handed to the model on every turn.)* Writt
 - **`source_message_id`** is the user message that carried the request, attached once the
   turn is saved (the fact is captured before the reply so the reply can say it was saved).
   Null for a fact stored by hand (`npm run memory -- remember`).
-- **`scope`** is the conversation's (D41 applies to facts exactly as to chunks): a fact
-  stated in a private conversation is private.
+- **`scope`** is `'workspace'` for anything the assistant is told to remember, whatever the
+  conversation's own scope (part 5, R27). The column still accepts `'user'` and the CLI can
+  still write one by hand; nothing on the chat or memory-page path does. *(Superseded: D41
+  said a fact stated in a private conversation is private — true while nothing could make a
+  conversation private, and the opposite of what the client chose once something could.)*
 - `embedding` stays null in part 2: facts are few and always included in a turn (§4 of
   `docs/MEMORY.md` D46), so nothing ranks them by similarity yet. The column is there for
   the day the fact count outgrows the per-turn budget.

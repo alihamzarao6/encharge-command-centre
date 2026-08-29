@@ -12,12 +12,26 @@
  * prefix is derived here at render time from the roster the page already reads
  * (`src/lib/memory/naming.ts`, the same module the server uses), never stored, and never
  * part of what a rename edits.
+ *
+ * **Part 5: a row knows whether it is private**, and the two confirm sentences live here for
+ * the same reason the delete one does — they are promises about what happens to four tables.
+ * The words themselves come from `src/lib/memory/privacy.ts`, which the SERVER also imports,
+ * so the sentence a person reads and the rule the endpoint enforces cannot drift apart.
  */
 import {
   conversationDisplayName,
   conversationPrefix,
   UNTITLED_CONVERSATION,
 } from '../../../src/lib/memory/naming.js';
+import {
+  ADMIN_PRIVATE_SECTION,
+  isPrivateScope,
+  PRIVACY_EXPLANATION,
+  PRIVACY_NOTICE,
+  PRIVACY_STATE_LABEL,
+  PRIVACY_TOGGLE_LABEL,
+  SHARED_EXPLANATION,
+} from '../../../src/lib/memory/privacy.js';
 
 /**
  * One `conversations` row as the browser reads it under RLS. Declared HERE, and re-exported
@@ -46,6 +60,12 @@ export interface ConversationView {
   readonly prefix: string | null;
   readonly authorId: string;
   readonly when: string;
+  /**
+   * Stage 3 part 5 (R27): `scope = 'user'`. A row in this list is only ever the viewer's own
+   * private conversation or a shared one — RLS returns nothing else — but the flag is on the
+   * view because the row has to SAY so, and because only the author is offered the toggle.
+   */
+  readonly isPrivate: boolean;
 }
 
 const DATE_FORMAT = new Intl.DateTimeFormat('en-AU', {
@@ -82,6 +102,7 @@ export function buildConversationList(
       prefix: conversationPrefix(email),
       authorId: row.user_id,
       when: formatWhen(row.last_active_at),
+      isPrivate: isPrivateScope(row.scope),
     };
   });
 }
@@ -111,4 +132,24 @@ export function filterConversations(
 export const DELETE_CONVERSATION_CONFIRM =
   'Delete this conversation? Its messages are removed for good and cannot be brought back, and so are the notes the assistant wrote about it. Standing notes — the things someone asked it to remember — are kept, and you can remove those on the Memory page.';
 
-export { UNTITLED_CONVERSATION };
+/**
+ * What a person reads before a conversation becomes private. The second sentence is the one
+ * that matters: he chose this knowing summaries stay shared, and a staff member will not
+ * know it unless it is said here, at the moment of the tap, rather than in a help page.
+ */
+export const MAKE_PRIVATE_CONFIRM = 'Make this conversation just yours? ' + PRIVACY_EXPLANATION;
+
+/** Going back the other way is not destructive, but it is not silent either. */
+export const MAKE_SHARED_CONFIRM =
+  'Share this conversation with the team? Everyone will be able to open it and read what is ' +
+  'in it, including what was said while it was private.';
+
+export {
+  ADMIN_PRIVATE_SECTION,
+  PRIVACY_EXPLANATION,
+  PRIVACY_NOTICE,
+  PRIVACY_STATE_LABEL,
+  PRIVACY_TOGGLE_LABEL,
+  SHARED_EXPLANATION,
+  UNTITLED_CONVERSATION,
+};

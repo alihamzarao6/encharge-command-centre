@@ -132,6 +132,17 @@ export type AuditAction =
   // Conversation management (Stage 3 part 4, src/lib/memory/page.ts)
   | 'CONVERSATION_RENAMED'
   | 'CONVERSATION_DELETED'
+  // Private conversations (Stage 3 part 5, R27, src/lib/memory/page.ts)
+  | 'CONVERSATION_MADE_PRIVATE'
+  | 'CONVERSATION_MADE_SHARED'
+  /**
+   * An administrator opened a conversation that is private to someone else. RLS was NOT
+   * widened for this (migration 20260829010000 says why), so the read goes through the
+   * verified server path — which is what makes it recordable at all. Postgres has no SELECT
+   * trigger; without this row, an owner reading every private conversation in the workspace
+   * would leave no trace anywhere.
+   */
+  | 'CONVERSATION_ADMIN_READ'
   // Memory page (Stage 3 part 3, src/lib/memory/page.ts)
   | 'MEMORY_FACT_ADDED'
   | 'MEMORY_FACT_REPLACED'

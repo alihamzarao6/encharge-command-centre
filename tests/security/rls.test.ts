@@ -164,9 +164,16 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     fixtureIds.factPrivateA = facts.rows[1]?.id ?? '';
     fixtureIds.factPrivateB = facts.rows[2]?.id ?? '';
 
-    // Stage 3 part 1: one chunk under each conversation. user_id/scope are written wrong
-    // on purpose (B, 'user' / A, 'workspace') — the parent-sync trigger must overwrite them
-    // with the conversation's, which is what makes the RLS outcome below the parent's.
+    // Stage 3 part 1: one chunk under each conversation. user_id/scope are written wrong on
+    // purpose (B, 'user' / A, 'workspace') — the trigger must overwrite them.
+    //
+    // Stage 3 part 5 (R27) changed WHAT it overwrites them with. `user_id` is still the
+    // parent conversation's author, both times. `scope` is no longer copied from the parent
+    // at all: `sync_chunk_ownership` sets 'workspace' unconditionally, so the chunk under
+    // the PRIVATE conversation comes out workspace-scoped and readable by the whole team.
+    // That is the client's own decision (option two): a private conversation still feeds the
+    // shared brain. Tests 4b and 5 below assert exactly that, and 11 asserts the constraint
+    // that holds it if the trigger is ever removed.
     const chunks = await db.query<{ id: string }>(
       `insert into public.memory_chunks (conversation_id, user_id, scope, summary, embedding, turn_range)
        values ($1, $3, 'user', $4, $6::vector, '[1,3)'),
@@ -319,14 +326,24 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
     ]);
   });
 
-  it("4b. an allowlisted user never reads a chunk's embedding or summary of a private conversation; the outsider reads no chunk at all", async () => {
+  it('4b. an outsider reads no chunk at all, and a teammate reads the chunk of a PRIVATE conversation', async () => {
+    // First half, unchanged since part 1: not on the allowlist, nothing at all.
     const outsiderRead = await outsider.client.from('memory_chunks').select('id');
     expect(extractIds(outsiderRead.data)).toStrictEqual([]);
+
+    // Second half, CHANGED BY PART 5 (R27) and the point of the whole part: B is an
+    // allowlisted teammate who cannot read A's private conversation (test 5) and cannot read
+    // one word of its messages — but CAN read the note the assistant wrote about it, because
+    // the client chose that what it learns is shared even when the conversation is not.
+    // Before part 5 this row was 'user'-scoped and this assertion was the opposite.
     const privateFromB = await userB.client
       .from('memory_chunks')
-      .select('id, summary')
+      .select('id, user_id, scope')
       .eq('id', fixtureIds.chunkPrivateA);
-    expect(privateFromB.data).toStrictEqual([]);
+    expect(privateFromB.error).toBeNull();
+    expect(privateFromB.data).toEqual([
+      { id: fixtureIds.chunkPrivateA, user_id: userA.id, scope: 'workspace' },
+    ]);
   });
 
   it("5. a user cannot read another user's user-scoped rows, but reads their own", async () => {
@@ -363,20 +380,68 @@ describe.skipIf(env === null)('row-level security (requires a running Supabase s
       .eq('id', fixtureIds.factPrivateB);
     expect(extractIds(ownFact.data)).toContain(fixtureIds.factPrivateB);
 
-    // Stage 3: the private conversation's chunk follows the same rule — B sees nothing,
-    // A (the owner) sees it, with the trigger-corrected ownership.
-    const chunkFromB = await userB.client
-      .from('memory_chunks')
+    // …and B cannot read a single MESSAGE of A's private conversation, which is what the
+    // promise is actually about. (Part 5: the CHUNK is a different question — see 4b.)
+    const messagesFromB = await userB.client
+      .from('messages')
       .select('id')
-      .eq('id', fixtureIds.chunkPrivateA);
-    expect(extractIds(chunkFromB.data)).toStrictEqual([]);
+      .eq('conversation_id', fixtureIds.convPrivateA);
+    expect(extractIds(messagesFromB.data)).toStrictEqual([]);
+
+    // The owner still reads their own chunk, with the trigger-corrected ownership: the
+    // author is theirs, the scope is workspace (part 5).
     const ownChunk = await userA.client
       .from('memory_chunks')
       .select('id, user_id, scope')
       .eq('id', fixtureIds.chunkPrivateA);
     expect(ownChunk.data).toEqual([
-      { id: fixtureIds.chunkPrivateA, user_id: userA.id, scope: 'user' },
+      { id: fixtureIds.chunkPrivateA, user_id: userA.id, scope: 'workspace' },
     ]);
+  });
+
+  it("11. Stage 3 part 5 (R27): the chunk-scope invariant is the database's, not the trigger's", async () => {
+    // Two mechanisms, and they fail in different circumstances, so both are asserted.
+    // The TRIGGER fires on an update of scope and rewrites the value before anything is
+    // checked, so a direct attempt is corrected rather than refused.
+    await db.query(`update public.memory_chunks set scope = 'user' where id = $1`, [
+      fixtureIds.chunkPrivateA,
+    ]);
+    const afterDirect = await db.query<{ scope: string }>(
+      `select scope from public.memory_chunks where id = $1`,
+      [fixtureIds.chunkPrivateA],
+    );
+    expect(afterDirect.rows[0]?.scope).toBe('workspace');
+
+    // The CONSTRAINT is what still holds when the trigger is not there to fire — a future
+    // migration that drops it, a restore that omits it, a statement run with triggers off.
+    const constraint = await db.query<{ definition: string; validated: boolean }>(
+      `select pg_get_constraintdef(oid) as definition, convalidated as validated
+       from pg_constraint where conname = 'memory_chunks_scope_workspace'`,
+    );
+    expect(constraint.rows[0]?.definition).toContain("scope = 'workspace'");
+    expect(constraint.rows[0]?.validated).toBe(true);
+
+    // And there is no private chunk anywhere. An absence, so another suite's fixtures can
+    // only break this, never make it pass falsely.
+    const stray = await db.query<{ n: string }>(
+      `select count(*) as n from public.memory_chunks where scope <> 'workspace'`,
+    );
+    expect(stray.rows[0]?.n).toBe('0');
+  });
+
+  it('12. Stage 3 part 5: the conversations and messages policies were NOT widened for admins', async () => {
+    // An admin reads a private conversation through the audited server path, never through a
+    // policy (migration 20260829010000 says why: Postgres has no SELECT trigger, so an RLS
+    // bypass could never be recorded). If someone later adds `or is_admin` to either policy,
+    // this fails — and so does the promise that the audit trail is complete.
+    const policies = await db.query<{ tablename: string; qual: string }>(
+      `select tablename, qual from pg_policies
+       where schemaname = 'public' and tablename in ('conversations', 'messages')`,
+    );
+    expect(policies.rows.length).toBeGreaterThan(0);
+    for (const row of policies.rows) {
+      expect(row.qual, row.tablename).not.toContain('is_admin');
+    }
   });
 
   it('6a. no insert/update/delete policy exists for authenticated (or anon) on any table', async () => {

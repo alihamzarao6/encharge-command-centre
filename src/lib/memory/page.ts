@@ -45,9 +45,22 @@
  *           business to remember is not a by-product of the conversation it was said in.
  *           Removal, so it is the author's or an admin's (the same canRemoveMemory).
  *
+ * Stage 3 part 5 (R27) adds who may SEE a conversation, and the one read this file performs:
+ *
+ *   set_conversation_privacy — `scope`, and nothing else. The cascade trigger carries it to
+ *           `messages`; `memory_chunks` stays workspace by design, so a private conversation
+ *           still feeds the shared brain. THE AUTHOR'S ALONE — deliberately not an admin's
+ *           (privacy.ts says why at length).
+ *   admin_list_private — metadata only, no titles, no content. Not audited, because listing
+ *           is not reading.
+ *   admin_read_conversation — the one read in the application that does not come from
+ *           PostgREST under RLS. It exists so that an administrator reading someone's
+ *           private messages leaves an audit row, which an RLS bypass could never do.
+ *
  * WHO: adding and correcting are open to every active allowlisted member; removing is the
  * author's or an admin's (access.ts, and the browser calls the same function so it never
- * offers a button this will refuse).
+ * offers a button this will refuse); changing who can see a conversation is the author's
+ * only (privacy.ts).
  *
  * SCOPE: a note made on the page is always `workspace`. The page is the shared brain; the
  * private (`user`) scope exists for a conversation someone marks private (D33) and there is
@@ -77,6 +90,12 @@ import {
   type MemoryActor,
 } from './access.js';
 import { CONVERSATION_TITLE_MAX_CHARS, stripConversationPrefix } from './naming.js';
+import {
+  ADMIN_ONLY_MESSAGE,
+  canSetConversationPrivacy,
+  PRIVACY_DENIED_MESSAGE,
+  type ConversationScope,
+} from './privacy.js';
 import { captureFact, overrideClaim } from './capture.js';
 import { FACT_VALUE_MAX_CHARS, type FactStore, type MemoryScope } from './facts.js';
 import { accessClaim } from './summarise.js';
@@ -122,6 +141,29 @@ export interface ConversationForAction {
   readonly deletedAt: string | null;
 }
 
+/**
+ * Stage 3 part 5: one row of the administrator's private-conversation listing. Note what is
+ * NOT here — no title and no message text. A conversation's title is auto-set from the first
+ * thing its author said (D61), so a titled listing would be a listing of content, and the
+ * line between "an owner can see that private conversations exist" and "an owner can read
+ * them" would be gone. That line is what lets the listing go unaudited and the read not.
+ */
+export interface PrivateConversationSummary {
+  readonly id: string;
+  readonly authorId: string;
+  readonly authorEmail: string | null;
+  readonly createdAt: string;
+  readonly lastActiveAt: string;
+}
+
+/** One message as the audited admin read returns it. */
+export interface ConversationMessage {
+  readonly id: string;
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+  readonly createdAt: string;
+}
+
 /** What a delete actually removed. The confirm step promised these numbers; these are them. */
 export interface ConversationDeletion {
   readonly already: boolean;
@@ -142,6 +184,23 @@ export interface MemoryPageStore {
   deleteChunk(chunkId: string, actorId: string): Promise<Result<'deleted' | 'already'>>;
   /** Title only. `gone` when the row vanished or was deleted between read and write. */
   renameConversation(conversationId: string, title: string): Promise<Result<'renamed' | 'gone'>>;
+  /**
+   * Stage 3 part 5: flip `conversations.scope`. The cascade trigger carries it to `messages`
+   * in the same statement, which is what actually makes a conversation private; chunks are
+   * untouched by design (migration 20260829010000). `gone` when the row vanished or was
+   * deleted between the read and this write.
+   */
+  setConversationScope(
+    conversationId: string,
+    scope: ConversationScope,
+  ): Promise<Result<'changed' | 'gone'>>;
+  /** Every live private conversation, newest activity first. Metadata only — no titles. */
+  listPrivateConversations(limit: number): Promise<Result<readonly PrivateConversationSummary[]>>;
+  /** The messages of one conversation, oldest first. Only ever called on the admin path. */
+  conversationMessages(
+    conversationId: string,
+    limit: number,
+  ): Promise<Result<readonly ConversationMessage[]>>;
   /** The one-transaction delete. Idempotent: a second call reports `already`. */
   deleteConversation(
     conversationId: string,
@@ -273,6 +332,83 @@ export function supabaseMemoryPageStore(client: ServiceClient): MemoryPageStore 
         return err(mapThrown(caught, 'conversations.rename'));
       }
     },
+    setConversationScope: async (conversationId, scope) => {
+      try {
+        // `is('deleted_at', null)` for the same reason the rename has it: a conversation
+        // deleted between the read and this write must not be resurrected by an update.
+        const { data, error } = await client
+          .from('conversations')
+          .update({ scope })
+          .eq('id', conversationId)
+          .is('deleted_at', null)
+          .select('id');
+        if (error !== null) return err(mapPostgrest(error, 'conversations.setScope'));
+        return ok(data.length === 0 ? 'gone' : 'changed');
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'conversations.setScope'));
+      }
+    },
+    listPrivateConversations: async (limit) => {
+      try {
+        const { data, error } = await client
+          .from('conversations')
+          .select('id, user_id, created_at, last_active_at')
+          .eq('scope', 'user')
+          .is('deleted_at', null)
+          .order('last_active_at', { ascending: false })
+          .limit(limit);
+        if (error !== null) return err(mapPostgrest(error, 'conversations.listPrivate'));
+        if (data.length === 0) return ok([]);
+
+        // One roster read for every author at once, not one per row. A failure to read an
+        // email degrades the label and never the listing — the same rule getConversation
+        // follows, for the same reason: an author whose allowlist row cannot be read is a
+        // display problem, not a reason to hide that a private conversation exists.
+        const authors = await client
+          .from('app_users')
+          .select('user_id, email')
+          .in('user_id', [...new Set(data.map((row) => row.user_id))]);
+        const emails = new Map<string, string>(
+          authors.error === null ? authors.data.map((row) => [row.user_id, row.email]) : [],
+        );
+        return ok(
+          data.map((row) => ({
+            id: row.id,
+            authorId: row.user_id,
+            authorEmail: emails.get(row.user_id) ?? null,
+            createdAt: row.created_at,
+            lastActiveAt: row.last_active_at,
+          })),
+        );
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'conversations.listPrivate'));
+      }
+    },
+    conversationMessages: async (conversationId, limit) => {
+      try {
+        const { data, error } = await client
+          .from('messages')
+          .select('id, role, content, created_at')
+          .eq('conversation_id', conversationId)
+          .in('role', ['user', 'assistant'])
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(limit);
+        if (error !== null) return err(mapPostgrest(error, 'messages.read'));
+        return ok(
+          data
+            .filter((row) => row.content !== null)
+            .map((row) => ({
+              id: row.id,
+              role: row.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+              content: row.content ?? '',
+              createdAt: row.created_at,
+            })),
+        );
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'messages.read'));
+      }
+    },
     deleteConversation: async (conversationId, actorId) => {
       try {
         const { data, error } = await client.rpc('delete_conversation', {
@@ -343,7 +479,16 @@ export function supabaseMemoryPageStore(client: ServiceClient): MemoryPageStore 
 // ---------------------------------------------------------------------------------------
 
 export type MemoryActionName =
-  'add' | 'edit' | 'forget' | 'delete_chunk' | 'rename_conversation' | 'delete_conversation';
+  | 'add'
+  | 'edit'
+  | 'forget'
+  | 'delete_chunk'
+  | 'rename_conversation'
+  | 'delete_conversation'
+  // Stage 3 part 5 (R27)
+  | 'set_conversation_privacy'
+  | 'admin_list_private'
+  | 'admin_read_conversation';
 
 export interface MemoryRequestBody {
   readonly action?: unknown;
@@ -353,7 +498,14 @@ export interface MemoryRequestBody {
   readonly chunkId?: unknown;
   readonly conversationId?: unknown;
   readonly title?: unknown;
+  /** Stage 3 part 5: true = "just me", false = back to the team. */
+  readonly isPrivate?: unknown;
 }
+
+/** How many private conversations one admin listing returns. */
+export const ADMIN_PRIVATE_LIST_LIMIT = 200;
+/** How many messages one audited admin read returns — the same bound the browser's own read uses. */
+export const ADMIN_READ_MESSAGE_LIMIT = 500;
 
 export interface MemoryPageInput {
   readonly token: string | null | undefined;
@@ -401,6 +553,25 @@ export type MemoryPageReply =
       readonly conversationId: string;
       readonly messagesDeleted: number;
       readonly chunksTombstoned: number;
+    }
+  | {
+      readonly action: 'set_conversation_privacy';
+      readonly outcome: 'changed' | 'unchanged';
+      readonly conversationId: string;
+      readonly isPrivate: boolean;
+    }
+  | {
+      readonly action: 'admin_list_private';
+      readonly outcome: 'listed';
+      readonly conversations: readonly PrivateConversationSummary[];
+    }
+  | {
+      readonly action: 'admin_read_conversation';
+      readonly outcome: 'read';
+      readonly conversationId: string;
+      readonly title: string | null;
+      readonly authorEmail: string | null;
+      readonly messages: readonly ConversationMessage[];
     };
 
 export interface MemoryErrorBody {
@@ -537,11 +708,25 @@ async function route(deps: MemoryPageDeps, input: MemoryPageInput): Promise<Memo
       return renameConversation(deps, actor, input.body.conversationId, input.body.title, log);
     case 'delete_conversation':
       return deleteConversation(deps, actor, input.body.conversationId, log);
+    case 'set_conversation_privacy':
+      return setConversationPrivacy(
+        deps,
+        actor,
+        input.body.conversationId,
+        input.body.isPrivate,
+        log,
+      );
+    case 'admin_list_private':
+      return adminListPrivate(deps, actor, log);
+    case 'admin_read_conversation':
+      return adminReadConversation(deps, actor, input.body.conversationId, log);
     default:
       return failure(
         400,
         'BAD_REQUEST',
-        'action must be one of add, edit, forget, delete_chunk, rename_conversation, delete_conversation.',
+        'action must be one of add, edit, forget, delete_chunk, rename_conversation, ' +
+          'delete_conversation, set_conversation_privacy, admin_list_private, ' +
+          'admin_read_conversation.',
       );
   }
 }
@@ -895,9 +1080,14 @@ async function liveConversation(
     return { ok: false, result: unavailable(found.error) };
   }
   const conversation = found.value;
+  // Can this person see this conversation at all? Workspace, or theirs — and, since part 5,
+  // an administrator, who can already read any private conversation through the audited
+  // path below. Pretending they cannot then RENAME or DELETE one would be theatre, and D52
+  // has always said an admin may remove anything. What an admin still cannot do is change
+  // whose it is: setConversationPrivacy runs its own author-only check after this one.
   if (
     conversation === null ||
-    (conversation.scope !== 'workspace' && conversation.authorId !== actor.userId)
+    (conversation.scope !== 'workspace' && conversation.authorId !== actor.userId && !actor.isAdmin)
   ) {
     return {
       ok: false,
@@ -905,6 +1095,194 @@ async function liveConversation(
     };
   }
   return { ok: true, conversation };
+}
+
+/**
+ * Stage 3 part 5 (R27): "Just me", and back again.
+ *
+ * The write is one column on one row. Everything that makes it MEAN something is elsewhere:
+ * the cascade trigger carries the new scope to `messages` in the same statement, so a
+ * conversation that has been running for a week goes private along with everything already
+ * said in it; the RLS policy on both tables then returns them to nobody but their author;
+ * and `memory_chunks` is deliberately left where it is, workspace, because what the
+ * assistant LEARNED is shared even when the conversation is not. That last clause is the
+ * client's own decision and the one a staff member would never guess, which is why
+ * PRIVACY_EXPLANATION is on screen before the tap and not in a help page after it.
+ *
+ * THE AUTHOR ONLY — `canSetConversationPrivacy`, not `canRemoveMemory`. This is the single
+ * place where an administrator is deliberately not the wider power: an admin sharing
+ * someone's private conversation back to the team would publish that person's words to
+ * everybody in one tap, asked for by nobody.
+ */
+async function setConversationPrivacy(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  rawId: unknown,
+  rawPrivate: unknown,
+  log: Logger,
+): Promise<MemoryPageResult> {
+  if (typeof rawPrivate !== 'boolean') {
+    return failure(400, 'BAD_REQUEST', 'isPrivate must be true or false.');
+  }
+  const found = await liveConversation(deps, actor, rawId, log);
+  if (!found.ok) return found.result;
+  const conversation = found.conversation;
+  if (conversation.deletedAt !== null) {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+  const verdict = canSetConversationPrivacy({ authorId: conversation.authorId }, actor);
+  if (!verdict.allowed) {
+    return failure(403, 'NOT_YOURS', PRIVACY_DENIED_MESSAGE);
+  }
+
+  const wanted: ConversationScope = rawPrivate ? 'user' : 'workspace';
+  // Already that: no write, no audit row, and no "changed" for a no-op — the same shape
+  // rename uses, so a double tap on a slow connection reports the truth twice.
+  if (conversation.scope === wanted) {
+    return {
+      status: 200,
+      body: {
+        action: 'set_conversation_privacy',
+        outcome: 'unchanged',
+        conversationId: conversation.id,
+        isPrivate: rawPrivate,
+      },
+    };
+  }
+
+  const changed = await deps.store.setConversationScope(conversation.id, wanted);
+  if (!changed.ok) {
+    log.error('conversation privacy write failed', {
+      error: changed.error,
+      conversationId: conversation.id,
+    });
+    return mapMemoryFailure(changed.error);
+  }
+  if (changed.value === 'gone') {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+  const audited = await record(
+    deps,
+    actor,
+    rawPrivate ? 'CONVERSATION_MADE_PRIVATE' : 'CONVERSATION_MADE_SHARED',
+    'conversations',
+    conversation.id,
+    log,
+  );
+  if (audited !== null) return audited;
+  log.info('conversation privacy changed', {
+    conversationId: conversation.id,
+    actorId: actor.userId,
+    isPrivate: rawPrivate,
+  });
+  return {
+    status: 200,
+    body: {
+      action: 'set_conversation_privacy',
+      outcome: 'changed',
+      conversationId: conversation.id,
+      isPrivate: rawPrivate,
+    },
+  };
+}
+
+/**
+ * The owner's view of what is private, and DELIBERATELY NOT ITS CONTENTS. Author, when it
+ * started, when it was last used — no title, because a title is the first thing its author
+ * said (D61), and no messages. Listing metadata is not reading a conversation, which is why
+ * this action writes no audit row and `admin_read_conversation` writes one every time.
+ */
+async function adminListPrivate(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  log: Logger,
+): Promise<MemoryPageResult> {
+  if (!actor.isAdmin) {
+    return failure(403, 'NOT_ADMIN', ADMIN_ONLY_MESSAGE);
+  }
+  const listed = await deps.store.listPrivateConversations(ADMIN_PRIVATE_LIST_LIMIT);
+  if (!listed.ok) {
+    log.error('private conversation listing failed', { error: listed.error });
+    return mapMemoryFailure(listed.error);
+  }
+  return {
+    status: 200,
+    body: {
+      action: 'admin_list_private',
+      outcome: 'listed',
+      conversations: listed.value,
+    },
+  };
+}
+
+/**
+ * An administrator reads a conversation that is private to someone else — the only read in
+ * the application that does not come from PostgREST under RLS, and the reason it does not is
+ * the audit row this writes.
+ *
+ * Migration 20260829010000 has the argument in full; the short version is that the policy on
+ * `conversations` and `messages` was NOT widened for admins, because Postgres has no SELECT
+ * trigger and an RLS bypass is therefore invisible by construction. Reading someone's
+ * private messages is exactly the act that should leave a trace, so it goes through a path
+ * that can leave one.
+ *
+ * The audit row is written BEFORE the messages are returned, and a failure to write it
+ * refuses the read (that is what `record` already does for every other action). An
+ * unrecorded admin read is not a read this system performs.
+ */
+async function adminReadConversation(
+  deps: MemoryPageDeps,
+  actor: MemoryActor,
+  rawId: unknown,
+  log: Logger,
+): Promise<MemoryPageResult> {
+  if (!actor.isAdmin) {
+    return failure(403, 'NOT_ADMIN', ADMIN_ONLY_MESSAGE);
+  }
+  const found = await liveConversation(deps, actor, rawId, log);
+  if (!found.ok) return found.result;
+  const conversation = found.conversation;
+  if (conversation.deletedAt !== null) {
+    return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+
+  const audited = await record(
+    deps,
+    actor,
+    'CONVERSATION_ADMIN_READ',
+    'conversations',
+    conversation.id,
+    log,
+  );
+  if (audited !== null) return audited;
+
+  const messages = await deps.store.conversationMessages(conversation.id, ADMIN_READ_MESSAGE_LIMIT);
+  if (!messages.ok) {
+    log.error('admin conversation read failed', {
+      error: messages.error,
+      conversationId: conversation.id,
+    });
+    return mapMemoryFailure(messages.error);
+  }
+  // Counts, never content — rule 20, and doubly so here: this line describes somebody
+  // else's private conversation.
+  log.info('conversation read by an administrator', {
+    conversationId: conversation.id,
+    actorId: actor.userId,
+    authorId: conversation.authorId,
+    messages: messages.value.length,
+  });
+  return {
+    status: 200,
+    body: {
+      action: 'admin_read_conversation',
+      outcome: 'read',
+      conversationId: conversation.id,
+      title: conversation.title,
+      authorEmail: conversation.authorEmail,
+      messages: messages.value,
+    },
+  };
 }
 
 /**

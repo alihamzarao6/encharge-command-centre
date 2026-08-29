@@ -33,6 +33,7 @@ import type { ClaudeClient, Completion, CompletionRequest, LlmError } from './cl
 import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
 import { titleFromFirstMessage } from '../memory/naming.js';
+import { SHARED_MEMORY_SCOPE } from '../memory/privacy.js';
 import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
 
 export interface ConversationRow {
@@ -424,7 +425,13 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
     try {
       recall = await deps.memory.recall({
         userId: user.userId,
-        scope: conversation.scope,
+        // The scope a fact captured on THIS turn is written at — not the conversation's
+        // (Stage 3 part 5, R27). "Remember that…" said in a private conversation is still
+        // something the business was told to remember, and the client chose that what the
+        // assistant learns reaches everybody even when the conversation does not. Passing
+        // `conversation.scope` here would have made a private conversation's explicit notes
+        // private too, which is the option he did not choose.
+        scope: SHARED_MEMORY_SCOPE,
         conversationId: requestedConversationId,
         historyMessages: history.length,
         message,

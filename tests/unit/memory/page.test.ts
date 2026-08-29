@@ -31,10 +31,17 @@ import {
   type ChunkForAction,
   type ConversationDeletion,
   type ConversationForAction,
+  type ConversationMessage,
   type FactForAction,
   type MemoryPageDeps,
   type MemoryPageStore,
+  type PrivateConversationSummary,
 } from '../../../src/lib/memory/page.js';
+import {
+  ADMIN_ONLY_MESSAGE,
+  PRIVACY_DENIED_MESSAGE,
+  type ConversationScope,
+} from '../../../src/lib/memory/privacy.js';
 import {
   capturingLogger,
   httpFor,
@@ -114,6 +121,14 @@ interface FakeStore extends MemoryPageStore {
   readonly deleted: { chunkId: string; actorId: string }[];
   readonly renamed: { conversationId: string; title: string }[];
   readonly deletedConversations: { conversationId: string; actorId: string }[];
+  /** Stage 3 part 5: every scope flip this store was asked for, in order. */
+  readonly scopeWrites: { conversationId: string; scope: ConversationScope }[];
+  /** What `admin_list_private` gets back, and how many times it was asked. */
+  privateList: readonly PrivateConversationSummary[];
+  privateListCalls: number;
+  /** What `admin_read_conversation` gets back, and how many times the messages were read. */
+  conversationMessageRows: readonly ConversationMessage[];
+  messageReads: number;
   failForget: boolean;
 }
 
@@ -126,6 +141,11 @@ function fakeStore(): FakeStore {
     deleted: [],
     renamed: [],
     deletedConversations: [],
+    scopeWrites: [],
+    privateList: [],
+    privateListCalls: 0,
+    conversationMessageRows: [],
+    messageReads: 0,
     failForget: false,
     getFact: (): Promise<Result<FactForAction | null>> => Promise.resolve(ok(store.fact)),
     getChunk: (): Promise<Result<ChunkForAction | null>> => Promise.resolve(ok(store.chunk)),
@@ -149,6 +169,18 @@ function fakeStore(): FakeStore {
       return Promise.resolve(
         ok({ already: false, messagesDeleted: 12, chunksTombstoned: 2, factsUnlinked: 1 }),
       );
+    },
+    setConversationScope: (conversationId, scope): Promise<Result<'changed' | 'gone'>> => {
+      store.scopeWrites.push({ conversationId, scope });
+      return Promise.resolve(ok('changed'));
+    },
+    listPrivateConversations: (): Promise<Result<readonly PrivateConversationSummary[]>> => {
+      store.privateListCalls += 1;
+      return Promise.resolve(ok(store.privateList));
+    },
+    conversationMessages: (): Promise<Result<readonly ConversationMessage[]>> => {
+      store.messageReads += 1;
+      return Promise.resolve(ok(store.conversationMessageRows));
     },
   };
   return store;
@@ -906,6 +938,114 @@ describe('supabaseMemoryPageStore', () => {
     if (result.ok) return;
     expect(result.error.code).toBe('INTERNAL');
   });
+
+  it('the privacy write is one PATCH of one column, and never resurrects a deleted row', async () => {
+    stub(() => json([{ id: CONV_ID }]));
+    const result = await supabaseMemoryPageStore(createServiceClient(CONFIG)).setConversationScope(
+      CONV_ID,
+      'user',
+    );
+    expect(result).toStrictEqual({ ok: true, value: 'changed' });
+    expect(seen[0]?.method).toBe('PATCH');
+    expect(seen[0]?.path).toBe('/rest/v1/conversations');
+    expect(seen[0]?.body).toBe(JSON.stringify({ scope: 'user' }));
+    expect(seen[0]?.query).toContain(`id=eq.${CONV_ID}`);
+    expect(seen[0]?.query).toContain('deleted_at=is.null');
+  });
+
+  it('a scope write that matches nothing is `gone`, not a silent success', async () => {
+    stub(() => json([]));
+    const result = await supabaseMemoryPageStore(createServiceClient(CONFIG)).setConversationScope(
+      CONV_ID,
+      'workspace',
+    );
+    expect(result).toStrictEqual({ ok: true, value: 'gone' });
+  });
+
+  it('the private listing asks only for private, live rows — and for no title', async () => {
+    stub((req) =>
+      req.path === '/rest/v1/conversations'
+        ? json([
+            {
+              id: CONV_ID,
+              user_id: OTHER_ID,
+              created_at: '2026-08-28T01:00:00Z',
+              last_active_at: '2026-08-29T01:00:00Z',
+            },
+          ])
+        : json([{ user_id: OTHER_ID, email: 'zoe@example.com' }]),
+    );
+    const result = await supabaseMemoryPageStore(
+      createServiceClient(CONFIG),
+    ).listPrivateConversations(50);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toStrictEqual([
+      {
+        id: CONV_ID,
+        authorId: OTHER_ID,
+        authorEmail: 'zoe@example.com',
+        createdAt: '2026-08-28T01:00:00Z',
+        lastActiveAt: '2026-08-29T01:00:00Z',
+      },
+    ]);
+    expect(seen[0]?.query).toContain('scope=eq.user');
+    expect(seen[0]?.query).toContain('deleted_at=is.null');
+    // The column list is the promise: a title is content, and this listing carries none.
+    expect(seen[0]?.query).not.toContain('title');
+    // One roster read for every author, not one per row.
+    expect(seen.filter((r) => r.path === '/rest/v1/app_users')).toHaveLength(1);
+  });
+
+  it('an author whose roster row cannot be read still appears — the listing never hides a row', async () => {
+    stub((req) =>
+      req.path === '/rest/v1/conversations'
+        ? json([
+            {
+              id: CONV_ID,
+              user_id: OTHER_ID,
+              created_at: '2026-08-28T01:00:00Z',
+              last_active_at: '2026-08-29T01:00:00Z',
+            },
+          ])
+        : json({ message: 'nope' }, 500),
+    );
+    const result = await supabaseMemoryPageStore(
+      createServiceClient(CONFIG),
+    ).listPrivateConversations(50);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value[0]?.authorEmail).toBeNull();
+  });
+
+  it('an empty listing makes no roster read at all', async () => {
+    stub(() => json([]));
+    const result = await supabaseMemoryPageStore(
+      createServiceClient(CONFIG),
+    ).listPrivateConversations(50);
+    expect(result).toStrictEqual({ ok: true, value: [] });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('the admin read returns user and assistant turns only, oldest first, and drops empties', async () => {
+    stub(() =>
+      json([
+        { id: 'm1', role: 'user', content: 'first', created_at: '2026-08-28T01:00:00Z' },
+        { id: 'm2', role: 'assistant', content: null, created_at: '2026-08-28T01:00:01Z' },
+        { id: 'm3', role: 'assistant', content: 'second', created_at: '2026-08-28T01:00:02Z' },
+      ]),
+    );
+    const result = await supabaseMemoryPageStore(createServiceClient(CONFIG)).conversationMessages(
+      CONV_ID,
+      500,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.map((m) => m.id)).toStrictEqual(['m1', 'm3']);
+    expect(result.value[1]?.role).toBe('assistant');
+    expect(seen[0]?.query).toContain(`conversation_id=eq.${CONV_ID}`);
+    expect(seen[0]?.query).toContain('role=in.(user,assistant)');
+  });
 });
 
 // ---------------------------------------------------------------------------------------
@@ -1161,6 +1301,276 @@ describe('delete_conversation', () => {
     expect(line).toBeDefined();
     expect(line).toContain('"messagesDeleted":12');
     expect(line).not.toContain('Nguyen');
+  });
+});
+
+describe('set_conversation_privacy (Stage 3 part 5, R27)', () => {
+  it('the author makes it private: one column, one audit row, no spend', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: true },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).toStrictEqual({
+      action: 'set_conversation_privacy',
+      outcome: 'changed',
+      conversationId: CONV_ID,
+      isPrivate: true,
+    });
+    expect(h.store.scopeWrites).toStrictEqual([{ conversationId: CONV_ID, scope: 'user' }]);
+    expect(h.audit.rows).toStrictEqual([
+      {
+        actor: USER_ID,
+        action: 'CONVERSATION_MADE_PRIVATE',
+        entityType: 'conversations',
+        entityId: CONV_ID,
+      },
+    ]);
+    expect(h.httpCalls()).toBe(0);
+  });
+
+  it('and shares it again, which is a different audit action so the history reads both ways', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: false },
+    });
+    expect(result.status).toBe(200);
+    expect(h.store.scopeWrites).toStrictEqual([{ conversationId: CONV_ID, scope: 'workspace' }]);
+    expect(h.audit.rows[0]?.action).toBe('CONVERSATION_MADE_SHARED');
+  });
+
+  it("AN ADMIN IS REFUSED on someone else's conversation — the one power admin does not get", async () => {
+    // The same admin CAN delete this conversation (the next test proves it), which is the
+    // whole point: reading and removing are oversight; publishing someone's words is not.
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID, scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: false },
+    });
+    expect(result.status).toBe(403);
+    expect(result.body).toStrictEqual({
+      error: { code: 'NOT_YOURS', message: PRIVACY_DENIED_MESSAGE, retryable: false },
+    });
+    expect(h.store.scopeWrites).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('the same admin may still DELETE it — the contrast, asserted in one file', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID, scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+  });
+
+  it("a non-admin cannot even see someone else's private conversation, so it is a 404", async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ authorId: OTHER_ID, scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: false },
+    });
+    expect(result.status).toBe(404);
+    expect(h.store.scopeWrites).toStrictEqual([]);
+  });
+
+  it('asking for the state it is already in writes nothing and audits nothing', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: true },
+    });
+    expect(result.status).toBe(200);
+    expect((result.body as { outcome: string }).outcome).toBe('unchanged');
+    expect(h.store.scopeWrites).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('toggling repeatedly writes exactly the scopes asked for, in order', async () => {
+    // Part A assertion 5, at the handler level; the database half is in the integration
+    // suite. What is checked here is that nothing accumulates — no third value ever appears
+    // and no toggle is skipped because an earlier one left stale state behind.
+    const h = harness();
+    const wanted = [true, false, true, true, false];
+    for (const isPrivate of wanted) {
+      h.store.conversation = liveConversation({ scope: isPrivate ? 'workspace' : 'user' });
+      await handleMemoryRequest(h.deps, {
+        token: TOKEN,
+        body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate },
+      });
+    }
+    expect(h.store.scopeWrites.map((w) => w.scope)).toStrictEqual([
+      'user',
+      'workspace',
+      'user',
+      'user',
+      'workspace',
+    ]);
+  });
+
+  it('refuses a missing or non-boolean isPrivate rather than guessing', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    for (const isPrivate of [undefined, 'true', 1, null]) {
+      const result = await handleMemoryRequest(h.deps, {
+        token: TOKEN,
+        body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate },
+      });
+      expect(result.status).toBe(400);
+    }
+    expect(h.store.scopeWrites).toStrictEqual([]);
+  });
+
+  it('refuses a deleted conversation', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ deletedAt: '2026-08-29T00:00:00Z' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: true },
+    });
+    expect(result.status).toBe(404);
+  });
+
+  it('reports a store failure as a failure, not as a silent success', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation();
+    h.store.setConversationScope = (): Promise<Result<'changed' | 'gone'>> =>
+      Promise.resolve(err(new NetworkError('db down')));
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'set_conversation_privacy', conversationId: CONV_ID, isPrivate: true },
+    });
+    expect(result.status).toBe(503);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+});
+
+describe('the administrator view of a private conversation', () => {
+  it('a non-admin is refused the listing, and nothing is read', async () => {
+    const h = harness();
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_list_private' },
+    });
+    expect(result.status).toBe(403);
+    expect(result.body).toStrictEqual({
+      error: { code: 'NOT_ADMIN', message: ADMIN_ONLY_MESSAGE, retryable: false },
+    });
+    expect(h.store.privateListCalls).toBe(0);
+  });
+
+  it('a non-admin is refused the read, before any message is fetched or audited', async () => {
+    const h = harness();
+    h.store.conversation = liveConversation({ authorId: OTHER_ID, scope: 'user' });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_read_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(403);
+    expect(h.store.messageReads).toBe(0);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('an admin lists them as metadata only — no title comes back at all', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.privateList = [
+      {
+        id: CONV_ID,
+        authorId: OTHER_ID,
+        authorEmail: 'zoe@example.com',
+        createdAt: '2026-08-28T01:00:00Z',
+        lastActiveAt: '2026-08-29T01:00:00Z',
+      },
+    ];
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_list_private' },
+    });
+    expect(result.status).toBe(200);
+    const body = result.body as unknown as { conversations: Record<string, unknown>[] };
+    expect(Object.keys(body.conversations[0] ?? {}).sort()).toStrictEqual([
+      'authorEmail',
+      'authorId',
+      'createdAt',
+      'id',
+      'lastActiveAt',
+    ]);
+    // Listing is not reading: no audit row, because no content was disclosed.
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('an admin reads one, it comes back whole, and the read is recorded', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({
+      authorId: OTHER_ID,
+      scope: 'user',
+      title: 'Her thread',
+      authorEmail: 'zoe@example.com',
+    });
+    h.store.conversationMessageRows = [
+      { id: 'm1', role: 'user', content: 'Something she said', createdAt: '2026-08-28T01:00:00Z' },
+    ];
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_read_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+    const body = result.body as unknown as {
+      messages: { content: string }[];
+      title: string;
+    };
+    expect(body.title).toBe('Her thread');
+    expect(body.messages[0]?.content).toBe('Something she said');
+    expect(h.audit.rows).toStrictEqual([
+      {
+        actor: USER_ID,
+        action: 'CONVERSATION_ADMIN_READ',
+        entityType: 'conversations',
+        entityId: CONV_ID,
+      },
+    ]);
+    // Rule 20, and doubly so here: these lines describe somebody else's private conversation.
+    const joined = h.lines.join('\n');
+    expect(joined).not.toContain('Something she said');
+    expect(joined).not.toContain('Her thread');
+    expect(joined).not.toContain('zoe@example.com');
+  });
+
+  it('AN UNRECORDED ADMIN READ IS NOT A READ: the audit write fails, no message comes back', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID, scope: 'user' });
+    h.store.conversationMessageRows = [
+      { id: 'm1', role: 'user', content: 'Something she said', createdAt: '2026-08-28T01:00:00Z' },
+    ];
+    h.audit.fail = true;
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_read_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).not.toBe(200);
+    expect(h.store.messageReads).toBe(0);
+  });
+
+  it('an admin asking for a conversation that is not private just gets it, with the same row written', async () => {
+    // Nothing about the action assumes privacy; what it assumes is admin. A workspace
+    // conversation an admin could read anyway still records the read, because the audit
+    // trail should not depend on a scope that can change afterwards.
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID });
+    const result = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'admin_read_conversation', conversationId: CONV_ID },
+    });
+    expect(result.status).toBe(200);
+    expect(h.audit.rows[0]?.action).toBe('CONVERSATION_ADMIN_READ');
   });
 });
 

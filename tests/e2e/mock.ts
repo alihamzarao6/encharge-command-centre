@@ -120,7 +120,24 @@ export interface MockOptions {
   roster?: ScriptedStaff[];
   /** Force one status/body from the admin endpoint instead of the faithful default. */
   adminFailure?: { status: number; body: unknown };
-  conversations?: { id: string; title: string | null; last_active_at: string; user_id?: string }[];
+  conversations?: {
+    id: string;
+    title: string | null;
+    last_active_at: string;
+    user_id?: string;
+    /** Stage 3 part 5 (R27). 'workspace' unless a test says otherwise, as in production. */
+    scope?: string;
+  }[];
+  /** Stage 3 part 5: other people's private conversations, as the admin listing returns them. */
+  privateConversations?: {
+    id: string;
+    authorId: string;
+    authorEmail: string | null;
+    createdAt: string;
+    lastActiveAt: string;
+  }[];
+  /** Keyed by conversation id: what an audited admin read hands back. */
+  privateMessages?: Record<string, ScriptedMessage[]>;
   messages?: Record<string, ScriptedMessage[]>;
   chat?: ChatScript;
   facts?: ScriptedFact[];
@@ -147,8 +164,11 @@ export interface MockState {
     title: string | null;
     last_active_at: string;
     user_id?: string;
+    scope?: string;
     deleted_at?: string | null;
   }[];
+  /** Every admin read the app performed. Each one is an audit row in production. */
+  readonly adminReads: string[];
   /** Every password the scripted admin endpoint has generated, so a test can look for leaks. */
   readonly issuedPasswords: string[];
 }
@@ -208,7 +228,12 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     facts: [...(options.facts ?? [])],
     chunks: [...(options.chunks ?? [])],
     staff: [me, ...(options.roster ?? [])],
-    conversations: (options.conversations ?? []).map((c) => ({ deleted_at: null, ...c })),
+    conversations: (options.conversations ?? []).map((c) => ({
+      deleted_at: null,
+      scope: 'workspace',
+      ...c,
+    })),
+    adminReads: [],
     issuedPasswords: [],
   };
   let chatCall = 0;
@@ -302,7 +327,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
             id: c.id,
             title: c.title,
             last_active_at: c.last_active_at,
-            scope: 'workspace',
+            scope: c.scope ?? 'workspace',
             user_id: c.user_id ?? USER_ID,
           })),
       );
@@ -440,6 +465,89 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           conversationId: String(body['conversationId']),
           messagesDeleted: already ? 0 : 2,
           chunksTombstoned: tombstoned,
+        });
+        return;
+      }
+      if (action === 'set_conversation_privacy') {
+        const row = state.conversations.find((c) => c.id === body['conversationId']);
+        if (row === undefined) {
+          await json(route, 404, {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'That conversation is no longer there.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        // Faithful to the server: only the author may, and an admin may not.
+        if ((row.user_id ?? USER_ID) !== USER_ID) {
+          await json(route, 403, {
+            error: {
+              code: 'NOT_YOURS',
+              message: 'Only the person who started a conversation can change who sees it.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        const wanted = body['isPrivate'] === true ? 'user' : 'workspace';
+        const unchanged = (row.scope ?? 'workspace') === wanted;
+        row.scope = wanted;
+        await json(route, 200, {
+          action,
+          outcome: unchanged ? 'unchanged' : 'changed',
+          conversationId: row.id,
+          isPrivate: wanted === 'user',
+        });
+        return;
+      }
+      if (action === 'admin_list_private') {
+        if (options.admin !== true) {
+          await json(route, 403, {
+            error: {
+              code: 'NOT_ADMIN',
+              message: 'Only an administrator can do that.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        await json(route, 200, {
+          action,
+          outcome: 'listed',
+          conversations: options.privateConversations ?? [],
+        });
+        return;
+      }
+      if (action === 'admin_read_conversation') {
+        if (options.admin !== true) {
+          await json(route, 403, {
+            error: {
+              code: 'NOT_ADMIN',
+              message: 'Only an administrator can do that.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        const id = String(body['conversationId']);
+        // In production this is where the audit row is written. Recording it here lets a
+        // browser test assert that the app asks ONCE, on a tap, and never on a render.
+        state.adminReads.push(id);
+        const listed = (options.privateConversations ?? []).find((c) => c.id === id);
+        await json(route, 200, {
+          action,
+          outcome: 'read',
+          conversationId: id,
+          title: 'A thread of hers',
+          authorEmail: listed?.authorEmail ?? null,
+          messages: (options.privateMessages?.[id] ?? []).map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            createdAt: m.created_at,
+          })),
         });
         return;
       }

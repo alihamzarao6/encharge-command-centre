@@ -14,6 +14,7 @@
  */
 import { canRemoveMemory, type MemoryActor } from '../../../src/lib/memory/access.js';
 import { conversationDisplayName } from '../../../src/lib/memory/naming.js';
+import { CHUNK_PRIVATE_SOURCE } from '../../../src/lib/memory/privacy.js';
 
 /**
  * Stage 3 part 3: what the memory page selects. Both tables are read directly under RLS
@@ -192,10 +193,19 @@ export interface MemoryChunkView {
   readonly conversationId: string;
   /**
    * The conversation this note came from, named the way the conversations list names it —
-   * `ross — Meta ad about offsets` (part 4a). Null when that conversation is gone, so the
-   * page can say so instead of showing a dangling name.
+   * `ross — Meta ad about offsets` (part 4a). Null when the viewer cannot read that
+   * conversation's row, which since part 5 means one thing in practice: its author made it
+   * private. (A DELETED conversation cannot reach here — deleting one tombstones its chunks
+   * and tombstoned chunks are filtered out below.) The card then names it as private rather
+   * than guessing, and offers no way in.
    */
   readonly conversationName: string | null;
+  /**
+   * True when the note is real and shared but its source conversation is not the viewer's to
+   * open. Exactly `conversationName === null`, named so the component reads as a decision
+   * rather than as a null check — this is the visible face of R27 on the memory page.
+   */
+  readonly sourceIsPrivate: boolean;
   readonly audience: string | null;
   readonly summary: string;
   readonly preview: string;
@@ -234,11 +244,13 @@ export function buildChunkList(
     .filter((row) => row.deleted_at === null)
     .map((row) => {
       const source = sources.get(row.conversation_id);
+      const name =
+        source === undefined ? null : conversationDisplayName(source.title, source.authorEmail);
       return {
         id: row.id,
         conversationId: row.conversation_id,
-        conversationName:
-          source === undefined ? null : conversationDisplayName(source.title, source.authorEmail),
+        conversationName: name,
+        sourceIsPrivate: name === null,
         audience: row.audience,
         summary: row.summary,
         preview: chunkPreview(row.summary),
@@ -248,3 +260,6 @@ export function buildChunkList(
       };
     });
 }
+
+/** Re-exported so the chunk card gets its words from the same module the server reads. */
+export { CHUNK_PRIVATE_SOURCE };

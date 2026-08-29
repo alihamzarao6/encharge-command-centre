@@ -231,6 +231,60 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
     expect(after.rows[0]?.scope).toBe('user');
   });
 
+  it('memory_chunks take their author from the conversation and their scope from nobody (R27)', async () => {
+    // The two children stopped sharing one trigger in part 5. A message copies both columns
+    // from its conversation (the test above). A chunk copies the AUTHOR and forces the scope
+    // to 'workspace' — so a private conversation still contributes to the shared brain,
+    // which is what the client chose. sync_chunk_ownership, migration 20260829010000.
+    const conv = await db.query<{ id: string }>(
+      `insert into public.conversations (user_id, scope, title)
+       values ($1, 'user', $2) returning id`,
+      [ROSS, `schema-test-${RUN} private`],
+    );
+    const convId = conv.rows[0]?.id ?? '';
+    const vector = `[${Array.from({ length: 1024 }, (_, i) => (i === 0 ? '1' : '0')).join(',')}]`;
+
+    // Deliberately wrong owner, and a scope that MATCHES the private parent — under the old
+    // trigger this row would have stayed 'user', which is exactly the bug part 5 fixed.
+    const chunk = await db.query<{ user_id: string; scope: string }>(
+      `insert into public.memory_chunks (conversation_id, user_id, scope, summary, embedding, turn_range)
+       values ($1, $2, 'user', $3, $4::vector, '[1,3)')
+       returning user_id, scope`,
+      [convId, DEV, `schema-test-${RUN} private chunk`, vector],
+    );
+    expect(chunk.rows[0]).toStrictEqual({ user_id: ROSS, scope: 'workspace' });
+
+    // A conversation changing scope cascades to its messages and never moves its chunk.
+    await db.query(`update public.conversations set scope = 'workspace' where id = $1`, [convId]);
+    await db.query(`update public.conversations set scope = 'user' where id = $1`, [convId]);
+    const afterCascade = await db.query<{ user_id: string; scope: string }>(
+      `select user_id, scope from public.memory_chunks where conversation_id = $1`,
+      [convId],
+    );
+    expect(afterCascade.rows[0]).toStrictEqual({ user_id: ROSS, scope: 'workspace' });
+
+    // A direct attempt to make the chunk private is corrected rather than refused: the
+    // trigger fires on an update OF scope and rewrites it before the constraint is checked.
+    // Both halves are asserted, because they fail in different circumstances — the trigger
+    // when someone writes through the ordinary path, the constraint when the trigger is not
+    // there to fire.
+    await db.query(`update public.memory_chunks set scope = 'user' where conversation_id = $1`, [
+      convId,
+    ]);
+    const afterDirect = await db.query<{ scope: string }>(
+      `select scope from public.memory_chunks where conversation_id = $1`,
+      [convId],
+    );
+    expect(afterDirect.rows[0]?.scope).toBe('workspace');
+
+    const constraint = await db.query<{ definition: string; validated: boolean }>(
+      `select pg_get_constraintdef(oid) as definition, convalidated as validated
+       from pg_constraint where conname = 'memory_chunks_scope_workspace'`,
+    );
+    expect(constraint.rows[0]?.definition).toContain("scope = 'workspace'");
+    expect(constraint.rows[0]?.validated, 'checked against every existing row').toBe(true);
+  });
+
   it('memory_chunks (Stage 3 part 1): no overlapping ranges, a mandatory valid range, HNSW on the embedding', async () => {
     const conv = await db.query<{ id: string }>(
       `insert into public.conversations (user_id, scope, title)

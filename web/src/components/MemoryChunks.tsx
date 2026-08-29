@@ -9,10 +9,15 @@
  * preview rather than the whole note, so a screen in a café gives less away and the list is
  * scannable; and Delete really deletes. Automatic redaction is deliberately absent — it would
  * mangle the notes and, worse, make the warning feel unnecessary.
+ *
+ * Since part 5 (R27) a note can outlive the viewer's access to the conversation it came
+ * from: its author made that conversation private, and the note is still shared because that
+ * is what the client chose. The card says exactly that and offers no way in — anything else
+ * would read as a broken link to a conversation that is working perfectly.
  */
 import { useState, type ReactElement } from 'react';
 
-import type { MemoryChunkView } from '../lib/memoryView.js';
+import { CHUNK_PRIVATE_SOURCE, type MemoryChunkView } from '../lib/memoryView.js';
 
 interface Props {
   readonly chunks: readonly MemoryChunkView[];
@@ -41,10 +46,12 @@ function ChunkCard({
   return (
     <li className="card mem__card">
       <div className="mem__card-head">
-        <h3 className="mem__chunk-title">
-          {chunk.conversationName ?? 'A conversation that has since been removed'}
-        </h3>
+        <h3 className="mem__chunk-title">{chunk.conversationName ?? CHUNK_PRIVATE_SOURCE.name}</h3>
       </div>
+      {/* R27: the note is shared on purpose; the conversation behind it is not this
+          person's to open. Saying so is the difference between a working design and one
+          that reads like a bug. */}
+      {chunk.sourceIsPrivate && <p className="muted mem__hint">{CHUNK_PRIVATE_SOURCE.hint}</p>}
       <p className="muted mem__meta">
         {chunk.when}
         {chunk.audience !== null && chunk.audience !== '' ? ` · for ${chunk.audience}` : ''}
@@ -138,7 +145,9 @@ export function MemoryChunks({
     <div className="mem__pane">
       <p className="muted mem__hint mem__warning">
         These are written automatically from real conversations, so one can mention a client, a
-        figure or something said in passing. Everyone who uses the Command Centre can read them.
+        figure or something said in passing. Everyone who uses the Command Centre can read them —
+        including the notes from conversations someone has kept to themselves. That is what one
+        shared memory means.
       </p>
       {chunks.length === 0 ? (
         <p className="muted mem__none">

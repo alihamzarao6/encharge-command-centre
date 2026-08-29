@@ -3,11 +3,15 @@
  * Four for the Memory page (add, edit, forget, delete a conversation note) and, since
  * Stage 3 part 4, two for the conversations themselves (rename, delete) — the same endpoint
  * because a conversation is the container the other two live in and the rule about who may
- * remove one is literally the same function.
+ * remove one is literally the same function. Stage 3 part 5 adds the privacy toggle.
  *
  * Reading is a plain PostgREST select under RLS (see supabase.ts) and never comes through
  * here — the browser holds the anon key and a session, which grant SELECT and nothing else,
- * so a change has to be made by a server that has verified who is asking.
+ * so a change has to be made by a server that has verified who is asking. THE ONE EXCEPTION
+ * is an administrator opening a conversation that is private to somebody else: RLS refuses
+ * it on purpose (so the promise holds against a stolen session), and the server path exists
+ * so the read leaves an audit row. That is `admin_list_private` / `admin_read_conversation`,
+ * and they are the only reads in this file.
  *
  * Pure where it can be — the request shape, the response reading, the plain-language
  * messages — so the parts that decide what the client sees are unit-tested without a
@@ -25,7 +29,33 @@ export type MemoryRequest =
       readonly conversationId: string;
       readonly title: string;
     }
-  | { readonly action: 'delete_conversation'; readonly conversationId: string };
+  | { readonly action: 'delete_conversation'; readonly conversationId: string }
+  /** Stage 3 part 5 (R27): the author's "Just me" toggle. */
+  | {
+      readonly action: 'set_conversation_privacy';
+      readonly conversationId: string;
+      readonly isPrivate: boolean;
+    }
+  /** Admin only. Metadata, never titles or messages — see src/lib/memory/page.ts. */
+  | { readonly action: 'admin_list_private' }
+  /** Admin only, and audited on the server every single time. */
+  | { readonly action: 'admin_read_conversation'; readonly conversationId: string };
+
+/** One row of the admin listing. Deliberately carries no title: a title is content. */
+export interface PrivateConversationSummary {
+  readonly id: string;
+  readonly authorId: string;
+  readonly authorEmail: string | null;
+  readonly createdAt: string;
+  readonly lastActiveAt: string;
+}
+
+export interface AdminConversationMessage {
+  readonly id: string;
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+  readonly createdAt: string;
+}
 
 /** What the server did. `declined` is a normal answer, not a failure: it was understood. */
 export type MemoryReply =
@@ -67,6 +97,25 @@ export type MemoryReply =
       readonly conversationId: string;
       readonly messagesDeleted: number;
       readonly chunksTombstoned: number;
+    }
+  | {
+      readonly action: 'set_conversation_privacy';
+      readonly outcome: 'changed' | 'unchanged';
+      readonly conversationId: string;
+      readonly isPrivate: boolean;
+    }
+  | {
+      readonly action: 'admin_list_private';
+      readonly outcome: 'listed';
+      readonly conversations: readonly PrivateConversationSummary[];
+    }
+  | {
+      readonly action: 'admin_read_conversation';
+      readonly outcome: 'read';
+      readonly conversationId: string;
+      readonly title: string | null;
+      readonly authorEmail: string | null;
+      readonly messages: readonly AdminConversationMessage[];
     };
 
 export interface MemorySuccess {
@@ -169,6 +218,69 @@ function readReply(body: unknown): MemoryReply | null {
       return null;
     }
     return { action, outcome, conversationId, messagesDeleted, chunksTombstoned };
+  }
+  if (action === 'set_conversation_privacy' && (outcome === 'changed' || outcome === 'unchanged')) {
+    const conversationId = str('conversationId');
+    if (conversationId === null || typeof body['isPrivate'] !== 'boolean') return null;
+    return { action, outcome, conversationId, isPrivate: body['isPrivate'] };
+  }
+  if (action === 'admin_list_private' && outcome === 'listed') {
+    const rows = body['conversations'];
+    if (!Array.isArray(rows)) return null;
+    const conversations: PrivateConversationSummary[] = [];
+    for (const row of rows as unknown[]) {
+      if (!isRecord(row)) return null;
+      const id = row['id'];
+      const authorId = row['authorId'];
+      const createdAt = row['createdAt'];
+      const lastActiveAt = row['lastActiveAt'];
+      if (
+        typeof id !== 'string' ||
+        typeof authorId !== 'string' ||
+        typeof createdAt !== 'string' ||
+        typeof lastActiveAt !== 'string'
+      ) {
+        return null;
+      }
+      conversations.push({
+        id,
+        authorId,
+        authorEmail: typeof row['authorEmail'] === 'string' ? row['authorEmail'] : null,
+        createdAt,
+        lastActiveAt,
+      });
+    }
+    return { action, outcome, conversations };
+  }
+  if (action === 'admin_read_conversation' && outcome === 'read') {
+    const conversationId = str('conversationId');
+    const rows = body['messages'];
+    if (conversationId === null || !Array.isArray(rows)) return null;
+    const messages: AdminConversationMessage[] = [];
+    for (const row of rows as unknown[]) {
+      if (!isRecord(row)) return null;
+      const id = row['id'];
+      const role = row['role'];
+      const content = row['content'];
+      const createdAt = row['createdAt'];
+      if (
+        typeof id !== 'string' ||
+        (role !== 'user' && role !== 'assistant') ||
+        typeof content !== 'string' ||
+        typeof createdAt !== 'string'
+      ) {
+        return null;
+      }
+      messages.push({ id, role, content, createdAt });
+    }
+    return {
+      action,
+      outcome,
+      conversationId,
+      title: str('title'),
+      authorEmail: str('authorEmail'),
+      messages,
+    };
   }
   return null;
 }

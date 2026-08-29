@@ -24,6 +24,7 @@ import type { MemoryPolicyConfig } from './config.js';
 import type { ChunkStore, ConversationRef, OrdinalMessage } from './chunks.js';
 import type { Embedder } from './embed.js';
 import { planChunks, type MessageRange } from './policy.js';
+import { SHARED_MEMORY_SCOPE } from './privacy.js';
 import {
   embeddingText,
   perthDate,
@@ -227,7 +228,11 @@ async function writeOne(
   const inserted = await deps.chunks.insertChunk({
     conversationId: conversation.id,
     userId: conversation.userId,
-    scope: conversation.scope,
+    // NOT `conversation.scope` (Stage 3 part 5, R27): what the assistant learns is shared
+    // even when the conversation is private. The database says the same thing — the chunk
+    // trigger forces it and `memory_chunks_scope_workspace` refuses anything else — but the
+    // application states its intent rather than relying on a trigger to correct it.
+    scope: SHARED_MEMORY_SCOPE,
     summary: summary.value.text,
     audience: summary.value.audience,
     embedding: vector,

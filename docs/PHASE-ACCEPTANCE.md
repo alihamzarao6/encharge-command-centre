@@ -295,6 +295,65 @@ Items in `users.test.ts`, `conversations.test.ts` and `rls.test.ts` need a stack
 and the migration `20260828010000` is **unapplied and unvalidated live**: `supabase db push`
 is the reviewer's, per RUNBOOK §1c.
 
+**Part 5 (FND-340, 29 Aug 2026) evidence, code level — the seven Part A assertions.** R27 is
+closed by the client's own answer (D62): a conversation can be private to its author, an
+administrator can read anybody's, and **what the assistant LEARNS still reaches the whole
+team**. That last clause is not what the schema did — a chunk took its conversation's scope
+by trigger — so it is what most of the evidence is about.
+
+(1) **A private conversation is unreadable by another allowlisted non-admin, at the
+database** — `privacy.test.ts` "1." (a real signed-in session, PostgREST, zero rows, with a
+**control** immediately before it proving the same session could read the same row while it
+was shared, so the assertion cannot pass vacuously), `rls.test.ts` 5, `page.test.ts` "a
+non-admin cannot even see…" (404, nothing written); (2) **its messages are equally
+unreadable** — `privacy.test.ts` "2." (every message row is `'user'`-scoped after the flip,
+zero rows through a real session, and the message text itself unreachable by any query that
+session can make), `rls.test.ts` 5; (3) **its chunks stay workspace-scoped and are reachable
+by shared recall** — `privacy.test.ts` "3." (`scope` = workspace, `user_id` still the
+author, readable by the outsider's session, and returned by `match_memory_chunks` scoped to
+*the outsider*), `rls.test.ts` 4b, `schema.test.ts` "memory_chunks take their author from
+the conversation and their scope from nobody", `privacy.test.ts` "nothing can make that chunk
+private" (the trigger corrects a direct update; `memory_chunks_scope_workspace` is present
+and `convalidated` in `pg_constraint`); (4) **an admin can read it** — `privacy.test.ts` "4.",
+which first asserts the admin's OWN PostgREST session still sees zero rows (RLS was not
+widened — that is the design, D65) and then reads it through the server path, with
+`CONVERSATION_ADMIN_READ` in `audit_log` naming the admin, and the listing carrying no
+title; `page.test.ts` "the administrator view" (six cases, including **an unrecorded admin
+read is not a read**: the audit write fails, no message is fetched); `rls.test.ts` 12
+(`pg_policies.qual` on `conversations` and `messages` must not mention `is_admin`);
+(5) **toggling back restores visibility, and toggling repeatedly corrupts nothing** —
+`privacy.test.ts` "5." (five flips, each asserting the conversation's scope, that *all* its
+messages moved together rather than a mixture, and that the chunk never moved), `page.test.ts`
+"toggling repeatedly writes exactly the scopes asked for, in order"; (6) **existing workspace
+conversations are unaffected** — `privacy.test.ts` "6." (an untouched conversation, its
+messages and its chunk, all still workspace and still visible to the outsider) and "6b." (no
+private chunk anywhere in the database — an absence, so another suite's fixtures can only
+break it, never make it pass), `privacy.test.ts` unit "does not migrate any conversation to
+private"; (7) **facts are unchanged** — `privacy.test.ts` "7." (value, author, scope, date,
+`source_message_id` and `superseded_by` all identical, one row for the key, still readable by
+the outsider).
+
+**Interface half** — `privacy.spec.ts`, 10 tests × 3 widths, screenshots in
+`docs/assets/stage-3/`: the toggle is on the author's row and on nobody else's *including an
+administrator's view of it*; the confirm carries both halves of the sentence; a private row
+says so at a glance; going back says what becomes visible, "including what was said while it
+was private"; the admin listing shows no names and says why; opening one reads it **once**,
+says the read was recorded, and renders no composer; the Memory page names an unreachable
+source *A private conversation* rather than one that was removed; and every change went to
+`/functions/v1/memory` with `postgrestWrites` empty throughout.
+
+**One layout regression, found and fixed here:** the thread bar at 375 px already held ☰
+Conversations, the title, Rename and + New, and a fifth control collapsed the title to zero
+width — caught by `conversations.spec.ts` and `memory.spec.ts`, not by the new file. The
+thread-bar toggle is now shown from 768 up only; the list-row toggle exists at every width,
+and `privacy.spec.ts` asserts both halves of that so "we hid it on mobile" stays honest.
+
+Items in `privacy.test.ts`, `schema.test.ts` and `rls.test.ts` need a stack and were **not
+run on the developer's machine** (no Docker, and the Supabase MCP failed to connect this
+session, so the usual rolled-back-transaction validation was not available either) — CI's
+`integration` job is the evidence, and migration `20260829010000` is **unapplied and
+unvalidated live**.
+
 ---
 
 ## Stage 4 — Website reading and storage · Payment 4 of 5 (198)

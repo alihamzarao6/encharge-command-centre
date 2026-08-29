@@ -274,6 +274,17 @@ Not "we enabled RLS" — proven by test. `tests/security/rls.test.ts` iterates e
    all — promote, add, remove, rename and message-delete are each attempted through
    PostgREST as a signed-in user and each refused, and the three new functions are
    executable by `service_role` only
+8. *(part 5, R27)* **A private conversation is private at the database.** An allowlisted,
+   active, non-admin teammate holding a real session reads zero rows from `conversations`
+   and zero from `messages` for a conversation whose author marked it private — while still
+   reading its `memory_chunks`, which stay workspace-scoped on purpose. The chunk-scope
+   invariant is asserted twice, because it has two mechanisms that fail in different
+   circumstances: the trigger corrects a direct `update … set scope = 'user'`, and
+   `memory_chunks_scope_workspace` is checked as present and validated in `pg_constraint`
+9. *(part 5)* **The `conversations` and `messages` policies were not widened for admins** —
+   `pg_policies.qual` is read for both tables and must not mention `is_admin`. An
+   administrator reads a private conversation through the audited server path only, and if
+   someone later adds an RLS bypass "to make the admin view simpler", this fails
 
 A new table added without RLS — or without its grant, or with too broad a grant — fails
 CI. That is the point. The same suite asserts `service_role` holds full DML on every table
@@ -296,6 +307,21 @@ roster; a non-admin is refused all seven actions and nothing moves; the workspac
 reach zero administrators, including under a two-connection race; a deactivated user is
 refused at the database while the note they contributed stays live and readable by everyone
 else; and every action lands in `audit_log` naming the human, never `service_role`.
+
+`tests/integration/privacy.test.ts` (part 5, R27) proves the seven Part A assertions against
+a real stack with three real accounts — the author, an administrator and an allowlisted
+non-admin outsider, all created for the run so no other suite's credentials are touched. It
+opens with a **control**: the outsider reads the conversation *before* it goes private, so
+assertion 1 cannot pass because they can read nothing at all — the most likely way a privacy
+test lies to you.
+
+**One read in this application does not come from PostgREST under RLS**, and it is
+deliberate: `admin_read_conversation`. Reading someone's private messages is exactly the act
+that should leave a trace, and Postgres has no SELECT trigger, so an RLS bypass could never
+leave one. The server path verifies the caller from their JWT, checks `is_admin`, writes
+`CONVERSATION_ADMIN_READ` to `audit_log`, and **only then** reads the messages — an audit
+write that fails refuses the read. The admin's listing carries no title and no content, so
+listing is not reading and is not audited.
 
 ---
 

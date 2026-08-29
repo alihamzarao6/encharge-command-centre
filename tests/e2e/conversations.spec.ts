@@ -52,7 +52,9 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
 async function openList(page: Page): Promise<void> {
   const menu = page.getByRole('button', { name: 'Open conversations' });
   if (await menu.isVisible()) await menu.click();
-  await expect(page.getByRole('heading', { name: 'Conversations' })).toBeVisible();
+  // `exact` because the admin section's heading is 'Private conversations', which a
+  // loose match also finds (part 5).
+  await expect(page.getByRole('heading', { name: 'Conversations', exact: true })).toBeVisible();
 }
 
 const TWO = [
