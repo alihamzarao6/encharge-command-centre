@@ -161,10 +161,25 @@ tombstones, so a missing source now means *private*, not *gone*. Left as it was,
 private conversation would have produced a card telling the team something had been deleted
 when nothing had.
 
-**Not verified here:** the stack suites and `supabase db reset` from zero — no Docker on this
-machine, and the Supabase MCP failed to connect this session, so the usual rolled-back-
-transaction validation was not available either. CI's `integration` job is the evidence, and
-the migration is unapplied and unvalidated live.
+**CI, and what it caught.** Pushed to `fnd-340-private-conversations` rather than verified by
+assertion here — no Docker on this machine, and the Supabase MCP failed to connect, so the
+rolled-back-transaction validation used in earlier parts was not available either. **The
+first run (33261409503) was red on assertion 2**, which is exactly the assertion this part
+exists for. The cause was mine and it was in the fixture: `seed()` wrote the same sentence
+into both conversations, so the outsider's by-content lookup correctly found the *shared*
+one's copy. The scoped-by-id half passed and so did the other six. Fixed by giving each
+conversation its own sentence and giving the by-content check its own control, rather than by
+deleting the check — it is the half that catches a row still reachable by a query that never
+mentions the conversation. **Run 33261767108 (`28324fc`) is fully green:** unit 1199,
+`db reset --local` from zero with 16 migrations, integration 75/75 (privacy 12/12), security
+37/37, browser 177/177, zero skipped.
+
+**Applied live.** `supabase db push --linked` applied `20260829010000`; the ledger now reads
+`local 20260829010000 / remote 20260829010000`. **Still outstanding:** an object-level look at
+the live trigger, function and constraint, and a live functional pass — `supabase db dump`
+needs Docker and the MCP is down, so the evidence today is the ledger (which only records a
+migration whose statements committed) plus CI's from-zero replay of the identical file. Both
+belong with the acceptance run, where privacy has to be demonstrated live anyway.
 
 **Next:** Part B — the twelve Stage 2 criteria re-run, the Stage 3 criteria, the real
 per-turn cost, the recall rate, and the client sign-off material.

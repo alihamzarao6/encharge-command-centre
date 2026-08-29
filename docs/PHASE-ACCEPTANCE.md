@@ -350,9 +350,29 @@ and `privacy.spec.ts` asserts both halves of that so "we hid it on mobile" stays
 
 Items in `privacy.test.ts`, `schema.test.ts` and `rls.test.ts` need a stack and were **not
 run on the developer's machine** (no Docker, and the Supabase MCP failed to connect this
-session, so the usual rolled-back-transaction validation was not available either) — CI's
-`integration` job is the evidence, and migration `20260829010000` is **unapplied and
-unvalidated live**.
+session). **CI is the evidence, and CI run 33261767108 (`28324fc`, 29 Aug) is fully green:**
+unit 1199/1199 with the coverage gate, `db reset --local` from zero applying all **16**
+migrations, integration **75/75** (`privacy.test.ts` 12/12), security **37/37**, browser
+**177/177**, zero skipped anywhere — the integration job sets `REQUIRE_SUPABASE_TESTS=1`, so
+a skip is a failure and a green run proves the suites actually ran.
+
+**The first run (33261409503) was RED**, and on the assertion that matters: `2. its messages
+are equally unreadable` failed its final by-content check. The cause was the fixture, not the
+product — `seed()` wrote the same sentence into *both* conversations, so the outsider
+correctly found the shared one's copy. The scoped-by-id half of the same assertion passed, as
+did the other six (74 passed, 1 failed). The by-content lookup is the half worth keeping — a
+read scoped by `conversation_id` can pass while the row is still reachable by a query that
+never mentions the conversation — so it stayed and the fixture was corrected, with its own
+control added (the shared sentence, same query shape, must still return one row).
+
+**Migration `20260829010000` is APPLIED to the live project** (`supabase db push --linked`,
+29 Aug): the CLI reported `Applying migration 20260829010000_private_conversations.sql...` and
+`supabase migration list --linked` now returns `local 20260829010000 / remote 20260829010000`.
+**Not yet done:** an object-level inspection of the live schema (the trigger, the function and
+the constraint) and a live functional pass. `supabase db dump` needs Docker and the Supabase
+MCP would not connect, so the evidence so far is the migration ledger — which only records a
+migration whose statements committed — and CI's from-zero replay of the identical file. The
+live functional check belongs with the Stage 3 acceptance run.
 
 ---
 
