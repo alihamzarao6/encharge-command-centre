@@ -101,6 +101,9 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D64** | **The chunk trigger is split off the message trigger and forces `scope = 'workspace'`; a check constraint backs it** (`sync_chunk_ownership`, `memory_chunks_scope_workspace`, migration `20260829010000`). The cascade still carries `user_id` + `scope` to messages, and only `user_id` to chunks. **Amends D41's scope clause; the Haiku routing and the Voyage caps are unchanged** | The alternative was a column on `conversations` saying what scope its chunks should take — rejected, because it is a second privacy dial settable independently of the first, with four combinations of which the client asked for one, and a setting that can be wrong is worse than no setting. "A chunk is workspace" is not a preference; it is what option two MEANS. What the trigger still guarantees: `user_id` is always exactly the conversation's author, in both directions, so attribution, `canRemoveMemory` and a reassigned conversation all keep working. `scope` is now a CONSTANT rather than a copy — a stronger guarantee than it had, because a copy can drift and a constant cannot. The constraint is deliberate friction: a genuinely private summary would be a client conversation and a migration, not a stray UPDATE. Existing rows: a normalising `update` runs first (expected 0 — nothing could ever set a conversation private), because a constraint added on the strength of "there cannot be any" fails on somebody's laptop at the worst moment | 29 Aug |
 | **D65** | **An administrator reads a private conversation through an AUDITED SERVER PATH, never through RLS. The policies on `conversations` and `messages` are not touched** — `admin_list_private` returns metadata with **no title** and is not audited; `admin_read_conversation` writes `CONVERSATION_ADMIN_READ` to `audit_log` BEFORE it returns a single message, and an audit write that fails refuses the read | One more `or <caller is admin>` in the policy would have been three words and made the whole existing interface work unchanged. It was rejected on one fact: **Postgres has no SELECT trigger.** An RLS bypass is invisible by construction — an owner could read every private conversation in the workspace, every day, and leave not one row anywhere saying so. Reading someone's private messages is exactly the act that should leave a trace, so it goes through the one path that can leave one. It also keeps the promise true against a stolen session: the database still refuses, whoever is asking. The listing carries no title because a title is auto-set from the first thing its author said (D61), so a titled listing would be a listing of content — that line is what lets the listing go unaudited and the read not. `rls.test.ts` 12 reads `pg_policies.qual` for both tables and fails if `is_admin` ever appears | 29 Aug |
 | **D66** | **What the assistant LEARNS is written at `SHARED_MEMORY_SCOPE` (workspace), not at the conversation's scope** — both the summariser (`trigger.ts`) and the fact capture on a turn (`chat.ts` → `retrieve.ts`). **Amends the scope clause of D41 and the `memory_facts.scope` rule in SCHEMA §4** | The brief for this part said "facts are unchanged", and the fact TABLE and its rows are. But the capture path passed `conversation.scope` into the fact write, so the moment a conversation could be private, a "remember that…" said in one would have become a private fact — starving the shared brain of exactly the notes somebody chose deliberately, which is option three arriving by the back door. It was invisible until now only because no conversation could ever be private. The column still accepts `'user'` and the CLI can still write one by hand; nothing on the chat or memory-page path does | 29 Aug |
+| **D67** | **The 0.45 similarity floor stays.** Measured, not asserted: over 14 chunks and 13 probes, related requests hit 9/10 at 0.45 and unrelated 0/3, with the highest unrelated at 0.3277 and the median related at 0.5899 | The floor sits in a clean gap with 0.12 of margin above the worst false positive. Anything from 0.35 to 0.45 gives the identical 9/10 · 0/3; below 0.35 an unrelated request starts hitting; at 0.60 seven of ten related requests are lost. The one related miss reproduces D46 exactly — "Make it shorter" alone is 0.2914, the same request with the previous user turn prepended is 0.6255 — which is the two-message query earning its place. **Caveat recorded honestly:** 14 chunks from one session in one subject area are more homogeneous than a real year of use, so the related scores are probably flattered; re-measure once there are months of genuine conversations | 29 Aug |
+| **D68** | **The cost the client was told holds.** Measured per warm turn: **$0.005653** (22 turns) against Stage 2's $0.0055; cold (cache write) $0.015051 (5 turns). Memory adds ≈ $0.00038 amortised. Projected **≈ $2.65/month at 300 turns and ≈ $7.90 at 1,000** | Memory did not move the turn cost materially because the recall block is 810 rendered chars — about 270 tokens, ≈ $0.0008 of uncached input — and sits below the cache breakpoint, which is inside the variance from reply length. The **$50–80 he was told has six to thirty times the headroom**; it was never close. The thing that will change it is Stage 5, where carousels and ad-copy variants produce far more output tokens, and output is where the money is | 29 Aug |
+| **D69** | **The Voyage account is limited to 3 requests per minute, and that is the binding constraint on semantic memory — not the design.** A turn uses two Voyage calls when a chunk is due, so the workspace supports ~1.5 turns/minute before memory degrades. **12 of 21 live turns degraded.** Two consequences: recall silently falls back to facts only (the reply is fine — S3-6 passes under genuine failure), and **summarisation pays Haiku for a summary it then throws away** when the embed fails, leaving the range uncovered to be re-summarised and re-charged | Found by running a realistic session, which is the only way it could have been found — the project had six turns of traffic and one chunk before this. Neither consequence is a part-5 regression; both predate it and were invisible without load. **Not fixed here, because it is a decision, not a patch:** either the Voyage account leaves the free tier (the direct fix, and the client's call — R5 is his account), or the summariser is reordered to keep the paid summary and retry only the embed, writing the chunk with a null embedding and backfilling, which the schema already permits because `match_memory_chunks` ignores a null embedding | 29 Aug |
 
 ---
 
@@ -115,6 +118,53 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-29 — [FND-340 · Stage 3 part 5, part B] The Stage 3 acceptance run
+
+**Did:** re-ran the twelve Stage 2 criteria (twelve pass), tightened the Stage 3 criteria into
+fourteen numbered, testable items in `PHASE-ACCEPTANCE.md`, and measured the two things part 2
+left open. Merged part A to `main` (`4052ae7`) after CI, applied the migration live, and proved
+the live objects and behaviour.
+
+**The acceptance run had to generate its own data.** The live project held **six chat turns,
+all developer testing from 25–26 Aug, one chunk and zero facts** — nothing to measure a cost or
+a recall rate on. So a realistic session ran through the production handler against the live
+project with two throwaway accounts: 21 turns, a taught preference, a separate conversation
+that applied it, a second person who inherited it, and five outputs for the client to judge.
+Every fixture was removed afterwards and the project re-counted back to its prior state; the
+`api_usage` rows were kept, with their conversation and user pointers nulled, because they are
+the measurement.
+
+**Decided:** D67 (the 0.45 floor stays, on evidence), D68 (the cost holds with 6–30× headroom),
+D69 (the Voyage 3-requests-per-minute limit is the binding constraint on semantic memory).
+
+**Surprised by, and this is the finding of the stage:** **21 real turns produced zero chunks.**
+Voyage 429s above 3 requests per minute, the circuit breaker then locks the origin for another
+30 seconds, and a turn needs two Voyage calls when a chunk is due. Recall degrading is handled
+and correct — S3-6 passed under genuine failure rather than a simulated one. What is not
+handled is that `summariseConversation` pays Haiku for the summary *first* and embeds *second*,
+so a failed embed throws away work that was already charged for, leaves the range uncovered,
+and the next sweep buys it again. Invisible until now because the project had almost no
+traffic.
+
+**Two Stage 3 starting points were never built, and are recorded as gaps rather than dropped:**
+**S3-13** whitelisted tools with two-turn confirmation on writes (D9) — there is no tool calling
+in the chat path at all — and **S3-14** n8n on Railway (`n8n/workflows/` holds zero committed
+workflows). Neither is needed by anything Stage 3 delivered, but both were named at kickoff.
+The dashboard also shipped Assistant / Memory / Team, not the cost, review-queue and tasks
+surfaces the starting points listed.
+
+**Not deployed.** All three Edge Functions were last deployed **28 Aug** — part 4. The database
+now carries part 5 and `main` carries the code, but the running `memory` function has no
+privacy actions and the Vercel bundle has no toggle. The migration is backward-compatible so
+nothing is broken, but **privacy cannot be reached from the live app until the function and the
+web app are redeployed.** Left for the reviewer rather than done unasked: deploying the client's
+live assistant is his call, not a side effect of an acceptance run.
+
+**Next:** the reviewer's manual pass, then the client session — five outputs to judge, and the
+two decisions he owns (Voyage tier, and where S3-13/S3-14 belong).
 
 ---
 

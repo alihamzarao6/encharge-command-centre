@@ -144,20 +144,49 @@ to sound like (optional — §1, §9–§11 are enough to start).
 
 ## Stage 3 — Memory + dashboard · Payment 3 of 5 (198)
 
-*Criteria to be tightened at Stage 3 kickoff in the same style as Stage 2. Starting points,
-from Scope v3 and the 09 Aug Phase 4 criteria that survive:*
+**Tightened 29 Aug 2026 at part 5, in the Stage 2 style: every criterion is a test output, an
+HTTP response, a database row or a number.** The 09 Aug starting points are kept verbatim at
+the bottom of this section, because **three of them were not built** and that has to be
+visible rather than quietly dropped.
 
-- Three-tier memory live: recent turns verbatim, semantic recall of past sessions
-  (`memory_chunks`, Voyage embeddings — R5), durable facts (`memory_facts`, append-only with
-  supersede). **Tell it a preference in one session on one device; start a fresh session on
-  another device; it recalls the preference.**
-- `user` vs `workspace` scope behaves as `SCHEMA.md` §4 says, proven by the RLS test.
-- Dashboard (D29) usable on a phone: conversations, cost, review queue, tasks. Verified at
-  375/768/1280.
-- Whitelisted tools, **two-turn confirmation on anything that writes** (D9); every tool
-  execution in `audit_log`; a declined write changes nothing.
-- n8n on Railway with Postgres backing, encrypted credentials, HMAC-verified webhooks.
-- Voyage AI account created (client responsibility, R5).
+| # | Criterion | Status |
+|---|---|---|
+| **S3-1** | **Three-tier memory is live**: recent turns verbatim, semantic recall over `memory_chunks` (Voyage), durable facts in `memory_facts` (append-only with supersede) | **Pass** — parts 1–2; `recall.test.ts`, `memory.test.ts`, and the live session below |
+| **S3-2** | **A preference stated in one conversation changes the output in a later, separate one** — the whole stage in one test | **Pass, live** (below) |
+| **S3-3** | Memory survives a sign-out, a different device and a different browser | **Pass** — it is keyed on the user, not the device; proven live by a second account reading the same memory, and by the browser suite's session handling. *Not* separately demonstrated on two physical devices — that is one line on the manual list |
+| **S3-4** | What is remembered is **visible on the Memory page and can be removed** | **Pass** — part 3; `memory-page.test.ts`, `memory.spec.ts` |
+| **S3-5** | A second user can be added, sign in, and read shared memory | **Pass** — part 4; `users.test.ts` "1.", and live below |
+| **S3-6** | Retrieval **degrades without breaking a reply** when Voyage or the search fails | **Pass, and exercised for real** — 12 of 21 live turns degraded (`degraded:["embed"]`) and every one returned a 200 with a reply. See the Voyage finding |
+| **S3-7** | **Privacy behaves as Part A built it** | **Pass** — the seven assertions in CI and 27 assertions live |
+| **S3-8** | `user` vs `workspace` scope behaves as `SCHEMA.md` §4 says, proven by the RLS test | **Pass** — `rls.test.ts` 4, 4b, 5, 11, 12 (37/37) |
+| **S3-9** | The dashboard is usable on a phone, verified at 375 / 768 / 1280 | **Pass for what was built** — Assistant, Memory, Team; `177/177` browser assertions. **Cost, review queue and tasks were in the starting points and are NOT built** |
+| **S3-10** | Every memory and conversation write lands in `audit_log` with the right actor | **Pass** — parts 3–5; `memory-page.test.ts` "8.", `conversations.test.ts`, and `CONVERSATION_ADMIN_READ` observed live |
+| **S3-11** | The running cost is inside the figure the client was given | **Pass with headroom** — measured below |
+| **S3-12** | Regression suite green; migrations replay from zero | **Pass** — CI 33261767108 |
+| **S3-13** | Whitelisted tools with two-turn confirmation on anything that writes (D9) | **NOT BUILT.** There is no tool calling in the chat path at all (`grep` for `tools:` / `tool_use` in `src/lib/llm` returns nothing). Nothing writes to anything from a conversation, so the confirmation rule has nothing to guard yet |
+| **S3-14** | n8n on Railway, Postgres-backed, encrypted credentials, HMAC-verified webhooks | **NOT BUILT.** `n8n/workflows/` holds **zero** committed workflows |
+
+**S3-13 and S3-14 are the honest gaps in this stage** and are listed on the client's
+outstanding items rather than argued away. Neither is needed by anything Stage 3 delivered —
+memory, the dashboard and staff management all work without them — but both were named in the
+Stage 3 starting points and neither exists. They are the first thing to settle at Stage 4
+kickoff: whether they belong to Stage 4, to Stage 6, or to a separate conversation.
+
+**S3-2, proven live on 29 Aug** through the production handler against the live project. In
+conversation 1 the broker said *"Remember that every post we publish finishes with exactly one
+call to action, and the wording is always 'Send me a message'."* — captured as
+`writing:call-to-action`, `outcome: inserted`. In a **separate new conversation** the same
+person asked for a two-line post about offset accounts and got one ending `Send me a message`.
+Then a **different signed-in person**, in their own new conversation, asked what had been
+agreed about calls to action and was told *"We've agreed every published post ends with
+exactly one call to action, worded as 'Send me a message.'"* — one person taught it, another
+person's conversation used it. That is S3-1, S3-2, S3-3 and S3-5 in one sequence.
+
+The sharpest evidence is unprompted: asked for a **Google ad**, it applied the rule and then
+flagged its own conflict — *"This asset carries a 'book' CTA per the Google ad structure and
+the standing 'Send me a message' line applies to published posts (Facebook/organic), not
+Google ad CTAs — flagging in case you want it changed to match."* It reasoned about the
+remembered instruction rather than pattern-matching it.
 
 **Part 1 (FND-300, 26 Aug 2026) evidence, code level — the eight Part C assertions:**
 (1) ten messages → exactly one chunk, `turn_range [1,11)` — `trigger.test.ts` "1." and
@@ -400,6 +429,137 @@ was removed afterwards and the run re-counted the tables to prove it — `{"conv
 "messages":0,"chunks":0,"facts":0,"staff":0,"auth_users":0}` — and the project is back to the
 1 chunk / 4 conversations it held before. Neither action reaches Claude or Voyage, so the pass
 cost nothing.
+
+---
+
+## Stage 3 PART B — the acceptance run, 29 Aug 2026
+
+### The twelve Stage 2 criteria, re-run
+
+Stage 3 changed the schema, the auth policy and the chat path underneath all of them, so they
+were re-run rather than assumed. **Twelve pass.**
+
+| # | Stage 2 criterion | Verdict | Evidence |
+|---|---|---|---|
+| 1 | CI green on the demonstrated commit, coverage ≥ 80/75 | **Pass** | Run 33261767108 (`28324fc`), all three jobs; coverage **92.01% stmts · 87.84% branches · 94.50% funcs · 93.47% lines** |
+| 2 | Schema rebuilds from zero, every table RLS-enabled and forced | **Pass** | CI `supabase db reset --local` replayed **16** migrations; `rls.test.ts` 1 asserts `rowsecurity` **and** `forcerowsecurity` on every table |
+| 3 | RLS proven, not claimed | **Pass** | Security suite **37/37** (was 33; +4 from the part-5 additions) |
+| 4 | Only allowlisted people get in | **Pass** | `rls.test.ts` 2/3 (anon and non-allowlisted read zero rows from every table); `page.test.ts` "who is let in" (401/403 before any read, write or spend); proven live — a non-admin got 403 from both admin actions |
+| 5 | Every Claude call metered and capped | **Pass** | The acceptance run wrote **21 `chat.turn` rows** with model, tokens and cost; cap logic in `client.ts` with unit tests. *Not re-demonstrated live:* tripping the cap deliberately, because that means setting the client's live cap to 0 |
+| 6 | The Anthropic key cannot be reached from the browser | **Pass** | `web:check` over the real production build with the **actual key values loaded**, not just shapes: `0 hits — no service role key, no Anthropic key, no Voyage key, no voice prompt, not a dev build` |
+| 7 | The voice is traceable | **Pass** | Prompt built from `CLIENT-CONTEXT.md` with per-rule citations; unchanged this stage (`prompt v2026-08-25.4`, hash `796dc50d`) |
+| 8 | Voice conformance is a test suite, 100% on the recorded set | **Pass** | `npm run voice`: **24 prompts · 291 checks · 0 failing** |
+| 9 | The client would publish at least three of five | **His to answer** | Five outputs generated live on 29 Aug, below |
+| 10 | He can open it and talk to it on his phone; 375/768/1280, no horizontal scroll | **Pass** | Browser suite **177/177** across the three widths |
+| 11 | Conversations follow him across devices | **Pass** | Keyed on the user, not the device; the live run had two people reading the same workspace memory from separate sessions |
+| 12 | `npm run test:regress` green, counts reported | **Pass** | typecheck + lint clean; **1209 passed · 102 skipped**; coverage above |
+
+### The real cost per turn
+
+Measured from `api_usage` rows the acceptance run itself wrote — 27 chat turns in total across
+the project's life, split by whether the 3,017-token voice prefix was cached.
+
+| | turns | mean | min | max |
+|---|---|---|---|---|
+| **warm** (cache read) | 22 | **$0.005653** | $0.002582 | $0.009173 |
+| **cold** (cache write) | 5 | $0.015051 | $0.012916 | $0.018199 |
+
+**Stage 2 measured $0.0055 warm. It is now $0.0057.** Memory did not move it materially,
+because the recall block is small and sits below the cache breakpoint: 810 rendered characters
+on every turn of the live session (≈ 270 tokens ≈ $0.0008 of uncached input), which is inside
+the turn-to-turn variance from reply length.
+
+The memory work that happens *around* a turn, amortised:
+
+| Operation | measured mean | how often | per turn |
+|---|---|---|---|
+| `memory.recall` (Voyage query embed) | $0.000001 | every turn | $0.000001 |
+| `memory.summarise` (Haiku) | $0.001664 | one chunk per 10 messages ≈ per 5 turns | $0.000333 |
+| `memory.embed` (Voyage document) | $0.000010 | same | $0.000002 |
+| `memory.capture` (Haiku) | $0.000852 | only a "remember that…" turn, say 1 in 20 | $0.000043 |
+| | | | **≈ $0.00038** |
+
+**All-in ≈ $0.0060 per warm turn.** Projected, assuming one cold turn per session and three
+sessions a day (90 cold turns a month):
+
+- **300 turns/month** — 300 × $0.0060 = $1.80, plus 90 cold at +$0.0094 = $0.85 → **≈ $2.65**
+- **1,000 turns/month** — 1,000 × $0.0060 = $6.00, plus 200 cold = $1.88 → **≈ $7.90**
+
+**The $50–80 a month the client was told still holds, with six to thirty times the headroom.**
+It was never close. The configured caps ($6/day, $60/month) sit far above the projection, which
+is the right way round. The one thing that would change this is Stage 5: carousels and ad-copy
+variants produce far more output tokens per request than a two-line post, and output is where
+the money is.
+
+### Recall rate, and whether 0.45 is the right floor
+
+Part 2 left this open. It could not be answered from live data — the project held **one chunk
+and six turns**, all developer testing — so a realistic store was built (14 chunks from the
+acceptance session) and probed with 13 requests: ten related to the material, three deliberately
+not. Each probe embedded the query exactly as a turn does (`queryText`, current message plus the
+previous user message) and asked `match_memory_chunks` **with the floor set to 0**, so the whole
+distribution came back and the hit rate at any floor is arithmetic rather than a second paid run.
+
+| floor | related | unrelated | overall |
+|---|---|---|---|
+| 0.30 | 9/10 | **1/3** | 10/13 |
+| 0.35 | 9/10 | 0/3 | 9/13 |
+| 0.40 | 9/10 | 0/3 | 9/13 |
+| **0.45** | **9/10** | **0/3** | **9/13** |
+| 0.50 | 8/10 | 0/3 | 8/13 |
+| 0.55 | 7/10 | 0/3 | 7/13 |
+| 0.60 | 3/10 | 0/3 | 3/13 |
+
+Related: min 0.2914 · **median 0.5899** · max 0.6426. Unrelated: min 0.1702 · median 0.2674 ·
+**max 0.3277**.
+
+**0.45 is right, and it is right by measurement rather than by assertion.** There is a clean gap
+between the highest unrelated request (0.3277) and the median related one (0.5899); 0.45 sits in
+the middle of it with 0.12 of margin above the worst false positive and 0.14 below the median
+true one. Anything from 0.35 to 0.45 gives the identical 9/10 · 0/3; below 0.35 an unrelated
+request starts hitting; at 0.60 seven of ten related requests are lost. **Leave it at 0.45.**
+
+The single related miss reproduces the case D46 already documented: **"Make it shorter" with no
+previous message scores 0.2914**; the *same* request with the previous user turn prepended
+scores **0.6255**. The two-message query is doing real work, and it is the difference between a
+miss and a comfortable hit.
+
+**What this measurement is not.** Fourteen chunks, thirteen probes, one subject area, all
+written from a single session — so the chunks are more homogeneous than a real year of use, which
+probably flatters the related scores. It is a real measurement on real embeddings, not a
+simulation, but it is a small one and should be re-run once the client has a few months of
+genuine conversations behind him.
+
+### The Voyage rate limit — the material finding of this stage
+
+**The Voyage account allows 3 requests per minute.** Measured directly: sequential embeds four
+seconds apart succeed three times and then 429; the HTTP circuit breaker opens after five
+consecutive failures and locks the origin out for a further 30 seconds, so one burst costs far
+more than the single call that was refused.
+
+A chat turn uses **two** Voyage calls when a chunk is due — one to embed the query for recall,
+one to embed the summary. So the whole workspace supports roughly **1.5 turns per minute**
+before memory starts degrading. The live acceptance session ran 21 turns at a realistic
+copy-iteration pace and **12 of them reported `degraded:["embed"]`**.
+
+Two consequences, and the second is a defect:
+
+1. **Recall silently falls back to facts only.** The reply is still correct and still arrives —
+   S3-6 passes, and passed under genuine failure rather than a simulated one — but the semantic
+   half of memory is quietly absent.
+2. **Summarisation pays for work it then throws away.** `summariseConversation` writes the
+   summary with Haiku *first* and embeds *second*; when the embed fails the range is left
+   uncovered and no chunk is written, so the money is spent and nothing is kept — and the next
+   sweep plans the same range and spends it again. Measured: on the acceptance day
+   `memory.summarise` ran and charged while **zero** chunks were written from 21 turns. Every
+   chunk that now exists had to be created by a paced, manual flush.
+
+**Neither is a part-5 regression** — both predate it and were invisible because the project had
+almost no traffic. The fix is a design decision for the reviewer, not a quiet patch: either the
+Voyage account moves off the free tier (the direct fix, and the client's call since R5 is his
+account), or the summariser is reordered to keep the paid summary and retry only the embed —
+writing the chunk with a null embedding and backfilling it, which the schema already permits
+because `match_memory_chunks` ignores a null embedding.
 
 ---
 
