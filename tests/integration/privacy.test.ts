@@ -130,7 +130,16 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
   let sharedChunkId = '';
   let factId = '';
 
+  /**
+   * The two seeded conversations must NOT share a message text. Assertion 2 ends by looking
+   * the private sentence up BY CONTENT across the whole table — which only means anything if
+   * that sentence exists in exactly one conversation. The first version of this file used one
+   * constant for both, so the outsider legitimately found the shared conversation's copy and
+   * CI failed on it. A fixture defect, and the reason the by-content check is worth having:
+   * a scoped-by-id read can pass while the row is still reachable another way.
+   */
   const PRIVATE_TEXT = `A sentence only its author should read — ${RUN}`;
+  const SHARED_TEXT = `A sentence the whole team may read — ${RUN}`;
   const FACT_KEY = `process:privacy-${RUN}`;
 
   function depsFor(userId: string, email: string): MemoryPageDeps {
@@ -167,6 +176,7 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
   async function seed(
     label: string,
     range: string,
+    text: string,
   ): Promise<{ id: string; chunkId: string; messageId: string }> {
     const conv = await db.query<{ id: string }>(
       `insert into public.conversations (user_id, scope, title)
@@ -178,7 +188,7 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
       `insert into public.messages (conversation_id, user_id, scope, role, content)
        values ($1, $2, 'workspace', 'user', $3), ($1, $2, 'workspace', 'assistant', $4)
        returning id`,
-      [id, AUTHOR, PRIVATE_TEXT, `An answer about ${label}`],
+      [id, AUTHOR, text, `An answer about ${label}`],
     );
     const chunk = await db.query<{ id: string }>(
       `insert into public.memory_chunks
@@ -225,12 +235,12 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
     [adminId, adminSession] = await makePerson(adminEmail, true);
     asAdmin = depsFor(adminId, adminEmail);
 
-    const priv = await seed('private', '[1,3)');
+    const priv = await seed('private', '[1,3)', PRIVATE_TEXT);
     privateConvId = priv.id;
     privateChunkId = priv.chunkId;
     privateMessageId = priv.messageId;
 
-    const shared = await seed('shared', '[1,3)');
+    const shared = await seed('shared', '[1,3)', SHARED_TEXT);
     sharedConvId = shared.id;
     sharedChunkId = shared.chunkId;
 
@@ -340,9 +350,17 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
     expect(read.error).toBeNull();
     expect(read.data).toStrictEqual([]);
 
-    // Belt and braces: the sentence itself is unreachable by any query this session can make.
+    // Belt and braces, and the assertion that a scoped-by-id read cannot make: the private
+    // sentence is unreachable by ANY query this session can write, including one that never
+    // mentions the conversation. It exists in exactly one conversation (see SHARED_TEXT).
     const byContent = await outsider.from('messages').select('id').eq('content', PRIVATE_TEXT);
+    expect(byContent.error).toBeNull();
     expect(byContent.data).toStrictEqual([]);
+
+    // …and not because content lookups return nothing to this session: the other
+    // conversation's sentence, in the same table, by the same query shape, is right there.
+    const shared = await outsider.from('messages').select('id').eq('content', SHARED_TEXT);
+    expect(shared.data, 'the by-content check is not vacuous').toHaveLength(1);
   }, 120_000);
 
   it('3. its chunk stays workspace-scoped, readable by the outsider, and reachable by shared recall', async () => {
@@ -550,6 +568,7 @@ describe.skipIf(env === null)('private conversations (requires a running Supabas
   it('no log line from any of it contains a message, a summary or a private title', () => {
     const joined = logLines.join('\n');
     expect(joined).not.toContain(PRIVATE_TEXT);
+    expect(joined).not.toContain(SHARED_TEXT);
     expect(joined).not.toContain(`privacy-private-${RUN}`);
     expect(joined).not.toContain('synthetic audience');
   });
