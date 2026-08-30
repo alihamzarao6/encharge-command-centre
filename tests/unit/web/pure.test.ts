@@ -9,10 +9,14 @@ import { copyText } from '../../../web/src/lib/clipboard.js';
 import { resolveWebConfig } from '../../../web/src/lib/config.js';
 import {
   MAX_DRAFT_CHARS,
+  OPEN_KEY,
   PENDING_KEY,
+  clearPending,
   draftKey,
   loadDraft,
+  loadOpenConversation,
   saveDraft,
+  saveOpenConversation,
   savePending,
   takePending,
   type DraftStorage,
@@ -174,5 +178,69 @@ describe('copyText', () => {
     );
     expect(ok).toBe(false);
     expect(await copyText({ clipboard: null, document: null }, 'post')).toBe(false);
+  });
+});
+
+describe('which conversation is open (D76)', () => {
+  function store(): DraftStorage & { readonly map: Map<string, string> } {
+    const map = new Map<string, string>();
+    return {
+      map,
+      getItem: (k) => map.get(k) ?? null,
+      setItem: (k, v) => {
+        map.set(k, v);
+      },
+      removeItem: (k) => {
+        map.delete(k);
+      },
+    };
+  }
+
+  it('remembers the conversation, so a discarded tab comes back to it', () => {
+    const s = store();
+    saveOpenConversation(s, 'conv-1');
+    expect(loadOpenConversation(s)).toBe('conv-1');
+  });
+
+  it('forgets it when the person starts a new conversation', () => {
+    const s = store();
+    saveOpenConversation(s, 'conv-1');
+    saveOpenConversation(s, null);
+    expect(loadOpenConversation(s)).toBeNull();
+    expect(s.map.has(OPEN_KEY)).toBe(false);
+  });
+
+  it('an empty stored value reads as nothing, not as a conversation called ""', () => {
+    const s = store();
+    s.setItem(OPEN_KEY, '');
+    expect(loadOpenConversation(s)).toBeNull();
+  });
+
+  it('survives storage that throws, because a lost place is not worth a crash', () => {
+    const broken: DraftStorage = {
+      getItem: () => {
+        throw new Error('private browsing');
+      },
+      setItem: () => {
+        throw new Error('quota');
+      },
+      removeItem: () => {
+        throw new Error('quota');
+      },
+    };
+    expect(() => {
+      saveOpenConversation(broken, 'conv-1');
+    }).not.toThrow();
+    expect(loadOpenConversation(broken)).toBeNull();
+    expect(loadOpenConversation(null)).toBeNull();
+  });
+
+  it('clearPending removes an in-flight record without disturbing the open conversation', () => {
+    const s = store();
+    saveOpenConversation(s, 'conv-1');
+    savePending(s, { conversationId: 'conv-1', text: 'half-sent' });
+    clearPending(s);
+    expect(takePending(s)).toBeNull();
+    expect(loadOpenConversation(s)).toBe('conv-1');
   });
 });

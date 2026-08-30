@@ -182,21 +182,36 @@ test.describe('naming a conversation', () => {
     await expectNoHorizontalScroll(page);
   });
 
-  test('renaming is open to everyone: a conversation someone else started can be named', async ({
+  test('D75: renaming is the AUTHOR’s — not a colleague’s, and not an admin’s', async ({
     page,
   }) => {
+    // CHANGED 30 Aug. This used to assert the opposite: D60 made naming open to everyone,
+    // because nothing generated a title and a name was a correction. Part 4a auto-titles every
+    // conversation and part 4 put staff on the system, so neither half holds — a name is now
+    // how its author finds their own thread, and rewriting somebody else's is moving their
+    // furniture.
     const state = await open(page);
     await openList(page);
     const theirs = page.locator('.convos__row', { hasText: 'Started by someone else' });
-    // Rename is offered; Delete is not, because that one is the author's or an admin's.
-    await expect(theirs.getByRole('button', { name: 'Rename' })).toBeVisible();
+    await expect(theirs.getByRole('button', { name: 'Rename' })).toHaveCount(0);
     await expect(theirs.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 
-    await theirs.getByRole('button', { name: 'Rename' }).click();
-    await page.getByLabel('Name this conversation').fill('Now it has a name');
-    await page.getByRole('button', { name: 'Save name' }).click();
-    await expect(page.getByText('Now it has a name')).toBeVisible();
-    expect(state.memoryCalls).toHaveLength(1);
+    // Their own row still offers it.
+    const mine = page.locator('.convos__row', { hasText: 'ross.test —' });
+    await expect(mine.getByRole('button', { name: 'Rename' })).toBeVisible();
+    expect(state.memoryCalls).toStrictEqual([]);
+  });
+
+  test('D75: an ADMIN is not offered Rename on somebody else’s conversation either', async ({
+    page,
+  }) => {
+    // The one place this differs from Delete, which an admin DOES get: deleting is a removal
+    // the workspace may need an administrator to make. Renaming never is.
+    await open(page, { admin: true });
+    await openList(page);
+    const theirs = page.locator('.convos__row', { hasText: 'Started by someone else' });
+    await expect(theirs.getByRole('button', { name: 'Delete' })).toBeVisible();
+    await expect(theirs.getByRole('button', { name: 'Rename' })).toHaveCount(0);
   });
 
   test('an ADMIN is offered Delete on a conversation somebody else started', async ({ page }) => {
@@ -358,5 +373,83 @@ test.describe('a long list', () => {
     ).toBeVisible();
     await expect(page.getByLabel('Find a conversation by name')).toHaveCount(0);
     await expectNoHorizontalScroll(page);
+  });
+});
+
+test.describe('coming back to a conversation (D76)', () => {
+  test('a reload lands back in the conversation you were in, not on a new one', async ({
+    page,
+  }) => {
+    // A phone browser evicts a backgrounded tab; returning to it reloads the page. That is
+    // what `page.reload()` reproduces here — every piece of React state goes, and without the
+    // fix the person landed on "New conversation" and their thread appeared to be gone.
+    await open(page, {
+      conversations: [
+        { id: CONV_ID, title: 'Offset accounts post', last_active_at: '2026-08-27T02:00:00Z' },
+      ],
+      messages: {
+        [CONV_ID]: [
+          {
+            id: 'm1',
+            role: 'user',
+            content: 'Write me a post about offset accounts',
+            created_at: '2026-08-27T02:00:00Z',
+          },
+        ],
+      },
+    });
+    await openList(page);
+    await page.locator('.convos__item', { hasText: 'Offset accounts post' }).click();
+    await expect(page.getByText('Write me a post about offset accounts')).toBeVisible();
+
+    await page.reload();
+
+    await expect(page.getByRole('heading', { name: /Offset accounts post/ })).toBeVisible();
+    await expect(page.getByText('Write me a post about offset accounts')).toBeVisible();
+  });
+
+  test('a reply that landed while you were away is simply there on return', async ({ page }) => {
+    // The fetch died with the page, but the SERVER finished and saved the turn. Re-reading the
+    // thread is what surfaces it — no message about anything going wrong, because nothing did.
+    const state = await open(page, {
+      conversations: [
+        { id: CONV_ID, title: 'Offset accounts post', last_active_at: '2026-08-27T02:00:00Z' },
+      ],
+      messages: {
+        [CONV_ID]: [
+          { id: 'm1', role: 'user', content: 'A question', created_at: '2026-08-27T02:00:00Z' },
+          {
+            id: 'm2',
+            role: 'assistant',
+            content: 'The answer that landed while you were away',
+            created_at: '2026-08-27T02:00:05Z',
+          },
+        ],
+      },
+    });
+    await openList(page);
+    await page.locator('.convos__item', { hasText: 'Offset accounts post' }).click();
+    await page.reload();
+
+    await expect(page.getByText('The answer that landed while you were away')).toBeVisible();
+    await expect(page.getByText(/was not saved/)).toHaveCount(0);
+    expect(state.postgrestWrites).toStrictEqual([]);
+  });
+
+  test('starting a new conversation forgets the old one, so + New really is new', async ({
+    page,
+  }) => {
+    await open(page, {
+      conversations: [
+        { id: CONV_ID, title: 'Offset accounts post', last_active_at: '2026-08-27T02:00:00Z' },
+      ],
+    });
+    await openList(page);
+    await page.locator('.convos__item', { hasText: 'Offset accounts post' }).click();
+    await expect(page.getByRole('heading', { name: /Offset accounts post/ })).toBeVisible();
+
+    await page.getByRole('button', { name: '+ New', exact: true }).click();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'New conversation' })).toBeVisible();
   });
 });

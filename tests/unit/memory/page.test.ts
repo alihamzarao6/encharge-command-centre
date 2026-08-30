@@ -1092,14 +1092,36 @@ describe('rename_conversation', () => {
     expect(h.httpCalls()).toBe(0); // no extractor, no spend
   });
 
-  it('is open to a member who did not start it — renaming is a correction, not a removal', async () => {
+  it('D75: a member who did not start it is REFUSED, and nothing is written', async () => {
+    // CHANGED 30 Aug. This used to assert 200 — D60 made naming open to everyone, because
+    // nothing generated a title and a name was a correction. Part 4a auto-titles every
+    // conversation and part 4 put staff on the system, so a name is now how its author finds
+    // their own thread and rewriting somebody else's is moving their furniture.
     const h = harness();
     h.store.conversation = liveConversation({ authorId: OTHER_ID });
     const result = await handleMemoryRequest(h.deps, {
       token: TOKEN,
       body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'Not mine' },
     });
-    expect(result.status).toBe(200);
+    expect(result.status).toBe(403);
+    expect(h.store.renamed).toStrictEqual([]);
+    expect(h.audit.rows).toStrictEqual([]);
+  });
+
+  it('D75: an ADMIN is refused too — the one place it differs from deleting', async () => {
+    const h = harness([], verifyFor(staff({ is_admin: true })));
+    h.store.conversation = liveConversation({ authorId: OTHER_ID });
+    const renamed = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'Not mine' },
+    });
+    expect(renamed.status).toBe(403);
+    // The same admin CAN delete it: that is a removal the workspace may need them to make.
+    const deleted = await handleMemoryRequest(h.deps, {
+      token: TOKEN,
+      body: { action: 'delete_conversation', conversationId: CONV_ID },
+    });
+    expect(deleted.status).toBe(200);
   });
 
   it('renaming to the name it already has writes nothing and audits nothing', async () => {
@@ -1147,19 +1169,23 @@ describe('rename_conversation', () => {
     expect((result.body as { title: string }).title).toBe('Refinance ads');
   });
 
-  it('strips against the AUTHOR prefix, not the caller\u2019s', async () => {
-    // Someone else's conversation, renamed by this caller: the prefix that must come off is
-    // the author's, because that is the one the list will put back on.
+  it('strips the prefix the LIST will add back, taken from the stored author email', async () => {
+    // The displayed name is `<author> — <title>` and the prefix is derived, never stored. A
+    // title arriving with it already attached must have it removed, or the next render reads
+    // "ross — ross — …". The email comes from the conversation ROW, not from anything the
+    // client sent — which since D75 is also the caller's, but the server still reads its own
+    // copy rather than trusting the request.
     const h = harness();
-    h.store.conversation = liveConversation({
-      authorId: OTHER_ID,
-      authorEmail: 'zoe@example.com',
-    });
+    h.store.conversation = liveConversation({ authorEmail: 'ross@example.com' });
     await handleMemoryRequest(h.deps, {
       token: TOKEN,
-      body: { action: 'rename_conversation', conversationId: CONV_ID, title: 'zoe — Her thread' },
+      body: {
+        action: 'rename_conversation',
+        conversationId: CONV_ID,
+        title: 'ross — October ads',
+      },
     });
-    expect(h.store.renamed).toStrictEqual([{ conversationId: CONV_ID, title: 'Her thread' }]);
+    expect(h.store.renamed).toStrictEqual([{ conversationId: CONV_ID, title: 'October ads' }]);
   });
 
   it('refuses a title that was nothing but the prefix', async () => {

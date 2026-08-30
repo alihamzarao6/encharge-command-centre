@@ -57,6 +57,31 @@ export const REMOVAL_DENIED_MESSAGE =
 export const CONVERSATION_DELETE_DENIED_MESSAGE =
   'Only the person who started this conversation, or an administrator, can delete it.';
 
+/**
+ * Renaming is the AUTHOR's, and nobody else's — not even an administrator (30 Aug, D75).
+ *
+ * D60 made naming open to every allowlisted member, on the reasoning that a name is a
+ * correction rather than a removal and nothing had ever generated one. Both halves of that
+ * have since stopped being true: part 4a auto-titles every conversation from its first
+ * message, so a name is no longer missing, and part 4 put staff on the system, so the list is
+ * full of other people's work. A conversation's name is how its author finds their own thread
+ * again; letting a colleague rewrite it is not a correction, it is moving somebody else's
+ * furniture.
+ *
+ * No admin exception, deliberately, and it is the one place that differs from
+ * `canRemoveMemory`: deleting is a removal that an admin may need to make on the workspace's
+ * behalf, whereas renaming somebody else's conversation is never something the business needs
+ * an administrator to do.
+ */
+export function canRenameConversation(owned: MemoryOwned, actor: MemoryActor): RemovalVerdict {
+  return owned.authorId === actor.userId
+    ? { allowed: true, because: 'author' }
+    : { allowed: false, because: 'not_author' };
+}
+
+export const CONVERSATION_RENAME_DENIED_MESSAGE =
+  'Only the person who started this conversation can rename it.';
+
 // ---------------------------------------------------------------------------------------
 // The two limits both sides need. They live here for the same reason the rule above does:
 // an interface that lets someone type 900 characters into a field the server caps at 400 is

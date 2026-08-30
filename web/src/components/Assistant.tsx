@@ -27,7 +27,7 @@ import {
   type SyntheticEvent,
 } from 'react';
 
-import type { MemoryActor } from '../../../src/lib/memory/access.js';
+import { canRenameConversation, type MemoryActor } from '../../../src/lib/memory/access.js';
 import {
   conversationDisplayName,
   CONVERSATION_PREFIX_SEPARATOR,
@@ -45,7 +45,16 @@ import {
 } from '../lib/conversationsView.js';
 import { streamTurn, type ChatFailure } from '../lib/chatApi.js';
 import { webConfig } from '../lib/env.js';
-import { loadDraft, saveDraft, takePending, type PendingDraft } from '../lib/draft.js';
+import {
+  clearPending,
+  loadDraft,
+  loadOpenConversation,
+  saveDraft,
+  saveOpenConversation,
+  savePending,
+  takePending,
+  type PendingDraft,
+} from '../lib/draft.js';
 import { callMemory, type MemoryRequest, type MemoryReply } from '../lib/memoryApi.js';
 import { supabase, type AppUserRow, type ConversationListRow } from '../lib/supabase.js';
 import { Composer } from './Composer.js';
@@ -145,7 +154,8 @@ export function Assistant({
     setEmailsById(new Map(data.map((row): [string, string] => [row.user_id, row.email])));
   }, []);
 
-  const loadMessages = useCallback(async (conversationId: string): Promise<void> => {
+  /** Returns what it put on screen, so a caller can ask whether a given turn survived. */
+  const loadMessages = useCallback(async (conversationId: string): Promise<LocalMessage[]> => {
     setThreadState('loading');
     const { data, error } = await supabase
       .from('messages')
@@ -156,43 +166,91 @@ export function Assistant({
       .limit(500);
     if (error !== null) {
       setThreadState('error');
-      return;
+      return [];
     }
-    setMessages(
-      data
-        .filter((row) => row.content !== null)
-        .map((row) => ({
-          localId: row.id,
-          id: row.id,
-          role: row.role === 'assistant' ? 'assistant' : 'user',
-          content: row.content ?? '',
-          status: 'saved',
-        })),
-    );
+    const loaded: LocalMessage[] = data
+      .filter((row) => row.content !== null)
+      .map((row) => ({
+        localId: row.id,
+        id: row.id,
+        role: row.role === 'assistant' ? 'assistant' : 'user',
+        content: row.content ?? '',
+        status: 'saved',
+      }));
+    setMessages(loaded);
     setThreadState('idle');
+    return loaded;
   }, []);
 
-  // First load: the list, then either the conversation the Memory page asked for or a
-  // message that was mid-flight when the session expired. An explicit request wins; the
-  // unsent draft is left where it is rather than consumed, so it survives for next time.
+  /**
+   * Reopen a conversation after the page came back, and work out what happened to a turn that
+   * was in flight when it went away.
+   *
+   * The fetch itself is gone — a discarded page takes its network with it — but the SERVER may
+   * well have finished and saved the turn. So the messages are re-read first and the answer is
+   * simply there. Only if the sent text is nowhere in the thread was the turn genuinely lost,
+   * and then the words go back into the composer with a line saying so, rather than
+   * disappearing and leaving the person to retype from memory.
+   */
+  const restoreThread = useCallback(
+    async (conversationId: string, pending: PendingDraft | null): Promise<void> => {
+      const saved = await loadMessages(conversationId);
+      if (pending === null || pending.text.trim() === '') {
+        setDraft(loadDraft(storage(), conversationId));
+        return;
+      }
+      const landed = saved.some(
+        (m) => m.role === 'user' && m.content.trim() === pending.text.trim(),
+      );
+      if (landed) {
+        setDraft(loadDraft(storage(), conversationId));
+        return;
+      }
+      setDraft(pending.text);
+      setNotice(
+        'You left before that message finished sending, so it was not saved. It is back in the box — send it again when you are ready.',
+      );
+    },
+    [loadMessages],
+  );
+
+  /**
+   * First load, in priority order (D76):
+   *
+   *   1. a conversation the Memory page asked to open — an explicit request wins;
+   *   2. a message that was in flight when the page went away, restored into the composer
+   *      unless the server already saved it;
+   *   3. WHERE YOU WERE. A phone browser evicts a backgrounded tab, and coming back reloads
+   *      the page — so without this the person lands on "New conversation" and their thread
+   *      looks lost. It was never lost; nothing was pointing at it.
+   *
+   * The unsent draft is left in storage rather than consumed, so it survives for next time.
+   */
   useEffect(() => {
     void loadConversations();
     void loadRoster();
     if (pendingRestored.current) return;
     pendingRestored.current = true;
+
     if (openConversationId !== undefined && openConversationId !== null) {
       setActiveId(openConversationId);
       setDraft(loadDraft(storage(), openConversationId));
       void loadMessages(openConversationId);
       return;
     }
+
     const pending = takePending(storage());
-    if (pending !== null) {
-      setActiveId(pending.conversationId);
-      setDraft(pending.text);
-      if (pending.conversationId !== null) void loadMessages(pending.conversationId);
+    const remembered = loadOpenConversation(storage());
+    const target = pending?.conversationId ?? remembered;
+    if (target !== null) {
+      setActiveId(target);
+      void restoreThread(target, pending);
+      return;
     }
-  }, [loadConversations, loadRoster, loadMessages, openConversationId]);
+    // A turn that never reached the server has no conversation to go back to, but the words
+    // are still the person's — put them back in the composer rather than losing them.
+    if (pending !== null) setDraft(pending.text);
+  }, [loadConversations, loadRoster, loadMessages, restoreThread, openConversationId]);
 
   const selectConversation = useCallback(
     (id: string | null): void => {
@@ -202,6 +260,7 @@ export function Assistant({
       setAdminReading(null);
       setPrivacyOpen(false);
       setActiveId(id);
+      saveOpenConversation(storage(), id);
       setSheetOpen(false);
       setDraft(loadDraft(storage(), id));
       if (id === null) {
@@ -228,6 +287,11 @@ export function Assistant({
       const trimmed = text.trim();
       if (trimmed === '') return;
       setSending(true);
+      // D76: record the turn as in flight BEFORE it leaves. If the page is discarded while
+      // the answer is still coming, this is the only surviving trace of what was asked — and
+      // on the way back it is either matched against what the server saved (so nothing is
+      // said) or handed back to the composer. Cleared on every completion path below.
+      savePending(storage(), { conversationId: activeId, text: trimmed });
       setWaiting(true);
       const localId = replaceLocalId ?? nextLocalId();
       const userMessage: LocalMessage = {
@@ -259,6 +323,10 @@ export function Assistant({
         { accessToken, message: trimmed, conversationId: activeId },
         {
           onStart: (conversationId) => {
+            // The earliest moment a NEW conversation has an id. Persisting it here — rather
+            // than when the turn completes — is what makes a first message survive the page
+            // being discarded mid-answer.
+            saveOpenConversation(storage(), conversationId);
             if (activeId === null) setActiveId(conversationId);
           },
           onDelta: (text) => {
@@ -305,6 +373,7 @@ export function Assistant({
         ]);
         if (activeId === null) setActiveId(outcome.conversationId);
         void loadConversations();
+        clearPending(storage());
         setSending(false);
         return;
       }
@@ -319,6 +388,9 @@ export function Assistant({
       setMessages((current) =>
         current.map((m) => (m.localId === localId ? { ...m, status: 'failed', error: failed } : m)),
       );
+      // The failure is on screen as a bubble with a Retry, so the text is not lost and the
+      // in-flight record would only duplicate it on the next load.
+      clearPending(storage());
       setSending(false);
     },
     [activeId, loadConversations, onSessionExpired, sending, session.access_token],
@@ -571,17 +643,21 @@ export function Assistant({
               <h1 className="thread-pane__title" title={title}>
                 {title}
               </h1>
-              {activeId !== null && adminReading === null && (
-                <button
-                  className="button button--ghost button--small"
-                  type="button"
-                  onClick={() => {
-                    setRenaming(true);
-                  }}
-                >
-                  Rename
-                </button>
-              )}
+              {/* D75: only the author renames. `active` is null for a brand-new conversation,
+                  which has no name to change yet either. */}
+              {adminReading === null &&
+                active !== null &&
+                canRenameConversation({ authorId: active.authorId }, actor).allowed && (
+                  <button
+                    className="button button--ghost button--small"
+                    type="button"
+                    onClick={() => {
+                      setRenaming(true);
+                    }}
+                  >
+                    Rename
+                  </button>
+                )}
               {/* R27: the author's own control, in the thread as well as the list, because
                   this is where a person is when they realise the conversation should not
                   have been shared. */}

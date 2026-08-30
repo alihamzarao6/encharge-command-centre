@@ -84,7 +84,9 @@ import type { ClaudeClient } from '../llm/client.js';
 import type { Logger } from '../logger.js';
 import {
   canRemoveMemory,
+  canRenameConversation,
   CONVERSATION_DELETE_DENIED_MESSAGE,
+  CONVERSATION_RENAME_DENIED_MESSAGE,
   MEMORY_NOTE_MAX_INPUT_CHARS,
   REMOVAL_DENIED_MESSAGE,
   type MemoryActor,
@@ -1286,11 +1288,14 @@ async function adminReadConversation(
 }
 
 /**
- * Renaming is a CORRECTION, not a removal, so it follows D52's open half: any active
- * allowlisted member who can see the conversation may name it. Nothing else about the
- * conversation changes — not its messages, not its summaries, not the standing notes that
- * came out of it — and the title is not read by retrieval, so a rename cannot alter what the
- * assistant knows. It only alters what a person can find.
+ * Renaming is THE AUTHOR'S (D75, superseding D60's open half). Nothing else about the
+ * conversation changes — not its messages, not its summaries, not the standing notes that came
+ * out of it — and the title is not read by retrieval, so a rename cannot alter what the
+ * assistant knows. It only alters what a person can find, which is exactly why it belongs to
+ * the person doing the finding: a name is how its author gets back to their own thread.
+ *
+ * No admin exception (access.ts says why): an administrator may need to delete a conversation
+ * on the workspace's behalf, but never to rename one.
  */
 async function renameConversation(
   deps: MemoryPageDeps,
@@ -1307,6 +1312,9 @@ async function renameConversation(
   const conversation = found.conversation;
   if (conversation.deletedAt !== null) {
     return failure(404, 'NOT_FOUND', 'That conversation is no longer there.');
+  }
+  if (!canRenameConversation({ authorId: conversation.authorId }, actor).allowed) {
+    return failure(403, 'NOT_YOURS', CONVERSATION_RENAME_DENIED_MESSAGE);
   }
 
   // The displayed name carries the author's prefix, which is DERIVED (naming.ts). Only the

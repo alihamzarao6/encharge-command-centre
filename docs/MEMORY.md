@@ -108,6 +108,8 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D71** | **S3-13 (whitelisted tools with two-turn confirmation) and S3-14 (n8n on Railway) are SUPERSEDED, not Stage 3 debt.** Both are leftovers of the five-phase plan and neither is in Scope v3 | Checked against the source rather than assumed. **S3-13** is verbatim from the superseded *"Phase 4 — Claude ops layer with memory"* criteria at the bottom of `PHASE-ACCEPTANCE.md` — an assistant that reads GHL metrics, issues write commands to the CRM and assigns tasks to Notion. **Scope v3 (D23) describes something else**: a voice-trained assistant with cross-device memory, that reads websites and stores what it finds, generates content, and sits on a dashboard, with GHL and Meta *underneath* it rather than driven by it. Nothing in Stage 3 writes anywhere. **D9 (08 Aug, "write tools require two-turn confirmation") is not repealed** — it is a standing safety rule that activates the day a write tool exists, which is a scope conversation, not a gap. **S3-14**: n8n was the v1/v2 orchestration layer; the six stages (D26) never mention it, and nothing Stage 3 delivered needs it — memory runs in Edge Functions and the dashboard is a static app. It stays in `CLAUDE.md` §2 as the stack's automation layer and lands at **Stage 6**, whose criteria already call for a monitoring workflow (daily health check, cost rollup, alerts). Same for the "cost / review queue / tasks" dashboard surfaces in the old bullet: `review_queue` belongs with Stage 4, where there is finally something to review | 30 Aug |
 | **D72** | **An ACTIVE administrator's access cannot be removed while they are still an administrator. Demote first, then remove access** (`canChangeStaff`, `access.ts`; refusal `admin_target`) | Reported from the live app: with two admins, each was offered "Remove access" on the other — one tap could take an administrator out of the building. The two-step forces the person to state separately that this account should stop being an admin and that it should stop having access, and it keeps the destructive half reversible on its own (a demotion is undone by promoting). Not gated on the admin COUNT — it holds with two administrators or twenty. Scoped to an **active** admin: someone already deactivated has no access left to protect. `last_admin` is now demote's guard alone, because deactivate can no longer reach it — a lone admin's only admin target is themselves, which `self_deactivation` already refuses. Enforced server-side by the same function (`admin.ts:546`), so the endpoint answers `403 ADMIN_TARGET`; a non-admin is still refused first with `not_admin`. The promote confirm was overstating ("remove anyone's access") and now says what is actually true | 30 Aug |
 | **D74** | **Promote and demote are removed from the product.** The Team page offers add · remove access · restore access · reset password, and nothing else. `npm run staff -- promote\|demote` stays as the break-glass path. **Supersedes the page half of D60; D72 stands** | The workspace has ONE administrator in normal use — the two in staging are an artefact of testing. A permanent control for appointing and un-appointing administrators was therefore a surface for a decision made roughly never, and it was the surface through which one admin could strip another: D72 blocked "Remove access" on an admin but left demote open, so demote-then-remove reached the same place by a longer road. Removing the pair removes both problems at once and leaves nothing to guard. A super-admin role was designed to fix this properly (a third authorization fact, RLS-hidden from the roster) and **abandoned as over-engineering** — it invented a role system to police a decision the client makes about once a year. `setStaffAdmin` survives in `admin.ts` for the CLI: a second administrator is a rare, deliberate, developer-run act, which is exactly what break-glass is for. What is gone is the browser's ability to ask | 30 Aug |
+| **D75** | **Renaming a conversation is the AUTHOR's, and nobody else's — not even an administrator's** (`canRenameConversation`, `src/lib/memory/access.ts`). **Supersedes D60's rename half** | D60 opened naming to every allowlisted member on two premises, and both have since stopped being true: nothing generated a title (part 4a now auto-titles every conversation from its first message) and the list was one person's (part 4 put staff on it). A name is now how its author gets back to their own thread; a colleague rewriting it is not a correction, it is moving somebody else's furniture. **No admin exception, and this is the one place it differs from `canRemoveMemory`:** deleting is a removal the workspace may genuinely need an administrator to make on its behalf, whereas renaming someone else's conversation is never something the business needs an admin to do | 30 Aug |
+| **D76** | **The open conversation and any in-flight turn survive the page being discarded** (`saveOpenConversation` / `clearPending`, `web/src/lib/draft.ts`, sessionStorage) | A phone browser evicts a backgrounded tab whenever it likes; returning reloads the page and every piece of React state goes with it. The person landed on "New conversation" and their thread looked lost — it never was, nothing was pointing at it. The id is written on every selection and, for a brand-new conversation, **at the `start` SSE event** — the earliest moment the server has named it, which is what makes a first message survive being interrupted mid-answer. `sessionStorage` not `localStorage`, deliberately: this is "where I was a moment ago", not "my last conversation forever", so a new tab starts clean. **The in-flight turn cannot be resurrected** — a discarded page takes its network with it — but the SERVER usually finished and saved it, so the thread is re-read first and the answer is simply there, with nothing said because nothing went wrong. Only when the sent text is nowhere in the thread was the turn genuinely lost, and then the words go back into the composer with one line saying so, rather than vanishing and leaving the person to retype from memory | 30 Aug |
 
 ---
 
@@ -122,6 +124,37 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-30 — [FND-330 follow-up] Coming back to a conversation, and whose name it is
+
+**Did:** two things reported from the live app.
+
+**(1) A conversation now survives leaving the tab (D76).** The open conversation id is kept in
+sessionStorage and restored on mount, so a reload — which is what a phone does to a
+backgrounded tab — lands back where the person was instead of on "New conversation". A turn
+that was in flight is recorded before it leaves and cleared on every completion path; on the
+way back the thread is re-read and, if the server finished and saved it, the answer is just
+there and nothing is said. If the text is nowhere in the thread the turn really was lost, and
+it goes back into the composer with a line explaining why. `loadMessages` now returns what it
+loaded so that comparison is possible.
+
+**(2) Renaming is the author's (D75).** A team member was being offered Rename on everyone's
+conversations. Gated in `access.ts` — so the button disappears and the endpoint answers 403
+from the same function — with no admin exception.
+
+**Surprised by:** how directly D60's reasoning had expired. It opened renaming to everyone
+because "nothing has ever generated a title, so this is the only way one exists" — which part
+4a made false three days later by auto-titling from the first message, without anyone noticing
+the permission it had been justifying. Worth remembering that a rule outlives the argument for
+it unless someone goes back.
+
+**Not attempted:** keeping the in-flight fetch alive across a discarded page. It cannot be
+done from the client — the network goes with the page — and pretending otherwise would be
+worse than saying so.
+
+**Next:** deploy the memory function and the web app.
 
 ---
 

@@ -11,6 +11,8 @@ import {
   MEMORY_NOTE_MAX_VALUE_CHARS,
   REMOVAL_DENIED_MESSAGE,
   canRemoveMemory,
+  canRenameConversation,
+  CONVERSATION_RENAME_DENIED_MESSAGE,
 } from '../../../src/lib/memory/access.js';
 
 const ALICE = '11111111-1111-4111-8111-111111111111';
@@ -58,5 +60,41 @@ describe('limits shared with the browser', () => {
     // They write a sentence; the extractor condenses it. A limit equal to the stored one
     // would refuse perfectly reasonable phrasing before anything had a chance to shorten it.
     expect(MEMORY_NOTE_MAX_INPUT_CHARS).toBeGreaterThan(MEMORY_NOTE_MAX_VALUE_CHARS);
+  });
+});
+
+describe('canRenameConversation (D75)', () => {
+  const AUTHOR = { userId: 'a-1', isAdmin: false };
+  const OTHER = { userId: 'b-2', isAdmin: false };
+  const ADMIN = { userId: 'c-3', isAdmin: true };
+  const OWNED = { authorId: AUTHOR.userId };
+
+  it('the author may rename their own conversation', () => {
+    expect(canRenameConversation(OWNED, AUTHOR)).toStrictEqual({
+      allowed: true,
+      because: 'author',
+    });
+  });
+
+  it('a colleague may not — a name is how its author finds their own thread', () => {
+    expect(canRenameConversation(OWNED, OTHER)).toStrictEqual({
+      allowed: false,
+      because: 'not_author',
+    });
+  });
+
+  it('AN ADMIN MAY NOT EITHER, and that is the one place it differs from removing', () => {
+    // Deleting is a removal an admin may need to make on the workspace's behalf. Renaming
+    // somebody else's conversation is never something the business needs an admin to do.
+    expect(canRemoveMemory(OWNED, ADMIN).allowed).toBe(true);
+    expect(canRenameConversation(OWNED, ADMIN)).toStrictEqual({
+      allowed: false,
+      because: 'not_author',
+    });
+  });
+
+  it('the refusal is a sentence, and it does not blame an administrator for being one', () => {
+    expect(CONVERSATION_RENAME_DENIED_MESSAGE).toContain('the person who started');
+    expect(CONVERSATION_RENAME_DENIED_MESSAGE).not.toContain('administrator');
   });
 });

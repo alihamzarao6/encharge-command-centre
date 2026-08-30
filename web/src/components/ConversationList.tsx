@@ -24,7 +24,11 @@
  */
 import { useState, type ReactElement, type SyntheticEvent } from 'react';
 
-import { canRemoveMemory, type MemoryActor } from '../../../src/lib/memory/access.js';
+import {
+  canRemoveMemory,
+  canRenameConversation,
+  type MemoryActor,
+} from '../../../src/lib/memory/access.js';
 import { canSetConversationPrivacy } from '../../../src/lib/memory/privacy.js';
 import {
   CONVERSATION_PREFIX_SEPARATOR,
@@ -165,6 +169,7 @@ export function ConversationList({
               conversation={c}
               active={c.id === activeId}
               canDelete={canRemoveMemory({ authorId: c.authorId }, actor).allowed}
+              canRename={canRenameConversation({ authorId: c.authorId }, actor).allowed}
               canSetPrivacy={canSetConversationPrivacy({ authorId: c.authorId }, actor).allowed}
               busy={busyId === c.id}
               onSelect={onSelect}
@@ -230,6 +235,7 @@ function ConversationRow({
   conversation,
   active,
   canDelete,
+  canRename,
   canSetPrivacy,
   busy,
   onSelect,
@@ -240,6 +246,8 @@ function ConversationRow({
   readonly conversation: ConversationView;
   readonly active: boolean;
   readonly canDelete: boolean;
+  /** D75: the author's, and nobody else's — not even an admin's. */
+  readonly canRename: boolean;
   readonly canSetPrivacy: boolean;
   readonly busy: boolean;
   readonly onSelect: (id: string) => void;
@@ -394,17 +402,19 @@ function ConversationRow({
         </div>
       ) : (
         <div className="convos__actions">
-          <button
-            className="link convos__action"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setDraft(conversation.title ?? '');
-              setMode('rename');
-            }}
-          >
-            Rename
-          </button>
+          {canRename && (
+            <button
+              className="link convos__action"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setDraft(conversation.title ?? '');
+                setMode('rename');
+              }}
+            >
+              Rename
+            </button>
+          )}
           {/* Only the author (canSetConversationPrivacy — deliberately NOT canRemoveMemory,
               which widens to an admin). Everyone else sees the badge and no control.
               This is the copy that exists at EVERY width: the thread bar carries the same
