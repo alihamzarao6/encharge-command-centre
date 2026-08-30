@@ -371,13 +371,53 @@ describe.skipIf(env === null)('memory layer against a real stack', () => {
       expect(scheduled).toHaveLength(1);
       await expect(scheduled[0]).resolves.toBeUndefined();
 
-      const rows = await db.query<{ messages: number; chunks: number }>(
+      // CHANGED 30 Aug (D70). This used to assert `chunks: 0` — a broken Voyage threw away
+      // the summary that Haiku had already been paid for, and left the range uncovered so
+      // the next sweep bought the same text again. Now the note is KEPT with a null
+      // embedding and the range is covered.
+      //
+      // The 200 and the saved turn are unchanged, which is the point of Part C item 8: a
+      // memory failure never reaches the user.
+      const rows = await db.query<{
+        messages: number;
+        chunks: number;
+        unembedded: number;
+        range: string | null;
+      }>(
         `select (select count(*) from public.messages where conversation_id = $1)::int as messages,
-                (select count(*) from public.memory_chunks where conversation_id = $1)::int as chunks`,
+                (select count(*) from public.memory_chunks where conversation_id = $1)::int as chunks,
+                (select count(*) from public.memory_chunks
+                   where conversation_id = $1 and embedding is null and deleted_at is null)::int as unembedded,
+                (select turn_range::text from public.memory_chunks where conversation_id = $1) as range`,
         [eight],
       );
-      expect(rows.rows[0]).toEqual({ messages: 10, chunks: 0 });
-      expect(logLines.some((l) => l.includes('embed failed'))).toBe(true);
+      expect(rows.rows[0]).toEqual({
+        messages: 10,
+        chunks: 1,
+        unembedded: 1,
+        range: '[1,11)',
+      });
+      expect(logLines.some((l) => l.includes('keeping the summary and covering the range'))).toBe(
+        true,
+      );
+
+      // And the range really is claimed: a second pass plans nothing and spends nothing.
+      const before = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.api_usage where operation = 'memory.summarise'`,
+      );
+      const again = await summariseConversation(
+        memory,
+        { id: eight, userId, scope: 'workspace', title: `memory-int-${RUN} eight` },
+        { freshMessages: 0, force: true },
+      );
+      expect(again.ok).toBe(true);
+      if (again.ok) expect(again.value.chunks).toStrictEqual([]);
+      const after = await db.query<{ n: number }>(
+        `select count(*)::int as n from public.api_usage where operation = 'memory.summarise'`,
+      );
+      expect(after.rows[0]?.n, 'Haiku is never paid twice for the same text').toBe(
+        before.rows[0]?.n,
+      );
     } finally {
       voyageBroken = false;
     }
