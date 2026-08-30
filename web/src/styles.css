@@ -1173,6 +1173,12 @@ p {
   flex-direction: column;
   gap: 10px;
   list-style: none;
+  /* `list-style: none` alone leaves the UA stylesheet's `padding-inline-start: 40px` and its
+     block margin in place, which pushed every card ~40px right of the "+ Add someone" button
+     above it — flush on the right, inset on the left, so the column read as off-centre.
+     `.mem__list` has always had this reset; this one did not. */
+  margin: 0;
+  padding: 0;
 }
 
 .team__card {

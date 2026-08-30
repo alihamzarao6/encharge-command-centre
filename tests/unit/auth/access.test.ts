@@ -72,19 +72,69 @@ describe('canChangeStaff', () => {
     expect(canChangeStaff('reset_password', self, ADMIN, 3).allowed).toBe(true);
   });
 
-  it('Part C 4: no action reaches zero administrators when there is only one', () => {
+  it('Part C 4: DEMOTE cannot reach zero administrators when there is only one', () => {
+    // CHANGED 30 Aug (D72). Deactivate no longer reaches this guard at all — removing an
+    // active administrator's access is refused outright, at any count — so the last-admin
+    // rule is now demote's alone. The half that matters is unchanged: the workspace can
+    // never be left with nobody who can administer it.
     const lastAdmin = target({ userId: 'boss', isAdmin: true, isActive: true });
-    for (const action of ['deactivate', 'demote'] as const) {
-      const verdict = canChangeStaff(action, lastAdmin, ADMIN, 1);
-      expect(verdict.allowed, action).toBe(false);
+    const verdict = canChangeStaff('demote', lastAdmin, ADMIN, 1);
+    expect(verdict.allowed).toBe(false);
+    if (!verdict.allowed) {
+      expect(verdict.because).toBe('last_admin');
+      expect(verdict.message).toBe(STAFF_REFUSAL_MESSAGES.last_admin);
+    }
+    // With a second administrator, demoting is fine.
+    expect(canChangeStaff('demote', lastAdmin, ADMIN, 2).allowed).toBe(true);
+  });
+
+  it('D72: an ACTIVE administrator’s access cannot be removed, at any admin count', () => {
+    // The rule this file exists to state: one tap must not be able to take an administrator
+    // out of the building. Demote them first, then remove their access.
+    const otherAdmin = target({ userId: 'boss', isAdmin: true, isActive: true });
+    for (const count of [1, 2, 5, 20]) {
+      const verdict = canChangeStaff('deactivate', otherAdmin, ADMIN, count);
+      expect(verdict.allowed, `with ${String(count)} admin(s)`).toBe(false);
       if (!verdict.allowed) {
-        expect(verdict.because).toBe('last_admin');
-        expect(verdict.message).toBe(STAFF_REFUSAL_MESSAGES.last_admin);
+        expect(verdict.because).toBe('admin_target');
+        expect(verdict.message).toBe(STAFF_REFUSAL_MESSAGES.admin_target);
       }
     }
-    // And with a second administrator the same two actions are fine.
-    expect(canChangeStaff('deactivate', lastAdmin, ADMIN, 2).allowed).toBe(true);
-    expect(canChangeStaff('demote', lastAdmin, ADMIN, 2).allowed).toBe(true);
+  });
+
+  it('D72: the two-step actually works — demote, then the access can be removed', () => {
+    // The rule adds friction, not a dead end. It must be possible to get there in two
+    // deliberate steps, or it is not a rule, it is a wall.
+    const before = target({ userId: 'boss', isAdmin: true, isActive: true });
+    expect(canChangeStaff('deactivate', before, ADMIN, 2).allowed).toBe(false);
+    expect(canChangeStaff('demote', before, ADMIN, 2).allowed).toBe(true);
+
+    const afterDemotion = target({ userId: 'boss', isAdmin: false, isActive: true });
+    expect(canChangeStaff('deactivate', afterDemotion, ADMIN, 1).allowed).toBe(true);
+  });
+
+  it('D72 does not touch the ordinary case: a non-admin’s access is removable as before', () => {
+    const member = target({ userId: 'zoe', isAdmin: false, isActive: true });
+    expect(canChangeStaff('deactivate', member, ADMIN, 1).allowed).toBe(true);
+    expect(canChangeStaff('deactivate', member, ADMIN, 2).allowed).toBe(true);
+  });
+
+  it('D72 never masks the self-refusal, which is the more useful answer', () => {
+    // An admin removing their own access hits BOTH rules. The self one is the one that tells
+    // them what to do about it, so it must win.
+    const self = target({ userId: ADMIN.userId, isAdmin: true, isActive: true });
+    const verdict = canChangeStaff('deactivate', self, ADMIN, 3);
+    expect(verdict.allowed).toBe(false);
+    if (!verdict.allowed) expect(verdict.because).toBe('self_deactivation');
+  });
+
+  it('D72 does not give a NON-admin any new power — they are still refused first', () => {
+    const member: StaffActor = { userId: 'zoe', isAdmin: false };
+    const anyone = target({ userId: 'boss', isAdmin: true, isActive: true });
+    const verdict = canChangeStaff('deactivate', anyone, member, 2);
+    expect(verdict.allowed).toBe(false);
+    // `not_admin`, not `admin_target`: the reason they cannot is that they are not an admin.
+    if (!verdict.allowed) expect(verdict.because).toBe('not_admin');
   });
 
   it('a count of zero — which should never happen — refuses rather than waves through', () => {

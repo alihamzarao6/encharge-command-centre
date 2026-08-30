@@ -433,7 +433,11 @@ const CONFIRMS: Readonly<Record<Exclude<Pending, null>, { verb: string; says: st
   },
   promote: {
     verb: 'Make administrator',
-    says: 'They will be able to add people, remove anyone’s access and reset anyone’s password — including yours.',
+    // Since D72 an administrator canNOT remove another administrator's access — they have to
+    // remove their administrator rights first. The old sentence promised "remove anyone's
+    // access", which is no longer true, and a confirm step that overstates what it is handing
+    // over is the worst place to be wrong.
+    says: 'They will be able to add people, remove a member’s access and reset anyone’s password — including yours. To remove another administrator’s access they would have to remove their administrator rights first.',
   },
   demote: {
     verb: 'Remove administrator',

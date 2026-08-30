@@ -106,6 +106,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D69** | **The Voyage account is limited to 3 requests per minute, and that is the binding constraint on semantic memory — not the design.** A turn uses two Voyage calls when a chunk is due, so the workspace supports ~1.5 turns/minute before memory degrades. **12 of 21 live turns degraded.** Two consequences: recall silently falls back to facts only (the reply is fine — S3-6 passes under genuine failure), and **summarisation pays Haiku for a summary it then throws away** when the embed fails, leaving the range uncovered to be re-summarised and re-charged | Found by running a realistic session, which is the only way it could have been found — the project had six turns of traffic and one chunk before this. Neither consequence is a part-5 regression; both predate it and were invisible without load. **Not fixed here, because it is a decision, not a patch:** either the Voyage account leaves the free tier (the direct fix, and the client's call — R5 is his account), or the summariser is reordered to keep the paid summary and retry only the embed, writing the chunk with a null embedding and backfilling, which the schema already permits because `match_memory_chunks` ignores a null embedding | 29 Aug |
 | **D70** | **A failed embedding no longer throws away a paid summary. The chunk is written with a NULL embedding and the range is marked covered, so the same text is never summarised twice; `backfillChunkEmbeddings` attaches the vector later** (migration `20260830010000` — one partial index, no column change) | The Haiku summary costs **$0.001664**; the Voyage embedding costs **$0.000010** — roughly 1,600×. Discarding the expensive half because the cheap half failed is the wrong way round, and under the 3-requests-per-minute limit (D69) it meant paying repeatedly and keeping nothing: 21 live turns, several paid summarisations, **zero chunks**. No column was needed — `embedding` has always been nullable (the part-3 tombstone sets it), `turn_range` already claims the range through `memory_chunks_no_overlap`, and `match_memory_chunks` already filters `embedding is not null`, so an unembedded note is simply not retrievable yet and nothing half-formed can reach a reply. It still shows on the Memory page, which is right: it exists, and a person can read or delete it. **The backlog predicate is `embedding is null AND deleted_at is null`** — both halves matter, because a tombstone also has a null embedding and must never be resurrected. **Backfill:** no Claude call, one Voyage call per note, oldest first; it runs FIRST in the sweep so a backlog drains before more unembedded rows are created, and it **stops at the first refusal** rather than burning the remaining budget on calls that will be refused too. It re-reads the range's messages to rebuild the header exactly (`embeddingText` — title, Perth date of the newest message, audience), so a note embedded a week late still matches what it would have matched on the day. Also `npm run memory -- backfill` | 30 Aug |
 | **D71** | **S3-13 (whitelisted tools with two-turn confirmation) and S3-14 (n8n on Railway) are SUPERSEDED, not Stage 3 debt.** Both are leftovers of the five-phase plan and neither is in Scope v3 | Checked against the source rather than assumed. **S3-13** is verbatim from the superseded *"Phase 4 — Claude ops layer with memory"* criteria at the bottom of `PHASE-ACCEPTANCE.md` — an assistant that reads GHL metrics, issues write commands to the CRM and assigns tasks to Notion. **Scope v3 (D23) describes something else**: a voice-trained assistant with cross-device memory, that reads websites and stores what it finds, generates content, and sits on a dashboard, with GHL and Meta *underneath* it rather than driven by it. Nothing in Stage 3 writes anywhere. **D9 (08 Aug, "write tools require two-turn confirmation") is not repealed** — it is a standing safety rule that activates the day a write tool exists, which is a scope conversation, not a gap. **S3-14**: n8n was the v1/v2 orchestration layer; the six stages (D26) never mention it, and nothing Stage 3 delivered needs it — memory runs in Edge Functions and the dashboard is a static app. It stays in `CLAUDE.md` §2 as the stack's automation layer and lands at **Stage 6**, whose criteria already call for a monitoring workflow (daily health check, cost rollup, alerts). Same for the "cost / review queue / tasks" dashboard surfaces in the old bullet: `review_queue` belongs with Stage 4, where there is finally something to review | 30 Aug |
+| **D72** | **An ACTIVE administrator's access cannot be removed while they are still an administrator. Demote first, then remove access** (`canChangeStaff`, `access.ts`; refusal `admin_target`) | Reported from the live app: with two admins, each was offered "Remove access" on the other — one tap could take an administrator out of the building. The two-step forces the person to state separately that this account should stop being an admin and that it should stop having access, and it keeps the destructive half reversible on its own (a demotion is undone by promoting). Not gated on the admin COUNT — it holds with two administrators or twenty. Scoped to an **active** admin: someone already deactivated has no access left to protect. `last_admin` is now demote's guard alone, because deactivate can no longer reach it — a lone admin's only admin target is themselves, which `self_deactivation` already refuses. Enforced server-side by the same function (`admin.ts:546`), so the endpoint answers `403 ADMIN_TARGET`; a non-admin is still refused first with `not_admin`. The promote confirm was overstating ("remove anyone's access") and now says what is actually true | 30 Aug |
 
 ---
 
@@ -120,6 +121,29 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-30 — [FND-330 follow-up] Team page: an admin cannot remove an admin, and the cards line up
+
+**Did:** three things off one screenshot from the live app. **(1)** `.team__list` reset
+`list-style` but not the UA stylesheet's `padding-inline-start: 40px`, so every card sat ~40px
+right of the "+ Add someone" button — flush right, inset left, reading as off-centre.
+`.mem__list` always had the reset; this one never did. **(2)** D72: with two administrators the
+page offered each "Remove access" on the other. Now refused, in `access.ts`, so the browser
+stops rendering the control *and* the endpoint answers `403 ADMIN_TARGET` — one rule, both
+sides, which is what that module is for. **(3)** Checked the third thing asked: a non-admin
+still gets nothing, and it is now asserted with an admin colleague on screen, which is the
+shape the new rule is about.
+
+**Surprised by:** two things the change flushed out. The **promote** confirm promised the new
+admin could "remove anyone's access" — no longer true, and a confirm step is the worst place to
+overstate what you are handing over. And `users.spec.ts` had a real isolation bug: `ROSTER` was
+a module-level array whose objects the scripted endpoint MUTATES, with `workers: 1` in one
+process, so the promote test left `zoe` an administrator for every test after it. Invisible
+until a later test cared whether she was one. It is a function returning fresh rows now.
+
+**Next:** deploy, then the reviewer's manual pass.
 
 ---
 

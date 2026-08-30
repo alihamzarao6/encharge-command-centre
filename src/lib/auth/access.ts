@@ -15,6 +15,14 @@
  *   * nobody may deactivate themselves, and nobody may demote themselves. Both are refused
  *     for one reason: an administrator removing their own access is the one mistake that
  *     cannot be undone from inside the product. Another admin does it, or it does not happen;
+ *   * **an ADMINISTRATOR's access cannot be removed while they are still an administrator**
+ *     (30 Aug, D72). Demote them first, then remove their access. One tap should not be able
+ *     to take an administrator out of the building: the two-step forces the person doing it
+ *     to state, separately, that this account should stop being an admin and that it should
+ *     stop having access. It also makes the destructive half reversible on its own —
+ *     a demotion is undone by promoting, whereas access removed in one tap from an admin
+ *     account is two things to put back and easy to get half-right. Scoped to an ACTIVE
+ *     admin: someone already deactivated has no access left to protect;
  *   * no action may leave the workspace with zero active administrators. Self-refusal alone
  *     nearly gets there — A can demote B, but not itself — so the count is checked as well,
  *     because "nearly" is a lockout that needs a developer with a service key to unpick;
@@ -46,7 +54,12 @@ export type StaffChangeAction =
   'deactivate' | 'reactivate' | 'promote' | 'demote' | 'reset_password';
 
 export type StaffRefusal =
-  'not_admin' | 'self_deactivation' | 'self_demotion' | 'last_admin' | 'inactive_target';
+  | 'not_admin'
+  | 'self_deactivation'
+  | 'self_demotion'
+  | 'last_admin'
+  | 'inactive_target'
+  | 'admin_target';
 
 export type StaffVerdict =
   | { readonly allowed: true }
@@ -62,6 +75,8 @@ export const STAFF_REFUSAL_MESSAGES: Readonly<Record<StaffRefusal, string>> = {
   last_admin:
     'The Command Centre must always have at least one administrator. Make someone else an administrator first.',
   inactive_target: 'This person no longer has access. Restore their access first.',
+  admin_target:
+    'This person is an administrator. Remove their administrator rights first, then you can remove their access.',
 };
 
 function refuse(because: StaffRefusal): StaffVerdict {
@@ -88,15 +103,23 @@ export function canChangeStaff(
 ): StaffVerdict {
   if (!canManageStaff(actor)) return refuse('not_admin');
 
-  // Removing the LAST active administrator, by either route. `activeAdmins <= 1` rather than
-  // `=== 1` so a miscount can only ever refuse, never wave something through.
-  const wouldRemoveAnAdmin =
-    (action === 'deactivate' && target.isAdmin && target.isActive) ||
-    (action === 'demote' && target.isAdmin && target.isActive);
+  // Removing the LAST active administrator. Only DEMOTE can reach this now: deactivating an
+  // administrator is refused outright below, whoever they are and however many there are.
+  // `activeAdmins <= 1` rather than `=== 1` so a miscount can only ever refuse, never wave
+  // something through.
+  const wouldRemoveAnAdmin = action === 'demote' && target.isAdmin && target.isActive;
 
   switch (action) {
     case 'deactivate':
+      // Self first: it is the more specific answer, and the one the person needs.
       if (target.userId === actor.userId) return refuse('self_deactivation');
+      // D72. Not gated on the admin COUNT — this holds with two administrators or twenty.
+      // The last-admin case cannot reach here anyway: the only administrator a lone admin
+      // could target is themselves, which the line above already refused.
+      //
+      // `isActive` because the rule protects ACCESS, and someone already deactivated has
+      // none left to protect — refusing there would guard a state that does not exist.
+      if (target.isAdmin && target.isActive) return refuse('admin_target');
       break;
     case 'demote':
       if (target.userId === actor.userId) return refuse('self_demotion');

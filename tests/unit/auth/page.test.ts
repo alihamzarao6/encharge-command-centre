@@ -273,6 +273,24 @@ describe('the four flag actions', () => {
     }
   });
 
+  it("D72: the SERVER refuses removing an active administrator's access, not just the page", async () => {
+    const h = makeHarness();
+    // Two administrators, so the last-admin rule is not what is doing the refusing.
+    reply(await post(h, { action: 'promote', userId: STAFF_ID }));
+    expect([...h.rows.values()].filter((r) => r.is_active && r.is_admin)).toHaveLength(2);
+
+    const refused = await post(h, { action: 'deactivate', userId: STAFF_ID });
+    expect(refused.status).toBe(403);
+    expect(errorBody(refused).code).toBe('ADMIN_TARGET');
+    expect(h.rows.get(STAFF_ID)?.is_active, 'nothing moved').toBe(true);
+
+    // And the two-step is genuinely open: demote, then the same request succeeds.
+    reply(await post(h, { action: 'demote', userId: STAFF_ID }));
+    reply(await post(h, { action: 'deactivate', userId: STAFF_ID }));
+    expect(h.rows.get(STAFF_ID)?.is_active).toBe(false);
+    expect(h.rows.get(STAFF_ID)?.is_admin).toBe(false);
+  });
+
   it('Part C 4: nothing the page can send reaches zero administrators', async () => {
     const h = makeHarness();
     // One admin. The two requests that could remove them are both refused, by name.

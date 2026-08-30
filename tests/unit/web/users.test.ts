@@ -16,6 +16,7 @@ import {
   interpretUsersResponse,
   type UsersOutcome,
 } from '../../../web/src/lib/usersApi.js';
+import { canManageStaff } from '../../../src/lib/auth/access.js';
 import {
   buildRoster,
   lastSeenLabel,
@@ -125,9 +126,50 @@ describe('buildRoster', () => {
     const sam = roster.members.find((m) => m.email === 'sam@fundd.com.au');
     expect(roster.activeAdmins).toBe(2);
     expect(sam?.can.demote).toBe(true);
-    expect(sam?.can.deactivate).toBe(true);
+    // CHANGED 30 Aug (D72): "Remove access" is NOT offered on another administrator, at any
+    // count. The page has to make you demote them first, so one tap cannot take an
+    // administrator out of the building.
+    expect(sam?.can.deactivate).toBe(false);
     // But still never yourself.
     expect(roster.members.find((m) => m.isYou)?.can.demote).toBe(false);
+  });
+
+  it('D72: the page stops offering Remove access on an admin, and offers it once demoted', () => {
+    // The interface must never show a control the server would refuse — and must still show
+    // the one it would allow, or the two-step becomes a dead end.
+    const asAdmin = row({
+      user_id: 'dddddddd-0000-4000-8000-000000000004',
+      email: 'sam@fundd.com.au',
+      is_admin: true,
+    });
+    const stillAdmin = buildRoster([...ROSTER, asAdmin], ADMIN).members.find(
+      (m) => m.email === 'sam@fundd.com.au',
+    );
+    expect(stillAdmin?.can.deactivate).toBe(false);
+    expect(stillAdmin?.can.demote).toBe(true);
+
+    const demoted = buildRoster([...ROSTER, { ...asAdmin, is_admin: false }], ADMIN).members.find(
+      (m) => m.email === 'sam@fundd.com.au',
+    );
+    expect(demoted?.can.deactivate).toBe(true);
+  });
+
+  it('D72: a NON-admin is still offered nothing at all on anybody', () => {
+    // The rule tightens what an admin may do. It must not accidentally hand a member
+    // anything — they see the roster and no controls, exactly as before (D56).
+    const two = [
+      ...ROSTER,
+      row({
+        user_id: 'dddddddd-0000-4000-8000-000000000004',
+        email: 'sam@fundd.com.au',
+        is_admin: true,
+      }),
+    ];
+    expect(canManageStaff(MEMBER)).toBe(false);
+    const roster = buildRoster(two, MEMBER);
+    for (const member of roster.members) {
+      expect(Object.values(member.can).some(Boolean), member.email).toBe(false);
+    }
   });
 
   it('shows the date someone was added, and never their id or their role label', () => {

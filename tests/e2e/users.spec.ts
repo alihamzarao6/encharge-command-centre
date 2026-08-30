@@ -71,13 +71,22 @@ function staff(
   };
 }
 
-const ROSTER: ScriptedStaff[] = [
-  staff({ user_id: ZOE, email: 'zoe@fundd.com.au' }),
-  staff({ user_id: ALEX, email: 'alex@fundd.com.au', is_active: false }),
-];
+/**
+ * A FUNCTION, not a shared array. The scripted admin endpoint mutates the staff rows it is
+ * given (promote flips `is_admin`, deactivate flips `is_active`), and Playwright runs this
+ * file with `workers: 1` in one process — so a module-level array of objects leaks state from
+ * one test into the next. The promote test used to leave `zoe` an administrator for
+ * everything after it, which only became visible once a later test cared whether she was one.
+ */
+function roster(): ScriptedStaff[] {
+  return [
+    staff({ user_id: ZOE, email: 'zoe@fundd.com.au' }),
+    staff({ user_id: ALEX, email: 'alex@fundd.com.au', is_active: false }),
+  ];
+}
 
 async function openTeam(page: Page, options: MockOptions = {}) {
-  const state = await installMock(page, { admin: true, roster: ROSTER, ...options });
+  const state = await installMock(page, { admin: true, roster: roster(), ...options });
   await seedStoredSession(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Team' }).click();
@@ -185,6 +194,71 @@ test.describe('the Team page', () => {
     await expectNoHorizontalScroll(page);
   });
 
+  test('D72: Remove access is not offered on another ADMINISTRATOR, only once demoted', async ({
+    page,
+  }) => {
+    // The reported case exactly: two administrators, and one is offered a control that would
+    // take the other out of the building in a single tap.
+    const state = await openTeam(page, {
+      roster: [staff({ user_id: ZOE, email: 'zoe@fundd.com.au', is_admin: true })],
+    });
+    await expect(page.getByText('2 with access · 2 administrators')).toBeVisible();
+
+    const zoe = page.locator('.team__card', { hasText: 'zoe@fundd.com.au' });
+    // Demote and Reset password stay. Remove access does not.
+    await expect(zoe.getByRole('button', { name: 'Remove administrator' })).toBeVisible();
+    await expect(zoe.getByRole('button', { name: 'Reset password' })).toBeVisible();
+    await expect(zoe.getByRole('button', { name: 'Remove access' })).toHaveCount(0);
+
+    await shot(page, 'team-admin-no-remove');
+    await expectNoHorizontalScroll(page);
+
+    // Demote her, and the control appears — the rule is friction, not a dead end.
+    await zoe.getByRole('button', { name: 'Remove administrator' }).click();
+    await zoe.getByRole('button', { name: 'Remove administrator' }).click();
+    await expect(page.getByText('2 with access · 1 administrator')).toBeVisible();
+    await expect(zoe.getByRole('button', { name: 'Remove access' })).toBeVisible();
+    expect(state.postgrestWrites).toStrictEqual([]);
+  });
+
+  test('D72: a non-admin is still offered nothing, even with two administrators on screen', async ({
+    page,
+  }) => {
+    // Tightening what an admin may do must not hand a member anything. Checked with an admin
+    // colleague on screen, which is the shape the new rule is about.
+    const state = await openTeam(page, {
+      admin: false,
+      roster: [staff({ user_id: ZOE, email: 'zoe@fundd.com.au', is_admin: true })],
+    });
+    for (const label of [
+      'Remove access',
+      'Restore access',
+      'Make administrator',
+      'Remove administrator',
+      'Reset password',
+      '+ Add someone',
+    ]) {
+      await expect(page.getByRole('button', { name: label }), label).toHaveCount(0);
+    }
+    expect(state.adminCalls).toStrictEqual([]);
+    expect(state.postgrestWrites).toStrictEqual([]);
+  });
+
+  test('the roster cards line up with the button above them (no stray list padding)', async ({
+    page,
+  }) => {
+    // The cards sat ~40px right of "+ Add someone" because `.team__list` reset `list-style`
+    // but not the UA stylesheet's `padding-inline-start`. Measured, not eyeballed.
+    await openTeam(page);
+    const button = await page.getByRole('button', { name: '+ Add someone' }).boundingBox();
+    const card = await page.locator('.team__card').first().boundingBox();
+    expect(button).not.toBeNull();
+    expect(card).not.toBeNull();
+    if (button === null || card === null) return;
+    expect(Math.abs(card.x - button.x), 'left edges line up').toBeLessThanOrEqual(1);
+    expect(Math.abs(card.width - button.width), 'and so do the widths').toBeLessThanOrEqual(1);
+  });
+
   test('4: the page never offers the two actions that would reach zero administrators', async ({
     page,
   }) => {
@@ -274,7 +348,7 @@ test.describe('the Team page', () => {
   test('9: the layout holds with a long email and a long roster', async ({ page }) => {
     await openTeam(page, {
       roster: [
-        ...ROSTER,
+        ...roster(),
         ...Array.from({ length: 20 }, (_v, i) =>
           staff({
             user_id: `44444444-4444-4444-8444-4444444444${String(i).padStart(2, '0')}`,
