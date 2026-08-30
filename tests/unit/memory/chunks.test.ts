@@ -240,3 +240,116 @@ describe('idleConversations', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('the embedding backlog (Stage 3 part 5b, D70)', () => {
+  it('a null embedding is sent as null, not as the string "null"', async () => {
+    stub((req) => (req.path === '/rest/v1/memory_chunks' ? json([], 201) : undefined));
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    const result = await store.insertChunk({
+      conversationId: CONV_ID,
+      userId: USER_ID,
+      scope: 'workspace',
+      summary: 'Kept without its vector.',
+      audience: null,
+      embedding: null,
+      range: { lo: 1, hi: 11 },
+    });
+    expect(result).toEqual({ ok: true, value: 'inserted' });
+    const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(body['embedding']).toBeNull();
+    // The range is still claimed — that is what stops the text being summarised twice.
+    expect(body['turn_range']).toBe('[1,11)');
+  });
+
+  it('asks for exactly the rows that are waiting, and excludes tombstones', async () => {
+    stub((req) =>
+      req.path === '/rest/v1/memory_chunks'
+        ? json([
+            {
+              id: 'k1',
+              conversation_id: CONV_ID,
+              user_id: USER_ID,
+              summary: 'A note without a vector.',
+              audience: null,
+              turn_range: '[1,11)',
+            },
+          ])
+        : json([{ id: CONV_ID, title: 'Offset accounts' }]),
+    );
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    const result = await store.chunksNeedingEmbedding(20);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toStrictEqual([
+      {
+        id: 'k1',
+        conversationId: CONV_ID,
+        userId: USER_ID,
+        title: 'Offset accounts',
+        summary: 'A note without a vector.',
+        audience: null,
+        range: { lo: 1, hi: 11 },
+      },
+    ]);
+    // BOTH predicates, and the second is the one that protects a deleted note.
+    expect(seen[0]?.query).toContain('embedding=is.null');
+    expect(seen[0]?.query).toContain('deleted_at=is.null');
+    expect(seen[0]?.query).toContain('order=created_at.asc');
+    // One roster-style read for the titles, not one per chunk.
+    expect(seen.filter((r) => r.path === '/rest/v1/conversations')).toHaveLength(1);
+  });
+
+  it('an empty backlog makes no second read at all', async () => {
+    stub(() => json([]));
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    expect(await store.chunksNeedingEmbedding(20)).toStrictEqual({ ok: true, value: [] });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('a title that cannot be read degrades to null rather than losing the chunk', async () => {
+    stub((req) =>
+      req.path === '/rest/v1/memory_chunks'
+        ? json([
+            {
+              id: 'k1',
+              conversation_id: CONV_ID,
+              user_id: USER_ID,
+              summary: 'A note.',
+              audience: null,
+              turn_range: '[1,11)',
+            },
+          ])
+        : json({ message: 'nope' }, 500),
+    );
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    const result = await store.chunksNeedingEmbedding(20);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value[0]?.title).toBeNull();
+  });
+
+  it('attaching a vector is guarded on both null-embedding and not-deleted', async () => {
+    stub(() => json([{ id: 'k1' }]));
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    expect(await store.setChunkEmbedding('k1', FIXTURE_VECTOR)).toStrictEqual({
+      ok: true,
+      value: 'embedded',
+    });
+    expect(seen[0]?.method).toBe('PATCH');
+    expect(seen[0]?.query).toContain('id=eq.k1');
+    expect(seen[0]?.query).toContain('embedding=is.null');
+    expect(seen[0]?.query).toContain('deleted_at=is.null');
+    const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(JSON.parse(body['embedding'] as string)).toHaveLength(1024);
+  });
+
+  it('a row that moved under it reports `already` rather than pretending it wrote', async () => {
+    // Someone deleted the note, or another run embedded it first. Either way: no-op.
+    stub(() => json([]));
+    const store = supabaseChunkStore(createServiceClient(CONFIG));
+    expect(await store.setChunkEmbedding('k1', FIXTURE_VECTOR)).toStrictEqual({
+      ok: true,
+      value: 'already',
+    });
+  });
+});

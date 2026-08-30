@@ -8,6 +8,7 @@ import { join } from 'node:path';
 
 import { err, ok, type AppError, type Result } from '../../../src/lib/errors.js';
 import type {
+  ChunkAwaitingEmbedding,
   ChunkCoverage,
   ChunkInsert,
   ChunkStore,
@@ -63,8 +64,14 @@ export const FIXTURE_VECTOR: readonly number[] =
   (JSON.parse(voyageFixture('embeddings-ok')) as { data: { embedding: number[] }[] }).data[0]
     ?.embedding ?? [];
 
-export interface StoredChunk extends ChunkInsert {
+export interface StoredChunk extends Omit<ChunkInsert, 'embedding'> {
   readonly id: string;
+  /** Mutable, so a backfill can attach one after the fact (Stage 3 part 5b, D70). */
+  embedding: readonly number[] | null;
+  /** The parent's title, which the real backlog read joins `conversations` for. */
+  readonly title?: string | null;
+  /** Set only on a tombstone (part 3). The backfill must never touch one. */
+  readonly deletedAt?: string;
 }
 
 export interface FakeChunkStore extends ChunkStore {
@@ -75,6 +82,8 @@ export interface FakeChunkStore extends ChunkStore {
   failCoverage: AppError | null;
   failMessages: AppError | null;
   failInsert: AppError | null;
+  /** Stage 3 part 5b (D70): make the backlog read fail, to prove a sweep survives it. */
+  failBacklog: AppError | null;
 }
 
 /** `n` alternating user/assistant messages, each `createdAt` spaced a minute apart from `start`. */
@@ -96,6 +105,7 @@ export function fakeChunkStore(messages: OrdinalMessage[] = []): FakeChunkStore 
     failCoverage: null,
     failMessages: null,
     failInsert: null,
+    failBacklog: null,
     coverage: (): Promise<Result<ChunkCoverage>> => {
       store.reads.coverage += 1;
       if (store.failCoverage !== null) return Promise.resolve(err(store.failCoverage));
@@ -115,6 +125,31 @@ export function fakeChunkStore(messages: OrdinalMessage[] = []): FakeChunkStore 
         ok(store.messages.filter((m) => m.ordinal >= range.lo && m.ordinal < range.hi)),
       );
     },
+    chunksNeedingEmbedding: (limit): Promise<Result<readonly ChunkAwaitingEmbedding[]>> => {
+      if (store.failBacklog !== null) return Promise.resolve(err(store.failBacklog));
+      // Mirrors the real predicate: no embedding, and not a tombstone.
+      const waiting = store.chunks
+        .filter((c) => c.embedding === null && c.deletedAt === undefined)
+        .slice(0, limit)
+        .map((c) => ({
+          id: c.id,
+          conversationId: c.conversationId,
+          userId: c.userId,
+          title: c.title ?? null,
+          summary: c.summary,
+          audience: c.audience,
+          range: c.range,
+        }));
+      return Promise.resolve(ok(waiting));
+    },
+    setChunkEmbedding: (chunkId, embedding): Promise<Result<'embedded' | 'already'>> => {
+      const row = store.chunks.find((c) => c.id === chunkId);
+      if (row?.embedding !== null || row.deletedAt !== undefined) {
+        return Promise.resolve(ok('already'));
+      }
+      row.embedding = [...embedding];
+      return Promise.resolve(ok('embedded'));
+    },
     insertChunk: (input): Promise<Result<'inserted' | 'exists'>> => {
       if (store.failInsert !== null) return Promise.resolve(err(store.failInsert));
       const overlaps = store.chunks.some(
@@ -124,7 +159,11 @@ export function fakeChunkStore(messages: OrdinalMessage[] = []): FakeChunkStore 
           input.range.lo < c.range.hi,
       );
       if (overlaps) return Promise.resolve(ok('exists'));
-      store.chunks.push({ ...input, id: `chunk-${store.chunks.length + 1}` });
+      store.chunks.push({
+        ...input,
+        embedding: input.embedding === null ? null : [...input.embedding],
+        id: `chunk-${String(store.chunks.length + 1)}`,
+      });
       return Promise.resolve(ok('inserted'));
     },
     idleConversations: (): Promise<Result<readonly ConversationRef[]>> =>

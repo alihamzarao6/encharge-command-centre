@@ -104,6 +104,8 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D67** | **The 0.45 similarity floor stays.** Measured, not asserted: over 14 chunks and 13 probes, related requests hit 9/10 at 0.45 and unrelated 0/3, with the highest unrelated at 0.3277 and the median related at 0.5899 | The floor sits in a clean gap with 0.12 of margin above the worst false positive. Anything from 0.35 to 0.45 gives the identical 9/10 · 0/3; below 0.35 an unrelated request starts hitting; at 0.60 seven of ten related requests are lost. The one related miss reproduces D46 exactly — "Make it shorter" alone is 0.2914, the same request with the previous user turn prepended is 0.6255 — which is the two-message query earning its place. **Caveat recorded honestly:** 14 chunks from one session in one subject area are more homogeneous than a real year of use, so the related scores are probably flattered; re-measure once there are months of genuine conversations | 29 Aug |
 | **D68** | **The cost the client was told holds.** Measured per warm turn: **$0.005653** (22 turns) against Stage 2's $0.0055; cold (cache write) $0.015051 (5 turns). Memory adds ≈ $0.00038 amortised. Projected **≈ $2.65/month at 300 turns and ≈ $7.90 at 1,000** | Memory did not move the turn cost materially because the recall block is 810 rendered chars — about 270 tokens, ≈ $0.0008 of uncached input — and sits below the cache breakpoint, which is inside the variance from reply length. The **$50–80 he was told has six to thirty times the headroom**; it was never close. The thing that will change it is Stage 5, where carousels and ad-copy variants produce far more output tokens, and output is where the money is | 29 Aug |
 | **D69** | **The Voyage account is limited to 3 requests per minute, and that is the binding constraint on semantic memory — not the design.** A turn uses two Voyage calls when a chunk is due, so the workspace supports ~1.5 turns/minute before memory degrades. **12 of 21 live turns degraded.** Two consequences: recall silently falls back to facts only (the reply is fine — S3-6 passes under genuine failure), and **summarisation pays Haiku for a summary it then throws away** when the embed fails, leaving the range uncovered to be re-summarised and re-charged | Found by running a realistic session, which is the only way it could have been found — the project had six turns of traffic and one chunk before this. Neither consequence is a part-5 regression; both predate it and were invisible without load. **Not fixed here, because it is a decision, not a patch:** either the Voyage account leaves the free tier (the direct fix, and the client's call — R5 is his account), or the summariser is reordered to keep the paid summary and retry only the embed, writing the chunk with a null embedding and backfilling, which the schema already permits because `match_memory_chunks` ignores a null embedding | 29 Aug |
+| **D70** | **A failed embedding no longer throws away a paid summary. The chunk is written with a NULL embedding and the range is marked covered, so the same text is never summarised twice; `backfillChunkEmbeddings` attaches the vector later** (migration `20260830010000` — one partial index, no column change) | The Haiku summary costs **$0.001664**; the Voyage embedding costs **$0.000010** — roughly 1,600×. Discarding the expensive half because the cheap half failed is the wrong way round, and under the 3-requests-per-minute limit (D69) it meant paying repeatedly and keeping nothing: 21 live turns, several paid summarisations, **zero chunks**. No column was needed — `embedding` has always been nullable (the part-3 tombstone sets it), `turn_range` already claims the range through `memory_chunks_no_overlap`, and `match_memory_chunks` already filters `embedding is not null`, so an unembedded note is simply not retrievable yet and nothing half-formed can reach a reply. It still shows on the Memory page, which is right: it exists, and a person can read or delete it. **The backlog predicate is `embedding is null AND deleted_at is null`** — both halves matter, because a tombstone also has a null embedding and must never be resurrected. **Backfill:** no Claude call, one Voyage call per note, oldest first; it runs FIRST in the sweep so a backlog drains before more unembedded rows are created, and it **stops at the first refusal** rather than burning the remaining budget on calls that will be refused too. It re-reads the range's messages to rebuild the header exactly (`embeddingText` — title, Perth date of the newest message, audience), so a note embedded a week late still matches what it would have matched on the day. Also `npm run memory -- backfill` | 30 Aug |
+| **D71** | **S3-13 (whitelisted tools with two-turn confirmation) and S3-14 (n8n on Railway) are SUPERSEDED, not Stage 3 debt.** Both are leftovers of the five-phase plan and neither is in Scope v3 | Checked against the source rather than assumed. **S3-13** is verbatim from the superseded *"Phase 4 — Claude ops layer with memory"* criteria at the bottom of `PHASE-ACCEPTANCE.md` — an assistant that reads GHL metrics, issues write commands to the CRM and assigns tasks to Notion. **Scope v3 (D23) describes something else**: a voice-trained assistant with cross-device memory, that reads websites and stores what it finds, generates content, and sits on a dashboard, with GHL and Meta *underneath* it rather than driven by it. Nothing in Stage 3 writes anywhere. **D9 (08 Aug, "write tools require two-turn confirmation") is not repealed** — it is a standing safety rule that activates the day a write tool exists, which is a scope conversation, not a gap. **S3-14**: n8n was the v1/v2 orchestration layer; the six stages (D26) never mention it, and nothing Stage 3 delivered needs it — memory runs in Edge Functions and the dashboard is a static app. It stays in `CLAUDE.md` §2 as the stack's automation layer and lands at **Stage 6**, whose criteria already call for a monitoring workflow (daily health check, cost rollup, alerts). Same for the "cost / review queue / tasks" dashboard surfaces in the old bullet: `review_queue` belongs with Stage 4, where there is finally something to review | 30 Aug |
 
 ---
 
@@ -118,6 +120,49 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-30 — [FND-340 · Stage 3 part 5b] Deployed, and the summariser stops paying twice
+
+**Did:** three things the reviewer asked for after the acceptance run.
+
+**Deployed.** The `memory` Edge Function is **v3** (30 Aug) and the Vercel app is rebuilt, so
+privacy is finally reachable from the live app rather than sitting in the database unused. The
+deployed bundle was grepped for the UI strings — `Make it just mine`, `Share with the team`,
+`still shared`, `A private conversation`, `Private conversations` — all present; the endpoint
+refuses an anonymous POST with 401. The asset hash differs from the local build because
+`vercel.json` sets `buildCommand`, so Vercel builds from source itself — and its build runs
+`web:check`, which had to pass for the deploy to succeed. `chat` was deliberately deployed
+**after** the summariser change below rather than twice.
+
+**The waste is fixed (D70).** A failed embedding used to discard the Haiku summary and leave
+the range uncovered, so the next sweep bought the same text again. Now the chunk is written
+with a null embedding, the range is covered, and `backfillChunkEmbeddings` attaches the vector
+later — no Claude call, one Voyage call per note, oldest first, running first in the sweep and
+stopping at the first refusal. No column was needed; one partial index
+(`memory_chunks_needs_embedding_idx`) makes the backlog cheap to find and states the predicate
+`embedding is null AND deleted_at is null`, whose second half is what stops a tombstone ever
+being re-embedded. Also `npm run memory -- backfill`.
+
+**S3-13 and S3-14 were checked, not assumed, and are superseded (D71).** S3-13 is verbatim
+from the superseded five-phase "Phase 4 — Claude ops layer" criteria; Scope v3 has no tool
+calling and nothing in Stage 3 writes anywhere. D9 stands as a standing rule for the day a
+write tool exists. n8n was the v1/v2 orchestration layer, is not in the six stages, and lands
+at Stage 6 where the monitoring workflow already lives. Neither is Stage 3 debt, and
+`PHASE-ACCEPTANCE.md` now says so with the reasoning rather than carrying them as gaps.
+
+**Surprised by:** how cheaply the fix landed. The instinct was that keeping a half-formed
+chunk needed a column and a state machine; in fact every mechanism was already there — the
+column has always been nullable, the exclusion constraint already claimed the range, and
+`match_memory_chunks` already ignored a null embedding. The only genuinely new thing is the
+predicate that tells "waiting for its vector" apart from "deleted on purpose", and that is one
+index.
+
+**Not done:** the live spend cap was left alone, on instruction — tripping it means setting the
+client's live cap to zero and the unit tests cover it.
+
+**Next:** the reviewer's manual pass on a phone, then the client session.
 
 ---
 

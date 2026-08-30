@@ -19,6 +19,7 @@ import { createHttpClient, type FetchLike } from '../../../src/lib/http.js';
 import { createClaudeClient } from '../../../src/lib/llm/client.js';
 import { createVoyageEmbedder, type EmbeddingRequest } from '../../../src/lib/memory/embed.js';
 import {
+  backfillChunkEmbeddings,
   createAfterTurnHook,
   summariseConversation,
   sweepIdleConversations,
@@ -35,6 +36,7 @@ import {
   messagesOf,
   voyageConfig,
   voyageFixture,
+  type StoredChunk,
 } from './helpers.js';
 
 const NOW = new Date('2026-08-25T12:00:00Z');
@@ -303,8 +305,48 @@ describe('Part C 8: failures stay inside the hook', () => {
     const result = await summariseConversation(deps, CONVERSATION, { freshMessages: 2 });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.chunks[0]).toMatchObject({ result: 'failed', summaryCostUsd: 0.00212 });
-    expect(h.store.chunks).toHaveLength(0);
+
+    // CHANGED 30 Aug (D70). This used to assert `failed` and `chunks: 0` — the summary was
+    // thrown away because the cheap half of the work failed, so the next sweep paid Haiku for
+    // the same text again. Measured live: 21 turns, paid summarisations, zero chunks.
+    //
+    // Now the note is KEPT with a null embedding and the range is covered, so the expensive
+    // half is never bought twice.
+    expect(result.value.chunks[0]).toMatchObject({
+      result: 'unembedded',
+      summaryCostUsd: 0.00212,
+      embedCostUsd: 0,
+    });
+    expect(h.store.chunks).toHaveLength(1);
+    expect(h.store.chunks[0]?.embedding).toBeNull();
+    expect(h.store.chunks[0]?.summary).not.toBe('');
+    // The range is claimed, which is the whole point: re-running must not re-summarise.
+    expect(h.store.chunks[0]?.range).toStrictEqual({ lo: 1, hi: 11 });
+  });
+
+  it('and re-running does NOT pay Haiku again for a range that is already covered', async () => {
+    const h = harness();
+    const failing = fakeEmbedder({
+      ok: false,
+      error: new AppError('NETWORK', 'voyage down', { retryable: true }),
+    });
+    const deps: MemoryDeps = {
+      ...h.deps,
+      embedder: {
+        checkBudget: (chars) => h.deps.embedder.checkBudget(chars),
+        embed: (request) => failing.embed(request),
+      },
+    };
+    await summariseConversation(deps, CONVERSATION, { freshMessages: 2 });
+    const afterFirst = h.calls.anthropic;
+
+    const second = await summariseConversation(deps, CONVERSATION, { freshMessages: 2 });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    // Nothing left to do: the range is covered, so no range is planned and no call is made.
+    expect(second.value.chunks).toStrictEqual([]);
+    expect(h.calls.anthropic).toBe(afterFirst);
+    expect(h.store.chunks).toHaveLength(1);
   });
 
   it('an insert failure is reported and the summary/embedding cost is not hidden', async () => {
@@ -416,5 +458,142 @@ describe('what is embedded (review, 26 Aug)', () => {
     ).toBe(true);
     expect(embeddedText).toContain('The user is a mortgage broker');
     expect(h.store.chunks[0]?.summary.startsWith('Conversation:')).toBe(false);
+  });
+});
+
+describe('backfillChunkEmbeddings (Stage 3 part 5b, D70)', () => {
+  /** A chunk kept without an embedding, exactly as a failed embed leaves one. */
+  function withUnembedded(h: Harness, overrides: Partial<StoredChunk> = {}): StoredChunk {
+    const row: StoredChunk = {
+      id: 'chunk-waiting',
+      conversationId: CONVERSATION.id,
+      userId: CONVERSATION.userId,
+      scope: 'workspace',
+      summary: 'A note whose embedding never landed.',
+      audience: null,
+      embedding: null,
+      range: { lo: 1, hi: 11 },
+      title: CONVERSATION.title,
+      ...overrides,
+    };
+    h.store.chunks.push(row);
+    return row;
+  }
+
+  it('attaches the vector, costs no Claude call, and reports what it did', async () => {
+    const h = harness();
+    withUnembedded(h);
+    const result = await backfillChunkEmbeddings(h.deps, 10);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ waiting: 1, embedded: 1 });
+    expect(result.value.costUsd).toBeGreaterThan(0);
+    expect(h.store.chunks[0]?.embedding).toHaveLength(1024);
+    // The expensive half was already paid for; the backfill must never buy it again.
+    expect(h.calls.anthropic).toBe(0);
+    expect(h.calls.voyage).toBe(1);
+  });
+
+  it('embeds the SAME header the summariser would have, not the chunk’s own date', async () => {
+    // SCHEMA §4: the header is reproducible from stored columns — conversation title, the
+    // Perth date of the range's NEWEST message, and the stored audience. A note embedded a
+    // week late must still match what it would have matched on the day, so the messages are
+    // re-read rather than `created_at` being substituted.
+    const h = harness();
+    withUnembedded(h, { audience: 'first home buyers' });
+    const seen: string[] = [];
+    const deps: MemoryDeps = {
+      ...h.deps,
+      embedder: {
+        checkBudget: (chars) => h.deps.embedder.checkBudget(chars),
+        embed: (request) => {
+          seen.push(request.texts[0] ?? '');
+          return h.deps.embedder.embed(request);
+        },
+      },
+    };
+    await backfillChunkEmbeddings(deps, 10);
+    expect(seen[0]).toContain('Conversation: ');
+    expect(seen[0]).toContain('Audience: first home buyers');
+    expect(seen[0]).toContain('A note whose embedding never landed.');
+    // The date comes from the range's newest message, which the harness seeds in 2026-08.
+    expect(seen[0]).toMatch(/Date: 2026-08-\d\d/);
+  });
+
+  it('NEVER touches a tombstone, whose embedding is null on purpose', async () => {
+    const h = harness();
+    withUnembedded(h, {
+      id: 'chunk-tombstoned',
+      summary: '(removed from memory by a user)',
+      deletedAt: '2026-08-29T00:00:00Z',
+    });
+    const result = await backfillChunkEmbeddings(h.deps, 10);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ waiting: 0, embedded: 0 });
+    expect(h.store.chunks[0]?.embedding).toBeNull();
+    expect(h.calls.voyage).toBe(0);
+  });
+
+  it('stops at the first refusal rather than burning the rest of the backlog', async () => {
+    // Under a rate limit the second call will be refused too. Stopping leaves every row
+    // exactly as safe as it was, and leaves the budget for the next run.
+    const h = harness();
+    withUnembedded(h, { id: 'a', range: { lo: 1, hi: 11 } });
+    withUnembedded(h, { id: 'b', range: { lo: 11, hi: 21 } });
+    withUnembedded(h, { id: 'c', range: { lo: 21, hi: 31 } });
+    const failing = fakeEmbedder({
+      ok: false,
+      error: new AppError('RATE_LIMITED', 'voyage 429', { retryable: true }),
+    });
+    const deps: MemoryDeps = {
+      ...h.deps,
+      embedder: {
+        checkBudget: (chars) => h.deps.embedder.checkBudget(chars),
+        embed: (request) => failing.embed(request),
+      },
+    };
+    const result = await backfillChunkEmbeddings(deps, 10);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ waiting: 3, embedded: 0 });
+    expect(result.value.stoppedBy?.code).toBe('RATE_LIMITED');
+    for (const row of h.store.chunks) expect(row.embedding).toBeNull();
+  });
+
+  it('is idempotent: a second run over an already-embedded backlog does nothing', async () => {
+    const h = harness();
+    withUnembedded(h);
+    await backfillChunkEmbeddings(h.deps, 10);
+    const voyageAfterFirst = h.calls.voyage;
+    const again = await backfillChunkEmbeddings(h.deps, 10);
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.value).toMatchObject({ waiting: 0, embedded: 0 });
+    expect(h.calls.voyage).toBe(voyageAfterFirst);
+  });
+
+  it('a failure reading the backlog does not stop the sweep summarising', async () => {
+    const h = harness();
+    h.store.failBacklog = new AppError('NETWORK', 'db down', { retryable: true });
+    h.store.idle = [CONVERSATION];
+    const swept = await sweepIdleConversations(h.deps, 5);
+    expect(swept.ok).toBe(true);
+    if (!swept.ok) return;
+    expect(swept.value.backfill).toBeUndefined();
+    expect(swept.value.candidates).toBe(1);
+  });
+
+  it('the sweep drains the backlog BEFORE it summarises anything new', async () => {
+    // Order is the point: the cheap half first, so a run under a rate limit spends what it
+    // has making existing notes retrievable rather than creating more unembedded ones.
+    const h = harness();
+    withUnembedded(h, { range: { lo: 1, hi: 11 } });
+    h.store.idle = [];
+    const swept = await sweepIdleConversations(h.deps, 5);
+    expect(swept.ok).toBe(true);
+    if (!swept.ok) return;
+    expect(swept.value.backfill).toMatchObject({ waiting: 1, embedded: 1 });
+    expect(h.calls.anthropic).toBe(0);
   });
 });

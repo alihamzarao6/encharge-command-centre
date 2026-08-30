@@ -53,7 +53,26 @@ export interface ChunkInsert {
   readonly summary: string;
   /** Who the work was aimed at (review, 27 Aug); null when the summariser found none. */
   readonly audience: string | null;
-  readonly embedding: readonly number[];
+  /**
+   * NULL when the embedding call failed (Stage 3 part 5b, D70). The note is still worth
+   * keeping — it cost a Haiku call — and the row's `turn_range` marks the range covered, so
+   * the same text is never summarised and charged for twice. `match_memory_chunks` ignores a
+   * null embedding, so an unembedded chunk is simply not retrievable yet;
+   * `backfillChunkEmbeddings` fills it in later.
+   */
+  readonly embedding: readonly number[] | null;
+  readonly range: MessageRange;
+}
+
+/** A chunk that is waiting for its embedding, with everything needed to rebuild the header. */
+export interface ChunkAwaitingEmbedding {
+  readonly id: string;
+  readonly conversationId: string;
+  readonly userId: string;
+  /** The conversation's title, for the embedded header (summarise.ts `embeddingText`). */
+  readonly title: string | null;
+  readonly summary: string;
+  readonly audience: string | null;
   readonly range: MessageRange;
 }
 
@@ -78,6 +97,21 @@ export interface ChunkStore {
     range: MessageRange,
   ): Promise<Result<readonly OrdinalMessage[]>>;
   insertChunk(input: ChunkInsert): Promise<Result<'inserted' | 'exists'>>;
+  /**
+   * Chunks that were kept without an embedding, oldest first — `embedding is null` AND
+   * `deleted_at is null`, which distinguishes them from a tombstone (part 3), whose
+   * embedding is also null but which has a `deleted_at` and must never come back.
+   */
+  chunksNeedingEmbedding(limit: number): Promise<Result<readonly ChunkAwaitingEmbedding[]>>;
+  /**
+   * Attach an embedding to a chunk that has none. Guarded on BOTH `embedding is null` and
+   * `deleted_at is null`, so a chunk somebody deleted between the read and this write is
+   * never silently re-embedded, and a second backfill of the same row is a no-op.
+   */
+  setChunkEmbedding(
+    chunkId: string,
+    embedding: readonly number[],
+  ): Promise<Result<'embedded' | 'already'>>;
   /** Live conversations last active at or before `staleBefore`, most recent first. */
   idleConversations(staleBefore: Date, limit: number): Promise<Result<readonly ConversationRef[]>>;
 }
@@ -175,7 +209,7 @@ export function supabaseChunkStore(client: ServiceClient): ChunkStore {
           summary: input.summary,
           audience: input.audience,
           // pgvector accepts the JSON array form on input; PostgREST forwards it as text.
-          embedding: JSON.stringify(input.embedding),
+          embedding: input.embedding === null ? null : JSON.stringify(input.embedding),
           turn_range: formatInt4Range(input.range),
         });
         if (error !== null) {
@@ -185,6 +219,62 @@ export function supabaseChunkStore(client: ServiceClient): ChunkStore {
         return ok('inserted');
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'memory_chunks.insert'));
+      }
+    },
+    chunksNeedingEmbedding: async (limit) => {
+      try {
+        const { data, error } = await client
+          .from('memory_chunks')
+          .select('id, conversation_id, user_id, summary, audience, turn_range')
+          .is('embedding', null)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true })
+          .limit(limit);
+        if (error !== null) return err(mapPostgrest(error, 'memory_chunks.needingEmbedding'));
+        if (data.length === 0) return ok([]);
+
+        // One read for every parent title rather than one per chunk: a backlog is a backlog
+        // precisely because several chunks are waiting at once.
+        const titles = await client
+          .from('conversations')
+          .select('id, title')
+          .in('id', [...new Set(data.map((row) => row.conversation_id))]);
+        const byId = new Map<string, string | null>(
+          titles.error === null ? titles.data.map((row) => [row.id, row.title]) : [],
+        );
+
+        const out: ChunkAwaitingEmbedding[] = [];
+        for (const row of data) {
+          const range = parseInt4Range(row.turn_range);
+          if (!range.ok) return err(range.error);
+          out.push({
+            id: row.id,
+            conversationId: row.conversation_id,
+            userId: row.user_id,
+            title: byId.get(row.conversation_id) ?? null,
+            summary: row.summary,
+            audience: row.audience,
+            range: range.value,
+          });
+        }
+        return ok(out);
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'memory_chunks.needingEmbedding'));
+      }
+    },
+    setChunkEmbedding: async (chunkId, embedding) => {
+      try {
+        const { data, error } = await client
+          .from('memory_chunks')
+          .update({ embedding: JSON.stringify(embedding) })
+          .eq('id', chunkId)
+          .is('embedding', null)
+          .is('deleted_at', null)
+          .select('id');
+        if (error !== null) return err(mapPostgrest(error, 'memory_chunks.setEmbedding'));
+        return ok(data.length === 0 ? 'already' : 'embedded');
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'memory_chunks.setEmbedding'));
       }
     },
     idleConversations: async (staleBefore, limit) => {

@@ -4,6 +4,7 @@
  *   npm run memory -- flush <conversationId>     summarise the whole uncovered tail NOW
  *                                                (the "force a summarisation" path — no
  *                                                fifty-message conversation needed)
+ *   npm run memory -- backfill [--limit N]       attach embeddings to notes kept without one
  *   npm run memory -- sweep [--limit N]          idle conversations → tail chunks (what a
  *                                                scheduler will call from part 5)
  *   npm run memory -- preview <transcript.json>  summarise a transcript file with the live
@@ -52,6 +53,7 @@ import { supabaseFactStore } from '../src/lib/memory/facts.js';
 import { recallForTurn, supabaseChunkSearch } from '../src/lib/memory/retrieve.js';
 import { summariseMessages } from '../src/lib/memory/summarise.js';
 import {
+  backfillChunkEmbeddings,
   summariseConversation,
   sweepIdleConversations,
   type MemoryDeps,
@@ -143,6 +145,22 @@ async function flush(conversationId: string | undefined): Promise<void> {
   if (!outcome.ok) fail(`${outcome.error.code}: ${outcome.error.message}`);
   out(outcome.value);
   process.exit(outcome.value.chunks.some((c) => c.result === 'failed') ? 2 : 0);
+}
+
+/**
+ * Stage 3 part 5b (D70). Attach embeddings to notes that were kept without one because the
+ * embedding call failed. No Claude call at all — one Voyage call per note — so this is the
+ * cheap way to make an existing backlog retrievable again after a rate limit has passed.
+ * The sweep runs it too; this exists so it can be run on its own, and paced by hand.
+ */
+async function backfill(limitArg: string | undefined): Promise<void> {
+  const limit = limitArg === undefined ? 20 : Number(limitArg);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) fail('--limit must be 1..200');
+  const outcome = await backfillChunkEmbeddings(productionDeps(), limit);
+  if (!outcome.ok) fail(`${outcome.error.code}: ${outcome.error.message}`);
+  out(outcome.value);
+  // A run that stopped early is not a success: the backlog is still there.
+  process.exit(outcome.value.stoppedBy === undefined ? 0 : 2);
 }
 
 async function sweep(limitArg: string | undefined): Promise<void> {
@@ -313,6 +331,9 @@ async function main(): Promise<void> {
     case 'facts':
       await listFacts(rest);
       return;
+    case 'backfill':
+      await backfill(rest[0]);
+      break;
     case 'flush':
       await flush(rest[0]);
       return;
@@ -327,7 +348,7 @@ async function main(): Promise<void> {
     case undefined:
     default:
       fail(
-        'usage: npm run memory -- flush <conversationId> | sweep [--limit N] | preview <transcript.json> | recall "<message>" [--conversation <id>] | remember "<statement>" | facts [--all]',
+        'usage: npm run memory -- flush <conversationId> | backfill [--limit N] | sweep [--limit N] | preview <transcript.json> | recall "<message>" [--conversation <id>] | remember "<statement>" | facts [--all]',
       );
   }
 }

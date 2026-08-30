@@ -419,8 +419,19 @@ what a conversation was called, when, and who it was for, not only on the note's
   removed; the deletion is an application-written `audit_log` row carrying ids and the actor
   only. The removal is therefore NOT reversible, and the page says so on the confirm step.
 
-Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document` (R5 — the key is
-still to arrive; without it the chat runs and no chunk is written). Cost per chunk is in
+Embeddings are Voyage `voyage-3`, 1024 dimensions, `input_type: document`.
+
+- **A chunk may exist without one** (part 5b, D70, migration `20260830010000`). When the
+  embedding call fails the summary is **kept** and the range is marked covered, because the
+  Haiku summary costs ~1,600× the Voyage embedding and discarding it means paying for the same
+  text again on the next sweep. `null` therefore means one of two things, told apart by
+  `deleted_at`: **`deleted_at is null`** — waiting for `backfillChunkEmbeddings`; **`deleted_at`
+  set** — a tombstone whose content was destroyed on purpose (D50) and which must never be
+  re-embedded. `memory_chunks_needs_embedding_idx` is the partial index over the first case,
+  and `match_memory_chunks` ignores both.
+- The backfill rebuilds the header exactly — title, the Perth date of the range's newest
+  message, the stored audience — by re-reading the range, so a note embedded late still matches
+  what it would have matched on the day. Cost per chunk is in
 `SECURITY.md` §8.
 
 ### memory_facts — structured memory (written from Stage 3 part 2, FND-310)

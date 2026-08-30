@@ -159,18 +159,36 @@ visible rather than quietly dropped.
 | **S3-6** | Retrieval **degrades without breaking a reply** when Voyage or the search fails | **Pass, and exercised for real** — 12 of 21 live turns degraded (`degraded:["embed"]`) and every one returned a 200 with a reply. See the Voyage finding |
 | **S3-7** | **Privacy behaves as Part A built it** | **Pass** — the seven assertions in CI and 27 assertions live |
 | **S3-8** | `user` vs `workspace` scope behaves as `SCHEMA.md` §4 says, proven by the RLS test | **Pass** — `rls.test.ts` 4, 4b, 5, 11, 12 (37/37) |
-| **S3-9** | The dashboard is usable on a phone, verified at 375 / 768 / 1280 | **Pass for what was built** — Assistant, Memory, Team; `177/177` browser assertions. **Cost, review queue and tasks were in the starting points and are NOT built** |
+| **S3-9** | The dashboard is usable on a phone, verified at 375 / 768 / 1280 | **Pass** — Assistant, Memory, Team; `177/177` browser assertions. (The "cost, review queue, tasks" surfaces in the old bullet belong to later stages — D71 below) |
 | **S3-10** | Every memory and conversation write lands in `audit_log` with the right actor | **Pass** — parts 3–5; `memory-page.test.ts` "8.", `conversations.test.ts`, and `CONVERSATION_ADMIN_READ` observed live |
 | **S3-11** | The running cost is inside the figure the client was given | **Pass with headroom** — measured below |
 | **S3-12** | Regression suite green; migrations replay from zero | **Pass** — CI 33261767108 |
-| **S3-13** | Whitelisted tools with two-turn confirmation on anything that writes (D9) | **NOT BUILT.** There is no tool calling in the chat path at all (`grep` for `tools:` / `tool_use` in `src/lib/llm` returns nothing). Nothing writes to anything from a conversation, so the confirmation rule has nothing to guard yet |
-| **S3-14** | n8n on Railway, Postgres-backed, encrypted credentials, HMAC-verified webhooks | **NOT BUILT.** `n8n/workflows/` holds **zero** committed workflows |
+| ~~S3-13~~ | ~~Whitelisted tools with two-turn confirmation on anything that writes (D9)~~ | **SUPERSEDED — not in Scope v3 (D71)** |
+| ~~S3-14~~ | ~~n8n on Railway, Postgres-backed, encrypted credentials, HMAC-verified webhooks~~ | **SUPERSEDED as a Stage 3 item — lands at Stage 6 (D71)** |
 
-**S3-13 and S3-14 are the honest gaps in this stage** and are listed on the client's
-outstanding items rather than argued away. Neither is needed by anything Stage 3 delivered —
-memory, the dashboard and staff management all work without them — but both were named in the
-Stage 3 starting points and neither exists. They are the first thing to settle at Stage 4
-kickoff: whether they belong to Stage 4, to Stage 6, or to a separate conversation.
+**S3-13 and S3-14 were checked against Scope v3 rather than carried as debt, and both are
+leftovers of the five-phase plan (D71, 30 Aug).**
+
+**S3-13** is verbatim from the superseded *"Phase 4 — Claude ops layer with memory"* criteria
+kept at the bottom of this file: *"Whitelisted tools with confirmation required on anything
+that writes"*, alongside "ask for conversion rates and pipeline metrics", "issue a write
+command", "assign a task by text → the task appears in Notion". That was an **ops layer**.
+Scope v3 (D23) describes something else: an assistant trained on the client's voice, with
+memory that follows him, that reads websites and stores what it finds, generates content, and
+sits on a dashboard — with GoHighLevel and Meta set up *underneath* it, not driven by it.
+Nothing in Stage 3 writes anywhere. **D9 is not repealed**: "write tools require two-turn
+confirmation" remains a standing safety rule that binds the day a write tool exists. It has
+nothing to guard yet, which is not the same as being owed.
+
+**S3-14** — n8n was the v1/v2 orchestration layer. The six stages (D26) never mention it, and
+nothing Stage 3 delivered needs it: memory runs in Edge Functions and the dashboard is a static
+app. It stays in `CLAUDE.md` §2 as the stack's automation layer and lands at **Stage 6**, whose
+criteria already call for a monitoring workflow — daily health check, cost rollup, stale-data
+and token-expiry alerts — which is exactly what it is for.
+
+The same applies to the "cost, review queue, tasks" dashboard surfaces in the old Stage 3
+bullet: `review_queue` is where below-threshold extractions go (CLAUDE.md rule 14), so its
+surface belongs with **Stage 4**, when there is finally something in it to review.
 
 **S3-2, proven live on 29 Aug** through the production handler against the live project. In
 conversation 1 the broker said *"Remember that every post we publish finishes with exactly one
@@ -555,11 +573,30 @@ Two consequences, and the second is a defect:
    chunk that now exists had to be created by a paced, manual flush.
 
 **Neither is a part-5 regression** — both predate it and were invisible because the project had
-almost no traffic. The fix is a design decision for the reviewer, not a quiet patch: either the
-Voyage account moves off the free tier (the direct fix, and the client's call since R5 is his
-account), or the summariser is reordered to keep the paid summary and retry only the embed —
-writing the chunk with a null embedding and backfilling it, which the schema already permits
-because `match_memory_chunks` ignores a null embedding.
+almost no traffic.
+
+**The second is fixed (D70, 30 Aug, migration `20260830010000`).** The chunk is now written
+with a **null embedding** and the range is marked covered, so the same text is never summarised
+and charged for twice. It needed no column: `embedding` has always been nullable, `turn_range`
+already claims the range, and `match_memory_chunks` already filters `embedding is not null`, so
+an unembedded note is invisible to retrieval while still appearing on the Memory page where a
+person can read or delete it. One partial index makes the backlog cheap to find and states the
+predicate — `embedding is null AND deleted_at is null` — whose second half is what stops a
+**tombstone** (whose embedding is null because its content was destroyed on purpose) from ever
+being re-embedded.
+
+`backfillChunkEmbeddings` drains that backlog: **no Claude call**, one Voyage call per note,
+oldest first. It runs **first** in `sweepIdleConversations`, before any new summarisation, so a
+run under a rate limit spends what budget it has making existing notes retrievable rather than
+creating more unembedded ones — and it **stops at the first refusal**, because under a rate
+limit the next call will be refused too and the rows are exactly as safe as they were. It
+re-reads the range's messages to rebuild the header exactly as the summariser would have
+(`embeddingText`: title, the Perth date of the range's newest message, the stored audience), so
+a note embedded a week late still matches what it would have matched on the day. Available on
+its own as `npm run memory -- backfill [--limit N]`.
+
+**The first is still the client's** — the Voyage tier. The system now behaves correctly under
+the limit instead of losing work to it, but 3 requests a minute is still 3 requests a minute.
 
 ---
 
