@@ -193,14 +193,19 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
       { action: 'create', email: `users-sneak-${RUN}@example.com` },
       { action: 'deactivate', userId: SEEDED_STAFF.ross.userId },
       { action: 'reactivate', userId: SEEDED_STAFF.ross.userId },
-      { action: 'promote', userId: staffId },
-      { action: 'demote', userId: SEEDED_STAFF.ross.userId },
       { action: 'reset_password', userId: SEEDED_STAFF.ross.userId },
       { action: 'sign_ins' },
     ];
     for (const request of attempts) {
       const result = await post(request, staffToken);
       expect(result.status, String(request.action)).toBe(403);
+    }
+
+    // D74: promote and demote are not actions this endpoint has. A non-admin asking for them
+    // gets 400 (unknown action) rather than 403 — refused earlier, and for a blunter reason.
+    for (const action of ['promote', 'demote'] as const) {
+      const result = await post({ action, userId: staffId }, staffToken);
+      expect(result.status, action).toBe(400);
     }
 
     const minted = await db.query<{ n: string }>(
@@ -222,7 +227,15 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
     secondId = String(body(second)['userId']);
     createdIds.push(secondId);
     passwords.push(String(body(second)['oneTimePassword']));
-    expect((await post({ action: 'promote', userId: secondId })).status).toBe(200);
+    // D74: promote is no longer an endpoint action, so the second administrator is appointed
+    // the way one actually is now — `set_staff_admin` with the service role, which is what
+    // `npm run staff -- promote` calls. That suits this test anyway: what is under examination
+    // below is the DATABASE lock, not the endpoint.
+    const appointed = await db.query<{ changed: boolean }>(
+      `select changed from public.set_staff_admin($1, true)`,
+      [secondId],
+    );
+    expect(appointed.rows[0]?.changed).toBe(true);
 
     // Reduce the workspace to exactly ONE active administrator by DEMOTING the others —
     // never by deactivating them, and never the caller. The acting admin's token is what
@@ -357,7 +370,7 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
     const rows = await db.query<{ action: string; actor: string; entity_id: string }>(
       `select action, actor, entity_id from public.audit_log
        where entity_id = any($1::uuid[])
-         and action in ('USER_CREATED','USER_DEACTIVATED','USER_REACTIVATED','USER_PROMOTED','PASSWORD_RESET')
+         and action in ('USER_CREATED','USER_DEACTIVATED','USER_REACTIVATED','PASSWORD_RESET')
        order by created_at`,
       [createdIds],
     );
@@ -365,7 +378,10 @@ describe.skipIf(env === null)('the users page (requires a running Supabase stack
     expect(actions).toContain('USER_CREATED');
     expect(actions).toContain('USER_DEACTIVATED');
     expect(actions).toContain('USER_REACTIVATED');
-    expect(actions).toContain('USER_PROMOTED');
+    // USER_PROMOTED is deliberately absent (D74): the endpoint cannot promote, so it cannot
+    // audit a promotion. The second admin in test 4 was appointed through the database
+    // function directly, which is the break-glass CLI's path and audits under `bootstrap-cli`.
+    expect(actions).not.toContain('USER_PROMOTED');
     for (const row of rows.rows) {
       expect(row.actor, 'the human, never service_role').toBe(SEEDED_STAFF.developer.email);
     }
