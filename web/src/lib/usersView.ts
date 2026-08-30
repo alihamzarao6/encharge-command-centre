@@ -86,13 +86,13 @@ export function lastSeenLabel(record: SignInRecord | undefined, known: boolean):
   return formatted === '' ? '—' : formatted;
 }
 
-const ACTIONS: readonly StaffChangeAction[] = [
-  'deactivate',
-  'reactivate',
-  'promote',
-  'demote',
-  'reset_password',
-];
+/**
+ * What the Team page offers. Promote and demote are NOT here (D74): the workspace has one
+ * administrator in normal use, so a permanent control for appointing one was a surface for a
+ * decision made roughly never — and the surface through which one admin could strip another.
+ * `npm run staff -- promote|demote` remains the break-glass path.
+ */
+const ACTIONS: readonly StaffChangeAction[] = ['deactivate', 'reactivate', 'reset_password'];
 
 /**
  * `signIns` is empty and `signInsKnown` false for a non-admin: they never ask for it and the
@@ -125,10 +125,7 @@ export function buildRoster(
         // a state the row is already in — is filtered here as well, because a "Restore
         // access" button on somebody who has access is noise, not safety.
         const pointless =
-          (action === 'deactivate' && !row.is_active) ||
-          (action === 'reactivate' && row.is_active) ||
-          (action === 'promote' && row.is_admin) ||
-          (action === 'demote' && !row.is_admin);
+          (action === 'deactivate' && !row.is_active) || (action === 'reactivate' && row.is_active);
         can[action] = !pointless && canChangeStaff(action, target, actor, activeAdmins).allowed;
       }
       return {

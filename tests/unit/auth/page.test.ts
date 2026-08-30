@@ -38,7 +38,12 @@ interface Harness {
   readonly passwordsSet: string[];
 }
 
-function makeHarness(): Harness {
+/**
+ * D74 removed promote/demote from this endpoint, so a test that needs two administrators can
+ * no longer make one through the API. It seeds the row instead, which is closer to the truth
+ * anyway: a second admin is appointed by `npm run staff -- promote`, not from the browser.
+ */
+function makeHarness(secondAdmin = false): Harness {
   const rows = new Map<string, StaffRow>([
     [
       ADMIN_ID,
@@ -46,7 +51,13 @@ function makeHarness(): Harness {
     ],
     [
       STAFF_ID,
-      { user_id: STAFF_ID, email: 'staff@x.com', role: 'staff', is_active: true, is_admin: false },
+      {
+        user_id: STAFF_ID,
+        email: 'staff@x.com',
+        role: 'staff',
+        is_active: true,
+        is_admin: secondAdmin,
+      },
     ],
   ]);
   const audit: AuditEntry[] = [];
@@ -203,8 +214,6 @@ describe('Part C 3: a non-admin is refused at the server, not merely unshown', (
     { action: 'create', email: 'sneaky@x.com' },
     { action: 'deactivate', userId: ADMIN_ID },
     { action: 'reactivate', userId: ADMIN_ID },
-    { action: 'promote', userId: STAFF_ID },
-    { action: 'demote', userId: ADMIN_ID },
     { action: 'reset_password', userId: ADMIN_ID },
     { action: 'sign_ins' },
   ];
@@ -243,7 +252,7 @@ describe('Part C 3: a non-admin is refused at the server, not merely unshown', (
 });
 
 describe('the four flag actions', () => {
-  it('deactivate, reactivate, promote and demote each report and audit exactly once', async () => {
+  it('deactivate and reactivate each report and audit exactly once', async () => {
     const h = makeHarness();
     const deactivated = reply(await post(h, { action: 'deactivate', userId: STAFF_ID }));
     expect(deactivated['outcome']).toBe('changed');
@@ -252,10 +261,8 @@ describe('the four flag actions', () => {
     const again = reply(await post(h, { action: 'deactivate', userId: STAFF_ID }));
     expect(again['outcome']).toBe('unchanged');
 
-    reply(await post(h, { action: 'reactivate', userId: STAFF_ID }));
-    reply(await post(h, { action: 'promote', userId: STAFF_ID }));
-    const demoted = reply(await post(h, { action: 'demote', userId: STAFF_ID }));
-    expect(demoted['activeAdmins']).toBe(1);
+    const restored = reply(await post(h, { action: 'reactivate', userId: STAFF_ID }));
+    expect(restored['activeAdmins']).toBe(1);
 
     // Part C 8: one row per change, naming the admin who asked — and an idempotent no-op
     // is still a change of record, because someone did ask for it.
@@ -263,8 +270,6 @@ describe('the four flag actions', () => {
       'USER_DEACTIVATED',
       'USER_DEACTIVATED',
       'USER_REACTIVATED',
-      'USER_PROMOTED',
-      'USER_DEMOTED',
     ]);
     for (const entry of h.audit) {
       expect(entry.actor).toBe('admin@x.com');
@@ -274,45 +279,52 @@ describe('the four flag actions', () => {
   });
 
   it("D72: the SERVER refuses removing an active administrator's access, not just the page", async () => {
-    const h = makeHarness();
     // Two administrators, so the last-admin rule is not what is doing the refusing.
-    reply(await post(h, { action: 'promote', userId: STAFF_ID }));
+    const h = makeHarness(true);
     expect([...h.rows.values()].filter((r) => r.is_active && r.is_admin)).toHaveLength(2);
 
     const refused = await post(h, { action: 'deactivate', userId: STAFF_ID });
     expect(refused.status).toBe(403);
     expect(errorBody(refused).code).toBe('ADMIN_TARGET');
     expect(h.rows.get(STAFF_ID)?.is_active, 'nothing moved').toBe(true);
+    expect(h.audit, 'and nothing was recorded either').toStrictEqual([]);
+  });
 
-    // And the two-step is genuinely open: demote, then the same request succeeds.
-    reply(await post(h, { action: 'demote', userId: STAFF_ID }));
-    reply(await post(h, { action: 'deactivate', userId: STAFF_ID }));
-    expect(h.rows.get(STAFF_ID)?.is_active).toBe(false);
-    expect(h.rows.get(STAFF_ID)?.is_admin).toBe(false);
+  it('D74: promote and demote are not actions this endpoint has any more', async () => {
+    // The workspace has one administrator in normal use, so appointing one is a rare,
+    // deliberate act and belongs to `npm run staff -- promote`, not to a button. The endpoint
+    // does not merely hide them — it does not know them.
+    const h = makeHarness(true);
+    for (const action of ['promote', 'demote'] as const) {
+      const result = await post(h, { action, userId: STAFF_ID });
+      expect(result.status, action).toBe(400);
+      expect(errorBody(result).message).not.toContain(action);
+    }
+    expect(h.rows.get(STAFF_ID)?.is_admin, 'nothing moved').toBe(true);
+    expect(h.audit).toStrictEqual([]);
   });
 
   it('Part C 4: nothing the page can send reaches zero administrators', async () => {
+    // Narrower than it was, because the page is narrower (D74): demote is not an action any
+    // more, so the only route to zero administrators the browser has is an admin removing
+    // their own access — refused by name.
     const h = makeHarness();
-    // One admin. The two requests that could remove them are both refused, by name.
-    for (const action of ['deactivate', 'demote'] as const) {
-      const result = await post(h, { action, userId: ADMIN_ID });
-      expect(result.status, action).toBe(403);
-      expect(errorBody(result).code).toBe(
-        action === 'demote' ? 'SELF_DEMOTION' : 'SELF_DEACTIVATION',
-      );
-    }
-    // Promote a second admin; now the FIRST can be demoted by them, but the last cannot.
-    reply(await post(h, { action: 'promote', userId: STAFF_ID }));
-    reply(await post(h, { action: 'demote', userId: ADMIN_ID }, STAFF_TOKEN));
-    const last = await post(h, { action: 'demote', userId: STAFF_ID }, STAFF_TOKEN);
-    expect(last.status).toBe(403);
-    expect(errorBody(last).code).toBe('SELF_DEMOTION');
-    expect([...h.rows.values()].filter((r) => r.is_active && r.is_admin)).toHaveLength(1);
+    const result = await post(h, { action: 'deactivate', userId: ADMIN_ID });
+    expect(result.status).toBe(403);
+    expect(errorBody(result).code).toBe('SELF_DEACTIVATION');
+
+    // And with a SECOND administrator it is still refused, now by D72: administrators do not
+    // remove each other. Either way the count cannot fall to zero from this endpoint.
+    const two = makeHarness(true);
+    const other = await post(two, { action: 'deactivate', userId: STAFF_ID });
+    expect(other.status).toBe(403);
+    expect(errorBody(other).code).toBe('ADMIN_TARGET');
+    expect([...two.rows.values()].filter((r) => r.is_active && r.is_admin)).toHaveLength(2);
   });
 
   it('400 when the target is not a UUID, so an email can never be used as a handle here', async () => {
     const h = makeHarness();
-    const result = await post(h, { action: 'promote', userId: 'staff@x.com' });
+    const result = await post(h, { action: 'deactivate', userId: 'staff@x.com' });
     expect(result.status).toBe(400);
     expect(errorBody(result).message).toContain('UUID');
   });
@@ -383,7 +395,7 @@ describe('the request envelope', () => {
     };
     const result = await handleUsersRequest(broken, {
       token: ADMIN_TOKEN,
-      body: { action: 'promote', userId: STAFF_ID },
+      body: { action: 'deactivate', userId: STAFF_ID },
     });
     expect(result.status).toBe(500);
     expect(h.logLines.some((l) => l.includes('users request threw'))).toBe(true);

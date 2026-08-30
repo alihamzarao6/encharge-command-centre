@@ -107,6 +107,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D70** | **A failed embedding no longer throws away a paid summary. The chunk is written with a NULL embedding and the range is marked covered, so the same text is never summarised twice; `backfillChunkEmbeddings` attaches the vector later** (migration `20260830010000` — one partial index, no column change) | The Haiku summary costs **$0.001664**; the Voyage embedding costs **$0.000010** — roughly 1,600×. Discarding the expensive half because the cheap half failed is the wrong way round, and under the 3-requests-per-minute limit (D69) it meant paying repeatedly and keeping nothing: 21 live turns, several paid summarisations, **zero chunks**. No column was needed — `embedding` has always been nullable (the part-3 tombstone sets it), `turn_range` already claims the range through `memory_chunks_no_overlap`, and `match_memory_chunks` already filters `embedding is not null`, so an unembedded note is simply not retrievable yet and nothing half-formed can reach a reply. It still shows on the Memory page, which is right: it exists, and a person can read or delete it. **The backlog predicate is `embedding is null AND deleted_at is null`** — both halves matter, because a tombstone also has a null embedding and must never be resurrected. **Backfill:** no Claude call, one Voyage call per note, oldest first; it runs FIRST in the sweep so a backlog drains before more unembedded rows are created, and it **stops at the first refusal** rather than burning the remaining budget on calls that will be refused too. It re-reads the range's messages to rebuild the header exactly (`embeddingText` — title, Perth date of the newest message, audience), so a note embedded a week late still matches what it would have matched on the day. Also `npm run memory -- backfill` | 30 Aug |
 | **D71** | **S3-13 (whitelisted tools with two-turn confirmation) and S3-14 (n8n on Railway) are SUPERSEDED, not Stage 3 debt.** Both are leftovers of the five-phase plan and neither is in Scope v3 | Checked against the source rather than assumed. **S3-13** is verbatim from the superseded *"Phase 4 — Claude ops layer with memory"* criteria at the bottom of `PHASE-ACCEPTANCE.md` — an assistant that reads GHL metrics, issues write commands to the CRM and assigns tasks to Notion. **Scope v3 (D23) describes something else**: a voice-trained assistant with cross-device memory, that reads websites and stores what it finds, generates content, and sits on a dashboard, with GHL and Meta *underneath* it rather than driven by it. Nothing in Stage 3 writes anywhere. **D9 (08 Aug, "write tools require two-turn confirmation") is not repealed** — it is a standing safety rule that activates the day a write tool exists, which is a scope conversation, not a gap. **S3-14**: n8n was the v1/v2 orchestration layer; the six stages (D26) never mention it, and nothing Stage 3 delivered needs it — memory runs in Edge Functions and the dashboard is a static app. It stays in `CLAUDE.md` §2 as the stack's automation layer and lands at **Stage 6**, whose criteria already call for a monitoring workflow (daily health check, cost rollup, alerts). Same for the "cost / review queue / tasks" dashboard surfaces in the old bullet: `review_queue` belongs with Stage 4, where there is finally something to review | 30 Aug |
 | **D72** | **An ACTIVE administrator's access cannot be removed while they are still an administrator. Demote first, then remove access** (`canChangeStaff`, `access.ts`; refusal `admin_target`) | Reported from the live app: with two admins, each was offered "Remove access" on the other — one tap could take an administrator out of the building. The two-step forces the person to state separately that this account should stop being an admin and that it should stop having access, and it keeps the destructive half reversible on its own (a demotion is undone by promoting). Not gated on the admin COUNT — it holds with two administrators or twenty. Scoped to an **active** admin: someone already deactivated has no access left to protect. `last_admin` is now demote's guard alone, because deactivate can no longer reach it — a lone admin's only admin target is themselves, which `self_deactivation` already refuses. Enforced server-side by the same function (`admin.ts:546`), so the endpoint answers `403 ADMIN_TARGET`; a non-admin is still refused first with `not_admin`. The promote confirm was overstating ("remove anyone's access") and now says what is actually true | 30 Aug |
+| **D74** | **Promote and demote are removed from the product.** The Team page offers add · remove access · restore access · reset password, and nothing else. `npm run staff -- promote\|demote` stays as the break-glass path. **Supersedes the page half of D60; D72 stands** | The workspace has ONE administrator in normal use — the two in staging are an artefact of testing. A permanent control for appointing and un-appointing administrators was therefore a surface for a decision made roughly never, and it was the surface through which one admin could strip another: D72 blocked "Remove access" on an admin but left demote open, so demote-then-remove reached the same place by a longer road. Removing the pair removes both problems at once and leaves nothing to guard. A super-admin role was designed to fix this properly (a third authorization fact, RLS-hidden from the roster) and **abandoned as over-engineering** — it invented a role system to police a decision the client makes about once a year. `setStaffAdmin` survives in `admin.ts` for the CLI: a second administrator is a rare, deliberate, developer-run act, which is exactly what break-glass is for. What is gone is the browser's ability to ask | 30 Aug |
 
 ---
 
@@ -121,6 +122,36 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 **Surprised by:** anything that didn't work as expected
 **Next:** the immediate next task
 ```
+
+---
+
+### 2026-08-30 — [FND-330 follow-up] Promote/demote leaves the product
+
+**Did:** removed "Make administrator" and "Remove administrator" from the Team page and from
+the users endpoint. `UsersActionName` is five actions now, not seven; the endpoint does not
+merely hide them, it does not know them, and answers 400 with a message that no longer names
+them. `usersView`'s `ACTIONS` is three, so `member.can` has three keys rather than five — the
+controls are gone, not disabled.
+
+**Decided:** D74. The reasoning is the client's and it is a good one: there is one
+administrator in normal use, so a permanent control for a once-a-year decision was both
+clutter and the exact route through which one admin could strip another. D72 had closed the
+"Remove access" half a few hours earlier and left demote open, which was my miss — the two
+together were the same outcome by a longer road.
+
+**Surprised by:** how far I went in the wrong direction first. I designed a `super_admin`
+role for this — third authorization fact, its own RLS policy to hide it from the roster, the
+last-admin invariant widened to count it, a migration, a break-glass CLI verb. It was
+coherent and it was wrong: a role system to police a decision made about once a year, on a
+team of one administrator. The client stopped it. Reverted before anything was applied — the
+migration was never pushed, so there is nothing to unwind in the live database.
+
+**Kept deliberately:** `setStaffAdmin` in `admin.ts` and `npm run staff -- promote|demote`.
+Appointing a second administrator is rare and deliberate, which is what the break-glass CLI is
+for. And D72's `admin_target` rule stays: it is what still stops an admin removing another
+admin's access now that neither can demote the other.
+
+**Next:** deploy the admin function and the web app.
 
 ---
 

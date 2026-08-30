@@ -194,9 +194,7 @@ test.describe('the Team page', () => {
     await expectNoHorizontalScroll(page);
   });
 
-  test('D72: Remove access is not offered on another ADMINISTRATOR, only once demoted', async ({
-    page,
-  }) => {
+  test('D72: Remove access is not offered on another ADMINISTRATOR', async ({ page }) => {
     // The reported case exactly: two administrators, and one is offered a control that would
     // take the other out of the building in a single tap.
     const state = await openTeam(page, {
@@ -205,19 +203,14 @@ test.describe('the Team page', () => {
     await expect(page.getByText('2 with access · 2 administrators')).toBeVisible();
 
     const zoe = page.locator('.team__card', { hasText: 'zoe@fundd.com.au' });
-    // Demote and Reset password stay. Remove access does not.
-    await expect(zoe.getByRole('button', { name: 'Remove administrator' })).toBeVisible();
+    // A password reset stays — it hands over nothing and takes nothing away. Removing her
+    // access does not, and since D74 there is no demote button to reach it through either.
     await expect(zoe.getByRole('button', { name: 'Reset password' })).toBeVisible();
     await expect(zoe.getByRole('button', { name: 'Remove access' })).toHaveCount(0);
+    await expect(zoe.getByRole('button', { name: 'Remove administrator' })).toHaveCount(0);
 
     await shot(page, 'team-admin-no-remove');
     await expectNoHorizontalScroll(page);
-
-    // Demote her, and the control appears — the rule is friction, not a dead end.
-    await zoe.getByRole('button', { name: 'Remove administrator' }).click();
-    await zoe.getByRole('button', { name: 'Remove administrator' }).click();
-    await expect(page.getByText('2 with access · 1 administrator')).toBeVisible();
-    await expect(zoe.getByRole('button', { name: 'Remove access' })).toBeVisible();
     expect(state.postgrestWrites).toStrictEqual([]);
   });
 
@@ -259,27 +252,35 @@ test.describe('the Team page', () => {
     expect(Math.abs(card.width - button.width), 'and so do the widths').toBeLessThanOrEqual(1);
   });
 
-  test('4: the page never offers the two actions that would reach zero administrators', async ({
+  test('4: your own row offers a password reset and nothing that could lock you out', async ({
     page,
   }) => {
     await openTeam(page);
-    // The signed-in admin is the ONLY administrator. Their own row offers a password reset
-    // and nothing else — no "Remove access", no "Remove administrator".
     const mine = page.locator('.team__card', { hasText: EMAIL });
     await expect(mine.getByRole('button', { name: 'Reset password' })).toBeVisible();
     await expect(mine.getByRole('button', { name: 'Remove access' })).toHaveCount(0);
-    await expect(mine.getByRole('button', { name: 'Remove administrator' })).toHaveCount(0);
     await expect(mine.getByText('You', { exact: true })).toBeVisible();
+  });
 
-    // Promote a second admin and the picture changes — for them, not for you.
-    const zoe = page.locator('.team__card', { hasText: 'zoe@fundd.com.au' });
-    await zoe.getByRole('button', { name: 'Make administrator' }).click();
-    await expect(page.getByRole('alert')).toContainText('including yours');
-    await shot(page, 'team-promote-confirm');
-    await zoe.getByRole('button', { name: 'Make administrator' }).click();
-    await expect(page.getByRole('status')).toContainText('can now add and remove people');
-    await expect(zoe.getByRole('button', { name: 'Remove administrator' })).toBeVisible();
-    await expect(mine.getByRole('button', { name: 'Remove administrator' })).toHaveCount(0);
+  test('D74: the page has no Make/Remove administrator anywhere, on any row', async ({ page }) => {
+    // The workspace has one administrator in normal use, so appointing one is a rare,
+    // deliberate act that belongs to `npm run staff -- promote`. The controls are gone, not
+    // hidden — and with an admin colleague on screen too, which is where they used to appear.
+    await openTeam(page, {
+      roster: [
+        staff({ user_id: ZOE, email: 'zoe@fundd.com.au' }),
+        staff({ user_id: ALEX, email: 'alex@fundd.com.au', is_admin: true }),
+      ],
+    });
+    for (const label of ['Make administrator', 'Remove administrator']) {
+      await expect(page.getByRole('button', { name: label }), label).toHaveCount(0);
+    }
+    // And what remains between two administrators is a reset and nothing else.
+    const alex = page.locator('.team__card', { hasText: 'alex@fundd.com.au' });
+    await expect(alex.getByRole('button', { name: 'Reset password' })).toBeVisible();
+    await expect(alex.getByRole('button', { name: 'Remove access' })).toHaveCount(0);
+    await shot(page, 'team-two-admins');
+    await expectNoHorizontalScroll(page);
   });
 
   test('4: when the SERVER refuses a change, the reason is shown as written', async ({ page }) => {

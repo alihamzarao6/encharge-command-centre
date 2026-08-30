@@ -17,15 +17,24 @@
  * question the add-user flow leaves open — did the person I handed a password to actually
  * get in — and because without it "Added 3 days ago" is the only thing the list can say.
  *
- * Six actions, all admin-only, all already built and tested in Stage 2 part 3 or added
+ * Five actions, all admin-only, all already built and tested in Stage 2 part 3 or added
  * beside them in `admin.ts`:
  *
  *   create          — email in, account + allowlist row out, password returned ONCE.
  *   deactivate      — never delete (D33: their memory contributions are the workspace's).
  *   reactivate      — the reverse; their existing password works again.
- *   promote/demote  — the `is_admin` boolean that has existed since 20260824020000 and that
- *                     until now only the seed could set.
  *   reset_password  — a fresh password, returned ONCE.
+ *   sign_ins        — when each account last signed in.
+ *
+ * PROMOTE AND DEMOTE ARE NOT HERE (D74, 30 Aug). They were, briefly. The workspace has ONE
+ * administrator in normal use — the two in staging are an artefact of testing — so a control
+ * for appointing and un-appointing administrators was a permanent surface for a decision that
+ * is made roughly never, and it was the surface through which one admin could strip another.
+ * Removing it removes both problems at once and leaves nothing to guard.
+ *
+ * `setStaffAdmin` SURVIVES in `admin.ts` and `npm run staff -- promote|demote` still works: a
+ * second administrator is a rare, deliberate, developer-run act, which is exactly what the
+ * break-glass CLI is for. What is gone is the browser's ability to ask.
  *
  * THE PASSWORD. It is in exactly one response body, once, and nowhere else — not in a log
  * line (asserted by unit tests against a capturing sink), not in a table (asserted against
@@ -47,7 +56,6 @@ import {
   listStaffUsers,
   reactivateStaffUser,
   resetStaffPassword,
-  setStaffAdmin,
   type AdminDeps,
   type CreatedStaffUser,
   type StaffFlagResult,
@@ -61,7 +69,7 @@ import { STAFF_EMAIL_MAX_CHARS } from './access.js';
 // ---------------------------------------------------------------------------------------
 
 export type UsersActionName =
-  'create' | 'deactivate' | 'reactivate' | 'promote' | 'demote' | 'reset_password' | 'sign_ins';
+  'create' | 'deactivate' | 'reactivate' | 'reset_password' | 'sign_ins';
 
 export interface UsersRequestBody {
   readonly action?: unknown;
@@ -92,7 +100,7 @@ export type UsersPageReply =
       readonly oneTimePassword: string;
     }
   | {
-      readonly action: 'deactivate' | 'reactivate' | 'promote' | 'demote';
+      readonly action: 'deactivate' | 'reactivate';
       readonly outcome: 'changed' | 'unchanged';
       readonly userId: string;
       readonly email: string;
@@ -205,8 +213,6 @@ async function route(deps: UsersPageDeps, input: UsersPageInput): Promise<UsersP
       return create(deps, input);
     case 'deactivate':
     case 'reactivate':
-    case 'promote':
-    case 'demote':
       return flag(deps, input, action);
     case 'reset_password':
       return reset(deps, input);
@@ -216,7 +222,7 @@ async function route(deps: UsersPageDeps, input: UsersPageInput): Promise<UsersP
       return failure(
         400,
         'BAD_REQUEST',
-        'action must be one of create, deactivate, reactivate, promote, demote, reset_password, sign_ins.',
+        'action must be one of create, deactivate, reactivate, reset_password, sign_ins.',
       );
   }
 }
@@ -266,7 +272,7 @@ async function reset(deps: UsersPageDeps, input: UsersPageInput): Promise<UsersP
 async function flag(
   deps: UsersPageDeps,
   input: UsersPageInput,
-  action: 'deactivate' | 'reactivate' | 'promote' | 'demote',
+  action: 'deactivate' | 'reactivate',
 ): Promise<UsersPageResult> {
   const target = targetOf(input.body);
   if (!target.ok) return mapUsersFailure(target.error);
@@ -278,10 +284,6 @@ async function flag(
       break;
     case 'reactivate':
       done = await reactivateStaffUser(deps, input.token, target.value);
-      break;
-    case 'promote':
-    case 'demote':
-      done = await setStaffAdmin(deps, input.token, target.value, action === 'promote');
       break;
   }
   if (!done.ok) return mapUsersFailure(done.error);

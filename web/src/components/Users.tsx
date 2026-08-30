@@ -172,10 +172,7 @@ export function Users({ session, staff, onSessionExpired }: Props): ReactElement
   );
 
   const onFlag = useCallback(
-    async (
-      member: StaffMemberView,
-      action: 'deactivate' | 'reactivate' | 'promote' | 'demote',
-    ): Promise<void> => {
+    async (member: StaffMemberView, action: 'deactivate' | 'reactivate'): Promise<void> => {
       const outcome = await run({ action, userId: member.userId }, member.userId);
       if (outcome.kind !== 'ok') return;
       const reply = outcome.reply;
@@ -189,8 +186,6 @@ export function Users({ session, staff, onSessionExpired }: Props): ReactElement
       const SAID: Readonly<Record<typeof action, string>> = {
         deactivate: `${reply.email} can no longer sign in. Everything they taught the assistant stays.`,
         reactivate: `${reply.email} can sign in again with the password they already had.`,
-        promote: `${reply.email} can now add and remove people.`,
-        demote: `${reply.email} can no longer add or remove people.`,
       };
       setBanner({ tone: 'ok', text: SAID[action] });
     },
@@ -419,7 +414,7 @@ function AddUserForm({
   );
 }
 
-type Pending = 'deactivate' | 'reactivate' | 'promote' | 'demote' | 'reset_password' | null;
+type Pending = 'deactivate' | 'reactivate' | 'reset_password' | null;
 
 /** What each confirm step says. Every sentence is a consequence, not a restatement. */
 const CONFIRMS: Readonly<Record<Exclude<Pending, null>, { verb: string; says: string }>> = {
@@ -430,18 +425,6 @@ const CONFIRMS: Readonly<Record<Exclude<Pending, null>, { verb: string; says: st
   reactivate: {
     verb: 'Restore access',
     says: 'They can sign in again straight away, with the password they already had.',
-  },
-  promote: {
-    verb: 'Make administrator',
-    // Since D72 an administrator canNOT remove another administrator's access — they have to
-    // remove their administrator rights first. The old sentence promised "remove anyone's
-    // access", which is no longer true, and a confirm step that overstates what it is handing
-    // over is the worst place to be wrong.
-    says: 'They will be able to add people, remove a member’s access and reset anyone’s password — including yours. To remove another administrator’s access they would have to remove their administrator rights first.',
-  },
-  demote: {
-    verb: 'Remove administrator',
-    says: 'They keep their own access and everything else. They will no longer be able to add or remove people.',
   },
   reset_password: {
     verb: 'Reset password',
@@ -461,16 +444,13 @@ function MemberCard({
   readonly canManage: boolean;
   readonly showLastSeen: boolean;
   readonly busy: boolean;
-  readonly onFlag: (
-    member: StaffMemberView,
-    action: 'deactivate' | 'reactivate' | 'promote' | 'demote',
-  ) => Promise<void>;
+  readonly onFlag: (member: StaffMemberView, action: 'deactivate' | 'reactivate') => Promise<void>;
   readonly onReset: (member: StaffMemberView) => Promise<void>;
 }): ReactElement {
   const [pending, setPending] = useState<Pending>(null);
-  const offered = (
-    ['reactivate', 'promote', 'demote', 'reset_password', 'deactivate'] as const
-  ).filter((action) => canManage && member.can[action]);
+  const offered = (['reactivate', 'reset_password', 'deactivate'] as const).filter(
+    (action) => canManage && member.can[action],
+  );
 
   const confirm = (action: Exclude<Pending, null>): void => {
     if (action === 'reset_password') void onReset(member);

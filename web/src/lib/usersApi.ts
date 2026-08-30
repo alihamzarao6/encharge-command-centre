@@ -19,7 +19,7 @@
 export type UsersRequest =
   | { readonly action: 'create'; readonly email: string }
   | {
-      readonly action: 'deactivate' | 'reactivate' | 'promote' | 'demote' | 'reset_password';
+      readonly action: 'deactivate' | 'reactivate' | 'reset_password';
       readonly userId: string;
     }
   | { readonly action: 'sign_ins' };
@@ -38,7 +38,7 @@ export type UsersReply =
       readonly oneTimePassword: string;
     }
   | {
-      readonly action: 'deactivate' | 'reactivate' | 'promote' | 'demote';
+      readonly action: 'deactivate' | 'reactivate';
       readonly outcome: 'changed' | 'unchanged';
       readonly userId: string;
       readonly email: string;
@@ -106,12 +106,7 @@ function readReply(body: unknown): UsersReply | null {
     if (userId === null || email === null || oneTimePassword === null) return null;
     return { action, userId, email, oneTimePassword };
   }
-  if (
-    action === 'deactivate' ||
-    action === 'reactivate' ||
-    action === 'promote' ||
-    action === 'demote'
-  ) {
+  if (action === 'deactivate' || action === 'reactivate') {
     const outcome = body['outcome'];
     const userId = str('userId');
     const email = str('email');

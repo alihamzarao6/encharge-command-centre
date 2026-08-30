@@ -79,8 +79,6 @@ describe('buildRoster', () => {
     expect(zoe?.can).toStrictEqual({
       deactivate: true,
       reactivate: false,
-      promote: true,
-      demote: false,
       reset_password: true,
     });
     // Someone deactivated: only restoring their access is on offer. Not a reset — that
@@ -88,16 +86,12 @@ describe('buildRoster', () => {
     expect(alex?.can).toStrictEqual({
       deactivate: false,
       reactivate: true,
-      promote: false,
-      demote: false,
       reset_password: false,
     });
     // Yourself, and the only administrator: you may reset your own password and nothing else.
     expect(ross?.can).toStrictEqual({
       deactivate: false,
       reactivate: false,
-      promote: false,
-      demote: false,
       reset_password: true,
     });
     expect(ross?.isYou).toBe(true);
@@ -113,7 +107,7 @@ describe('buildRoster', () => {
     }
   });
 
-  it('once there are two administrators, either can be demoted by the other', () => {
+  it('D74: with two administrators, neither is offered anything on the other but a reset', () => {
     const two = [
       ...ROSTER,
       row({
@@ -125,33 +119,46 @@ describe('buildRoster', () => {
     const roster = buildRoster(two, ADMIN);
     const sam = roster.members.find((m) => m.email === 'sam@fundd.com.au');
     expect(roster.activeAdmins).toBe(2);
-    expect(sam?.can.demote).toBe(true);
-    // CHANGED 30 Aug (D72): "Remove access" is NOT offered on another administrator, at any
-    // count. The page has to make you demote them first, so one tap cannot take an
-    // administrator out of the building.
-    expect(sam?.can.deactivate).toBe(false);
-    // But still never yourself.
-    expect(roster.members.find((m) => m.isYou)?.can.demote).toBe(false);
+    // D72 took away Remove access on another admin; D74 took away the promote/demote pair
+    // from the page entirely. What is left between two administrators is a password reset,
+    // which hands over nothing and takes nothing away.
+    expect(sam?.can).toStrictEqual({
+      deactivate: false,
+      reactivate: false,
+      reset_password: true,
+    });
   });
 
-  it('D72: the page stops offering Remove access on an admin, and offers it once demoted', () => {
-    // The interface must never show a control the server would refuse — and must still show
-    // the one it would allow, or the two-step becomes a dead end.
+  it('D72/D74: an admin is protected, an ordinary member is not', () => {
+    // The same row, the one difference being the admin flag. Admin: nothing destructive.
+    // Member: access can be removed, as it always could.
     const asAdmin = row({
       user_id: 'dddddddd-0000-4000-8000-000000000004',
       email: 'sam@fundd.com.au',
       is_admin: true,
     });
-    const stillAdmin = buildRoster([...ROSTER, asAdmin], ADMIN).members.find(
+    const protectedRow = buildRoster([...ROSTER, asAdmin], ADMIN).members.find(
       (m) => m.email === 'sam@fundd.com.au',
     );
-    expect(stillAdmin?.can.deactivate).toBe(false);
-    expect(stillAdmin?.can.demote).toBe(true);
+    expect(protectedRow?.can.deactivate).toBe(false);
 
-    const demoted = buildRoster([...ROSTER, { ...asAdmin, is_admin: false }], ADMIN).members.find(
+    const ordinary = buildRoster([...ROSTER, { ...asAdmin, is_admin: false }], ADMIN).members.find(
       (m) => m.email === 'sam@fundd.com.au',
     );
-    expect(demoted?.can.deactivate).toBe(true);
+    expect(ordinary?.can.deactivate).toBe(true);
+  });
+
+  it('D74: the page has no promote or demote to offer anyone', () => {
+    // Appointing an administrator is a rare, deliberate act and belongs to the break-glass
+    // CLI. The keys are not merely false here — they are gone.
+    const roster = buildRoster(ROSTER, ADMIN);
+    for (const member of roster.members) {
+      expect(Object.keys(member.can).sort(), member.email).toStrictEqual([
+        'deactivate',
+        'reactivate',
+        'reset_password',
+      ]);
+    }
   });
 
   it('D72: a NON-admin is still offered nothing at all on anybody', () => {
@@ -250,7 +257,7 @@ describe('interpretUsersResponse', () => {
 
   it('reads a flag change, including the administrator count it reports back', () => {
     const outcome = interpretUsersResponse(200, {
-      action: 'demote',
+      action: 'reactivate',
       outcome: 'changed',
       userId: STAFF_ID,
       email: 'zoe@fundd.com.au',
@@ -345,7 +352,7 @@ describe('callUsers', () => {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            action: 'promote',
+            action: 'reactivate',
             outcome: 'changed',
             userId: STAFF_ID,
             email: 'zoe@fundd.com.au',
@@ -357,7 +364,7 @@ describe('callUsers', () => {
     }) as unknown as typeof fetch;
 
     const outcome = await callUsers(deps(fetchImpl), 'session-token', {
-      action: 'promote',
+      action: 'reactivate',
       userId: STAFF_ID,
     });
     expect(outcome.kind).toBe('ok');
@@ -365,7 +372,7 @@ describe('callUsers', () => {
     const headers = seen[0]?.init.headers as Record<string, string>;
     expect(headers['authorization']).toBe('Bearer session-token');
     expect(headers['apikey']).toBe('anon-key-not-a-secret');
-    expect(seen[0]?.init.body).toBe(JSON.stringify({ action: 'promote', userId: STAFF_ID }));
+    expect(seen[0]?.init.body).toBe(JSON.stringify({ action: 'reactivate', userId: STAFF_ID }));
   });
 
   it('a transport failure is an outcome, never a throw', async () => {
