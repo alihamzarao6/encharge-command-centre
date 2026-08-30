@@ -134,7 +134,9 @@ deployed bundle was grepped for the UI strings — `Make it just mine`, `Share w
 refuses an anonymous POST with 401. The asset hash differs from the local build because
 `vercel.json` sets `buildCommand`, so Vercel builds from source itself — and its build runs
 `web:check`, which had to pass for the deploy to succeed. `chat` was deliberately deployed
-**after** the summariser change below rather than twice.
+**after** the summariser change below rather than twice, and `admin` went with it so all three
+match `main` exactly. **Live now: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied**,
+and the backfill index confirmed in `pg_indexes` with its partial predicate intact.
 
 **The waste is fixed (D70).** A failed embedding used to discard the Haiku summary and leave
 the range uncovered, so the next sweep bought the same text again. Now the chunk is written
