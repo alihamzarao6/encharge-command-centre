@@ -611,6 +611,28 @@ test.describe('interface states', () => {
     }
   });
 
+  test('a short window never gets a second, page-level scrollbar: the section scrolls, the page does not', async ({
+    page,
+  }) => {
+    // 1280×630 is a 1920×945 laptop at 150% zoom — the client's. The stage rows scroll
+    // inside the overview; their screen-reader-only spans must not lengthen the document.
+    await page.setViewportSize({ width: page.viewportSize()?.width ?? 1280, height: 630 });
+    await openOverview(page);
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('5');
+    const metrics = await page.evaluate(() => ({
+      docScrollHeight: document.documentElement.scrollHeight,
+      docClientHeight: document.documentElement.clientHeight,
+      bodyScrollHeight: document.body.scrollHeight,
+    }));
+    expect(metrics.docScrollHeight, JSON.stringify(metrics)).toBeLessThanOrEqual(
+      metrics.docClientHeight,
+    );
+    expect(metrics.bodyScrollHeight, JSON.stringify(metrics)).toBeLessThanOrEqual(
+      metrics.docClientHeight,
+    );
+    await expectNoHorizontalScroll(page);
+  });
+
   test('an error reading the overview is recoverable with a retry', async ({ page }) => {
     const state = await installMock(page, { ghl: populated(), ghlFailing: true });
     await seedStoredSession(page);

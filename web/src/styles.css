@@ -282,6 +282,11 @@ p {
   height: 100dvh;
   width: 100%;
   overflow: hidden;
+  /* The containing block for every absolutely positioned descendant (.sr-only, the
+     conversations sheet): without this they position against the page, and a hidden
+     span belonging to a row scrolled out of view inside a section makes the DOCUMENT
+     taller than the viewport — a second scrollbar on short windows (1280×630). */
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
