@@ -13,6 +13,7 @@ here causes real-world harm, not a bug report.
 An AI assistant for **Encharge Capital**, a Perth (Western Australia) finance and mortgage
 brokerage that is **rebranding to Fundd** (`fundd.com.au`). Client contact: **Ross Byrne**.
 **Scope v3 (22 Aug 2026) is the binding scope** — decisions D23–D32 in `docs/MEMORY.md`.
+**The delivery plan is eight milestones at 2,000 USD, agreed 1 Sep 2026** — D77–D82.
 
 1. **Trained on the client's voice**, with **persistent memory that follows him across
    devices**.
@@ -20,9 +21,15 @@ brokerage that is **rebranding to Fundd** (`fundd.com.au`). Client contact: **Ro
 3. **Generates social posts, carousels and ad copy** in that voice.
 4. **Sits on a dashboard**, with **GoHighLevel and Meta** set up underneath it.
 
-Delivered in **six stages**: 1 GHL + Meta (complete, signed off, paid) · 2 Foundations + AI
-trained on voice · 3 Memory + dashboard · 4 Website reading and storage · 5 Content, carousels,
-ad copy · 6 Monitoring, testing, docs, handover.
+Delivered in **eight milestones** (D77; the six-stage map D26/D27 is superseded): 1 CRM and ad
+tracking set up · 2 Foundations and the client's writing voice · 3 Memory and the app itself —
+**1–3 complete, signed off and paid** · **4 Your data on screen — next**: the app as a working
+screen rather than a chat window, leads and pipeline live from GoHighLevel, lead detail, the
+client moves a lead between stages himself (the drop is the confirmation — D81 narrows D9),
+the same on phone and laptop (D78) · 5 Files, documents and research (website reading sits
+here) · 6 Talking to it, and your day · 7 Advertising and social · 8 Content and handover.
+Also out of scope, stated to the client in writing (D82): a drag-and-drop dashboard builder,
+agent software that acts on its own, the Quickli calculator, the separate finance CRM.
 
 **Out of current scope — do not build:** the B2B outbound lead-research engine. Organisation
 research, website discovery, decision-maker extraction, email verification and the two scoring
@@ -115,6 +122,8 @@ npm run chat -- "hi"    # one real chat turn through the server-side path (needs
 npm run voice           # voice conformance over recorded fixtures (CI mode); `-- record` re-records live, `-- live "<brief>"` one generation
 npm run memory -- flush <conversationId>   # Stage 3: summarise + embed a conversation's uncovered tail now; `-- sweep` idle tails; `-- preview <transcript.json>` one live summary, no database
 npm run memory -- recall "<message>"       # Stage 3 part 2: print what a turn would retrieve (block, similarities, size); `-- remember "<statement>"` store a fact by hand; `-- facts [--all]` list them
+npm run crm -- read     # M4 part 1: one READ-ONLY pass over the live Finance Pipeline — ids, counts, snapshot hash; no database
+npm run crm -- sync     # M4 part 1: full GoHighLevel → database sync (one transaction; `-- runs [--limit N]` lists recent runs)
 npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
 npm run web:build       # static build → web/dist
 npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits
@@ -136,7 +145,8 @@ npm run n8n:validate
    `docs/PHASE-ACCEPTANCE.md` are met.
 4. After completing any task, append a dated entry to `docs/MEMORY.md`. This is how context
    survives `/clear`. Skipping it is a bug.
-5. Do not start Stage N+1 while Stage N is unsigned. Stages map to client payments (D27).
+5. Do not start Milestone N+1 while Milestone N is unsigned. Milestones map to client
+   payments (D77).
 
 **Code**
 6. TypeScript strict. No `any`. No `@ts-ignore` without a comment explaining why.
@@ -201,4 +211,4 @@ npm run n8n:validate
 - Small commits, Conventional Commits (`feat:`, `fix:`, `test:`, `chore:`).
 - Comments explain *why*, never *what*.
 - No dead code, no commented-out blocks, no `console.log` — use `src/lib/logger.ts`.
-- If a requirement is ambiguous, ask. A wrong assumption compounds across six stages.
+- If a requirement is ambiguous, ask. A wrong assumption compounds across eight milestones.

@@ -81,3 +81,30 @@ values
   ('settled',              '9cef8b67-1171-4347-9275-36e1055a97aa', 'Settled',                'stage'),
   ('lost_not_proceeding',  '2ee75d16-1407-43cf-811e-957e0e2adc3a', 'Lost / Not Proceeding',  'stage')
 on conflict (entity, internal_field) do nothing;
+
+-- ---------------------------------------------------------------------------------------
+-- The contact custom-field rows (entity = 'contact').
+--
+-- Field IDs read from GoHighLevel on 12 Sep 2026 (authorized read, M4 part 1). Nine sit in
+-- the Stage 1 folder `BEFyPDjs8dlcpRuz3ZcL` (created 17 Aug 2026). The tenth Stage 1 field,
+-- "Current Interest Rate", is NOT in that folder — two fields of that name exist elsewhere,
+-- both created by someone else (9 Aug, 30 Jun). The two rows that carry live form data are
+-- in folder `fA9zYqgDoZUUN5CKnb5G` (19–21 Aug): the loan balance and current interest rate
+-- the live form gained — mapped here as `loan_balance` and `current_interest_rate`.
+-- Matching is on ID, never on name; ghl_field_key is the GHL fieldKey for reference only.
+-- ---------------------------------------------------------------------------------------
+
+insert into public.ghl_field_map (internal_field, ghl_custom_field_id, ghl_field_key, entity)
+values
+  ('loan_type',              'Vpn7DLqHwMoQ91AJUjzu', 'contact.home_loan',                                    'contact'),
+  ('loan_amount',            'UWmWQyJn1lEhC8XRjqQD', 'contact.loan_amount',                                  'contact'),
+  ('property_value',         'ZtrfHuvMZQZAPEEd7o1U', 'contact.property_value_fp',                            'contact'),
+  ('deposit_amount',         '8OCSa3zz8OI6by5AIM2t', 'contact.deposit_amount',                               'contact'),
+  ('employment_type',        'M6vWreBBuMuRVdEefafI', 'contact.employment_type',                              'contact'),
+  ('annual_income',          'tQA4cVpB63irs4gBdKBO', 'contact.annual_income',                                'contact'),
+  ('credit_concerns',        '9Qm4YOeMoHMDNyl2keDL', 'contact.credit_concerns',                              'contact'),
+  ('lead_source',            'axTFAYBC1ZCQ4KKuAMXZ', 'contact.lead_source',                                  'contact'),
+  ('preferred_contact_time', 'J8AzUUemQHCzZZB0uUDc', 'contact.preferred_contact_time',                       'contact'),
+  ('loan_balance',           'TANd0sfC9wRwuJKhSGFx', 'contact.roughly_how_much_is_left_on_your_home_loan',   'contact'),
+  ('current_interest_rate',  'hX8JQblBT9iJhYEa348M', 'contact.whats_your_current_interest_rate',             'contact')
+on conflict (entity, internal_field) do nothing;

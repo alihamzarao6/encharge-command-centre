@@ -9,6 +9,11 @@ plan; where a section talks about the research crawler or extracted contacts, re
 applying to **Stage 4 (website reading and storage)** and **Stage 5 (generated copy published
 under the client's name)** — the same class of harm, per R7. §3 in particular is *more*
 relevant under Scope v3, not less: Stage 4 reads live websites.
+*12 Sep 2026: the six stages are now eight milestones (D77). Read "Stage 4" in this file as
+Milestone 5 (files, documents and research — website reading sits there) and "Stage 5" as
+Milestones 7–8 (advertising and social; content). Milestone 4 adds the first write to
+GoHighLevel from the running system — a stage move, user-initiated (D81) — under rules 8–9 and
+§12's scopes. Nothing in the requirements changes.*
 
 ---
 
@@ -505,6 +510,11 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
   Every write is scoped by pipeline, tag or custom field — the ten Stage 1 fields sit in
   their own folder for exactly this reason. A `tags` or `customValues` scope is not a licence
   to sweep the account.
+- **The token has exactly one reader in code — `src/lib/crm/ghl/config.ts` — and the GHL
+  origin exactly one namer, asserted by `tests/security/ghl.test.ts` (the Anthropic / Voyage
+  rule). The M4 part 1 client (`src/lib/crm/ghl/client.ts`) issues GETs and nothing else —
+  the same test greps it for a write verb. Every read is scoped by `GHL_PIPELINE_ID`,
+  verified against the pipelines list before a sync; the logger redacts the `pit-` shape.
 - The token lives in `.env` and in the n8n credential store. It was sent over WhatsApp and
   the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.

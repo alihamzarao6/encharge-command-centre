@@ -1,0 +1,51 @@
+{
+  "contact": {
+    "id": "CONTACTBADSHAPE0001",
+    "dateAdded": "2026-09-01T02:14:58.000Z",
+    "type": "lead",
+    "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+    "firstName": "Bad",
+    "firstNameLowerCase": "bad",
+    "fullNameLowerCase": "bad shape",
+    "lastName": "Shape",
+    "lastNameLowerCase": "shape",
+    "email": "bad.synthetic@example.com",
+    "emailLowerCase": "bad.synthetic@example.com",
+    "phone": "+61400000009",
+    "country": "AU",
+    "source": "Facebook",
+    "timezone": "Australia/Perth",
+    "attributionSource": {
+      "sessionSource": "Direct traffic",
+      "url": "https://ross.fundd.com.au/offer",
+      "utmSource": null,
+      "fbp": "fb.1.0000000000000.000000000",
+      "userAgent": "Mozilla/5.0 (synthetic)",
+      "ip": "203.0.113.10",
+      "medium": "form",
+      "mediumId": "form0000000000000001",
+      "fbEventId": "00000000-0000-4000-8000-0000000000ee"
+    },
+    "createdBy": {
+      "source": "form",
+      "channel": "funnel_form",
+      "sourceId": "form0000000000000001",
+      "timestamp": "2026-09-01T02:14:58.000Z"
+    },
+    "tags": [
+      "fb lead"
+    ],
+    "additionalPhones": [],
+    "dateUpdated": "2026-09-03T05:40:12.000Z",
+    "customFields": [
+      {
+        "id": "UWmWQyJn1lEhC8XRjqQD",
+        "value": {
+          "nested": "object"
+        }
+      }
+    ],
+    "additionalEmails": []
+  },
+  "traceId": "00000000-0000-4000-8000-0000000000c1"
+}

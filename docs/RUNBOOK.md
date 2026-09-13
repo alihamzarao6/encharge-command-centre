@@ -223,8 +223,9 @@ already-processed records via `content_hash` and idempotency keys.
 
 ### Records piling up in the review queue
 The system doing its job. Under Scope v3 the things that land here are stored website facts
-below the confidence threshold (Stage 4), generated drafts that failed the voice or review
-check (Stage 5), and lead records the sync could not place. Consistently high volume means a
+below the confidence threshold (Stage 4 — now Milestone 5, D77), generated drafts that failed
+the voice or review check (Stage 5 — now Milestones 7–8), and lead records the sync could not
+place. Consistently high volume means a
 threshold or prompt needs tuning — a data or prompt change, not a code change, and never a
 reason to lower the gate silently. *(The research-era causes — thin team pages, catch-all
 email domains — are in the parked section.)*
@@ -489,7 +490,7 @@ parked below.)*
 
 ---
 
-## 10. Adding a new website to read (Stage 4)
+## 10. Adding a new website to read (Milestone 5 — was Stage 4, D77)
 
 Reading is on demand — point the assistant at a URL. There is no source registry to extend.
 If a page cannot be read: check `robots.txt` (honoured, always), the SSRF rules (SECURITY

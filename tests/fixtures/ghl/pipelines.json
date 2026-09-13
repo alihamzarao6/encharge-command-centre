@@ -1,0 +1,135 @@
+{
+  "pipelines": [
+    {
+      "id": "civcWG1oOY8u5g2dGcdM",
+      "name": "1-Step Funnel | Quotes & Enquiries",
+      "useOpportunityProbability": false,
+      "dateAdded": "2025-08-20T22:28:34.635Z",
+      "dateUpdated": "2025-08-20T22:28:34.635Z",
+      "stages": [
+        {
+          "id": "041578f3-fdba-4284-b459-fa8242740f87",
+          "name": "New Lead",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 0,
+          "stageWinProbability": 20
+        },
+        {
+          "id": "824d0c9d-2ad1-4f11-9675-124bc1e53a8b",
+          "name": "Contacted ",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 1,
+          "stageWinProbability": 40
+        }
+      ],
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB"
+    },
+    {
+      "id": "M4unnMKBy0TgwCwOA6wS",
+      "name": "Finance Pipeline",
+      "showInFunnel": true,
+      "showInPieChart": true,
+      "useOpportunityProbability": false,
+      "dateAdded": "2026-08-17T12:46:26.262Z",
+      "dateUpdated": "2026-08-24T01:38:07.564Z",
+      "stages": [
+        {
+          "id": "51c98561-cd26-49a9-a001-97536c31dd0a",
+          "name": "New Lead",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 0,
+          "stageWinProbability": 5,
+          "color": "#64748B"
+        },
+        {
+          "id": "3a47fe3c-57d1-41d4-bc89-20241eb978f4",
+          "name": "Appointment Booked",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 1,
+          "stageWinProbability": 7,
+          "color": "#64748B"
+        },
+        {
+          "id": "f2393065-3038-4fba-bdf1-8c39b7b18183",
+          "name": "Contacted",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 2,
+          "stageWinProbability": 10,
+          "color": "#64748B"
+        },
+        {
+          "id": "5d215f52-d09d-45c8-a192-a2555ce46317",
+          "name": "Qualified",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 3,
+          "stageWinProbability": 25,
+          "color": "#64748B"
+        },
+        {
+          "id": "8727dd26-4e4d-4faf-b198-14e181c12e9e",
+          "name": "Docs Requested",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 4,
+          "stageWinProbability": 35,
+          "color": "#64748B"
+        },
+        {
+          "id": "924f9bfc-3156-4440-a624-3eb10f506c6c",
+          "name": "Docs Received",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 5,
+          "stageWinProbability": 50,
+          "color": "#64748B"
+        },
+        {
+          "id": "dea94c3a-84d0-40e4-a722-6ff3db4c8af9",
+          "name": "Submitted to Lender",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 6,
+          "stageWinProbability": 70,
+          "color": "#64748B"
+        },
+        {
+          "id": "2c356add-69e4-458e-b940-a7aaa9947159",
+          "name": "Approved",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 7,
+          "stageWinProbability": 90,
+          "color": "#64748B"
+        },
+        {
+          "id": "9cef8b67-1171-4347-9275-36e1055a97aa",
+          "name": "Settled",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 8,
+          "stageWinProbability": 100,
+          "color": "#64748B"
+        },
+        {
+          "id": "2ee75d16-1407-43cf-811e-957e0e2adc3a",
+          "name": "Lost / Not Proceeding",
+          "showInFunnel": true,
+          "showInPieChart": true,
+          "position": 9,
+          "stageWinProbability": 0,
+          "color": "#64748B"
+        }
+      ],
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+      "colorRenderMode": "none",
+      "position": "a4CupRK"
+    }
+  ],
+  "traceId": "00000000-0000-4000-8000-000000000001"
+}

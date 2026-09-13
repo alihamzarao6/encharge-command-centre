@@ -1,0 +1,4 @@
+{
+  "statusCode": 401,
+  "message": "The token is not authorized for this scope."
+}

@@ -1,21 +1,45 @@
 # PHASE-ACCEPTANCE.md — Sign-off Criteria
 
 Internally this defines "done". Externally it defines what the client approves when they
-release each payment. **It matches Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32): six
-stages, 1320 total, 198 on sign-off of each of stages 1–4, 528 at the end (D27).** The
-five-phase criteria from the 09 Aug 2026 scope document are superseded and kept verbatim at
-the bottom of this file for the record.
+release each payment. **It matches the delivery plan agreed with the client on 1 Sep 2026
+(`docs/MEMORY.md` D77): eight milestones, 2,000 USD total. Milestones 1–3 are complete, signed
+off and paid — 600 received; 1,400 remains across milestones 4–8.** What is built is still
+Scope v3 (22 Aug 2026, D23–D32). The six-stage map of 22 Aug (D26/D27 — 1320 total, 198 per
+stage, 528 at the end) is superseded: Stages 1–3 became Milestones 1–3 unchanged, and the old
+Stage 4–6 sections are struck through in place below rather than deleted. The five-phase
+criteria from the 09 Aug 2026 scope document are superseded and kept verbatim at the bottom of
+this file for the record.
 
-A stage is complete when all criteria are demonstrated live, the regression suite is green,
+| # | Milestone (the client's wording) | Amount | Status |
+|---|---|---|---|
+| 1 | CRM and ad tracking set up | 200 | ✅ Done, paid |
+| 2 | Foundations and the client's writing voice | 200 | ✅ Done, paid |
+| 3 | Memory and the app itself | 200 | ✅ Done, paid |
+| 4 | Your data on screen | 350 | **Next** |
+| 5 | Files, documents and research | 250 | |
+| 6 | Talking to it, and your day | 350 | |
+| 7 | Advertising and social | 300 | |
+| 8 | Content and handover | 150 | |
+
+The order is the one the client asked for on 5 Sep (D79): the dashboard first, then files and
+voice, with advertising and social later. Website reading is part of Milestone 5, not a
+milestone of its own.
+
+A milestone is complete when all criteria are demonstrated live, the regression suite is green,
 and the client confirms in writing. "Demonstrated" means evidence — a test output, an HTTP
 response, a row in a table, a screenshot of the phone — not a statement that it works.
 
 The file keeps its name (`PHASE-ACCEPTANCE.md`) because `CLAUDE.md`, `TASKS.md` and the
-MEMORY.md entries reference it by that name; "phase" in the filename means "stage".
+MEMORY.md entries reference it by that name; "phase" in the filename means "stage", and a
+"stage" in the Milestone 1–3 sections below means the milestone it became.
 
 ---
 
-## Stage 1 — GoHighLevel + Meta · Payment 1 of 5 (198) · ✅ COMPLETE, signed off and paid 22 Aug 2026
+## Milestone 1 — CRM and ad tracking set up *(was Stage 1 — GoHighLevel + Meta)* · 200 · ✅ COMPLETE, signed off and paid 22 Aug 2026
+
+*The payment line in the body below records 198 received on 22 Aug under the six-stage terms
+of the day; the 1 Sep milestones document prices this milestone at 200 and records 600
+received across milestones 1–3 (D77). Both are left as written.*
 
 **Delivered, as actually built in the live account** (location `tgw5Q3BnoZoSsVOnRUxB`):
 - **Finance Pipeline** with ten stages, in order: New Lead · Appointment Booked · Contacted ·
@@ -50,7 +74,10 @@ before it is known), R17 (no consent record for ~180 existing contacts).
 
 ---
 
-## Stage 2 — Foundations + AI trained on the client's voice · Payment 2 of 5 (198)
+## Milestone 2 — Foundations and the client's writing voice *(was Stage 2)* · 200 · ✅ COMPLETE, signed off and paid (D77)
+
+*Signed off and paid under the 1 Sep milestones document. The criteria below are kept as the
+record of what was accepted; the twelve were re-run on 29 Aug (Stage 3 Part B below).*
 
 Stage 2 ends in **something the client can open on his phone and talk to**, in his voice, on a
 foundation the remaining stages build on without a rewrite. It is delivered in seven parts
@@ -142,7 +169,10 @@ to sound like (optional — §1, §9–§11 are enough to start).
 
 ---
 
-## Stage 3 — Memory + dashboard · Payment 3 of 5 (198)
+## Milestone 3 — Memory and the app itself *(was Stage 3 — Memory + dashboard)* · 200 · ✅ COMPLETE, signed off and paid (D77)
+
+*Signed off and paid under the 1 Sep milestones document. Kept as the record of what was
+accepted.*
 
 **Tightened 29 Aug 2026 at part 5, in the Stage 2 style: every criterion is a test output, an
 HTTP response, a database row or a number.** The 09 Aug starting points are kept verbatim at
@@ -600,7 +630,189 @@ the limit instead of losing work to it, but 3 requests a minute is still 3 reque
 
 ---
 
-## Stage 4 — Website reading and storage · Payment 4 of 5 (198)
+## Milestone 4 — Your data on screen · 350 · ← NEXT
+
+Milestone 4 ends in **the client opening the app and seeing his business, not a chat box**:
+his numbers and lists up front, the assistant as a panel beside them, the Finance Pipeline live
+from GoHighLevel, any lead one tap away, and a lead moved from one stage to the next by his own
+hand — the same on his phone as on his laptop (D78, the client's own wording). It is delivered
+in five parts (`tasks/TASKS.md` Milestone 4): 1 the screen · 2 leads, pipeline and stages live
+from GoHighLevel · 3 lead detail · 4 moving a lead · 5 phone and laptop. Task detail comes with
+each part's own brief.
+
+### What "done" means — and why each item is testable rather than subjective
+
+The risk in this milestone is not taste, as it was in Stage 2 — it is a screen that *looks*
+live and is not: a count that drifted from GoHighLevel, a stage moved on screen and not in the
+CRM, a write that duplicated an opportunity, a retry that moved the same lead twice. So every
+criterion below is a **side-by-side with GoHighLevel**, an **HTTP response**, a **database
+row**, or a **screenshot at a stated width**.
+
+**The screen (part 1)**
+
+1. **It opens on his data, not on a chat.** The first thing on screen after login is the
+   pipeline and the numbers; the assistant is a panel beside them that opens and closes without
+   losing the board. *Evidence:* screenshots at 375, 768 and 1280 with the panel closed and
+   open; the browser suite asserting both states.
+2. **Everything Milestone 3 delivered still works** — Assistant, Memory, Team, private
+   conversations: the twelve Stage 2 criteria and S3-1 to S3-12 re-run rather than assumed,
+   because the shell they live in is being rebuilt. *Evidence:* the re-run table, as Stage 3
+   Part B did it.
+
+**Live from GoHighLevel (parts 2 and 3)**
+
+3. **The board is the Finance Pipeline, read from GoHighLevel** — the ten stages in their
+   order (D28), every opportunity in the stage GoHighLevel holds it in, matched on **stage ID,
+   never name** (CLIENT-CONTEXT §3 — this account has produced three name-matching traps).
+   *Evidence:* the count per stage on screen next to the count from an API read taken in the
+   same minute; they agree. The CRM is the source of truth for pipeline state (CLIENT-CONTEXT
+   §11): our screen reconciles to it, never the reverse.
+4. **The read is scoped and the token never leaves the server.** Reads are by pipeline, never
+   account-wide (R22, R25 — the location is shared with an unrelated business); the GHL token
+   is read by exactly one server-side module, and the deployed client assets carry no `pit-`
+   value — the same rule and the same grep as the Anthropic key (SECURITY §8, T11).
+   *Evidence:* `web:check` output extended to the GHL key shape; the browser's network panel for
+   a full board load showing requests to our endpoint only.
+5. **Click into any lead and see the detail** — the contact, the opportunity, and the ten
+   custom fields Stage 1 created (CLIENT-CONTEXT §3), each showing the value GoHighLevel holds.
+   **A field GoHighLevel does not have is shown empty, never guessed or defaulted** (SECURITY
+   §7). *Evidence:* one lead compared field by field against the GHL record in front of the
+   client.
+6. **GoHighLevel being down does not take the app down.** With the GHL read failing — timeout,
+   5xx, breaker open (CLAUDE.md rule 8) — the board says so in words, and Assistant, Memory and
+   Team are unaffected. *Evidence:* the failure state at 375; a chat turn completing while the
+   board is in it.
+
+**Moving a lead (part 4)**
+
+7. **He moves a lead and GoHighLevel moves with it.** The client drags — or, on a phone,
+   selects — a lead into another stage; a fresh API read of that opportunity shows the new
+   stage ID. **The drop is the confirmation — no dialog (D81).** *Evidence:* the before and
+   after API reads for one opportunity.
+8. **The write is idempotent and never duplicates** (CLAUDE.md rule 9): keyed on the GHL
+   opportunity ID; applying the same move twice, or a retry after a timeout, leaves one
+   opportunity in one stage and creates nothing. A move is **never blindly retried** after a
+   timeout (rule 8) — the opportunity is re-read and reconciled. *Evidence:* the double-apply
+   test; the opportunity count in the pipeline before and after, identical.
+9. **Every move lands in `audit_log`** with the person as actor, the opportunity ID, and the
+   stage ID before and after — never the contact's name, email or phone (rule 20, PII by ID).
+   *Evidence:* the row.
+10. **A failed write is shown, not swallowed** (rule 7) — if GoHighLevel refuses or times out,
+    the board puts the lead back where it was and says why in words. *Evidence:* the failure at
+    375 with the card returned to its column; no audit row claiming success.
+11. **Only the people who can use the app can move a lead** — the existing boundary holds:
+    anonymous `401`, an authenticated account not in `app_users` `403`, a deactivated member
+    `403`; a move attempted from the browser straight at PostgREST or the GHL API is
+    impossible because neither credential is there. *Evidence:* the three responses; the
+    security suite green.
+
+**Phone and laptop (part 5)**
+
+12. **It works the same on his phone as on his laptop** — verified at **375, 768 and 1280**:
+    the board, the lead detail and a stage move all usable at every width, no horizontal
+    scrolling, inputs at 16px or larger (the iOS zoom trap, `EXISTING-PROTOTYPE.md`), and a
+    move on a touch screen reaching the same endpoint as a drag. *Evidence:* screenshots at
+    the three widths; a stage move performed live on Ross's own phone.
+
+**Acceptance**
+
+13. `npm run test:regress` green, counts and coverage reported in numbers; migrations replay
+    from zero; items 1–12 recorded with their evidence in `docs/MEMORY.md`; the client confirms
+    in writing → **350**.
+
+**Not in Milestone 4** (stated so it is not assumed): a drag-and-drop dashboard *builder* —
+the screen is fixed, the client uses it, he does not compose it (D82); the assistant acting on
+the board on its own — it stays a panel that answers and drafts (D82; D9/D81 still bind any
+assistant-initiated write); any write to GoHighLevel other than a stage move; files, documents
+and website reading (Milestone 5); whatever "Talking to it, and your day" turns out to be
+(Milestone 6, defined at its kickoff); advertising and social (Milestone 7); the Quickli
+calculator and the separate finance CRM (D82).
+
+**Client responsibility before this milestone:** confirm the Private Integration token carries
+the scopes the board needs — opportunities, contacts, custom fields (SECURITY §12; R21 is the
+unreconciled scope list); answer R22 (the shared GHL location) so the pipeline-only scoping is
+a decision rather than a guess.
+
+---
+
+## Milestone 5 — Files, documents and research · 250
+
+*Starting points only — tightened at kickoff, as this file has always handled later work.
+Website reading, a stage of its own under the six-stage map, sits here (D77).*
+
+- Point it at a URL → it reads the page and stores what it finds, **every field carrying
+  `source_url`, `fetched_at`, `extraction_method`, `confidence`** (CLAUDE.md rule 12,
+  `SCHEMA.md` §2a). Open any stored fact and see the page it came from; a field that was not on
+  the page is `null`, never guessed (SECURITY.md §7). *(Carried from the superseded Stage 4
+  starting points below.)*
+- Crawler safety: robots.txt honoured, the SSRF cases in SECURITY.md §10 rejected by test, rate
+  limited per host, identified User-Agent. **The adversarial-page suite passes** — hidden
+  instructions in a page alter nothing and trigger no tool (SECURITY.md §3). Below-threshold
+  facts go to the review queue, never to the store; the same page read twice → no duplicate
+  rows. *(Carried from Stage 4.)*
+- Files and documents the client gives it are stored and read under the same provenance and
+  untrusted-input rules as a web page. Which formats, where they live and how they are cleaned
+  is defined at kickoff, not here.
+- "Research" is the client's word for this milestone and is **not** the parked B2B
+  lead-research engine (D23, CLAUDE.md rule 15): nothing here researches organisations or
+  people. What it does cover is agreed at kickoff.
+
+---
+
+## Milestone 6 — Talking to it, and your day · 350
+
+*Starting points only. The milestone's name is the client's wording; its content is defined at
+kickoff and written here before any part is briefed, so the name is not read as more than it
+says.*
+
+- What "talking to it" means in practice, and what "your day" shows, are agreed with the client
+  at kickoff.
+- Whatever it is, it runs through the same server-side path, the same caps and the same
+  `api_usage` metering as the chat (Stage 2 items 5–6) and the same voice rules (`VOICE.md`);
+  no new credential reaches the browser.
+- Verified at 375 / 768 / 1280 and live on the client's phone, as every milestone is.
+
+---
+
+## Milestone 7 — Advertising and social · 300
+
+*Starting points only — tightened at kickoff. Moved later in the order at the client's request
+on 5 Sep (D79).*
+
+- Generated ad copy and social posts follow CLIENT-CONTEXT §9 (Green Brain hook, Red Brain
+  body, Rule of One, Meta headline under 28 characters, Google ad structure); the voice suite is
+  extended to each format, 100% pass on the recorded set. *(Carried from the superseded Stage 5
+  starting points; which formats belong here and which in Milestone 8 is settled at kickoff.)*
+- Nothing is published under the client's name from a draft that has not passed review
+  (CLAUDE.md rule 14, R7). Where an approved draft goes — the GHL social planner is connected
+  (MEMORY.md 12 Aug), Meta ad account access was granted 22 Aug — is a dated decision at
+  kickoff; nothing publishes without one.
+- Meta: Refi Pixel + Conversions API (D31) stay the measurement path; whether the pixel install
+  survived the funnel's move to `ross.fundd.com.au` (D80) is checked here if not before.
+
+---
+
+## Milestone 8 — Content and handover · 150
+
+*Starting points only — tightened at kickoff.*
+
+- Content: drafts, approvals and check results stored and visible on the dashboard; carousels
+  and post series in the voice. *(Carried from Stage 5; the split with Milestone 7 is settled at
+  kickoff.)*
+- Handover, carried from the superseded Stage 6 starting points: monitoring — daily health
+  check, cost rollup, stale-data and token-expiry alerts — verified by a real failure and a
+  real cap trip; full regression green and the manual QA (`TESTING.md` §9) done; the runbook
+  walked through end to end (rotate a key, restore a backup, re-run a failed job, unpause a
+  capped one); the security checklist (`SECURITY.md` §13) with every box ticked, **R18 closed
+  in writing**; every account and key transferred to the client, developer vault access revoked
+  in writing, all keys rotated; a recorded walkthrough of daily use.
+- Where n8n lands (D71 put it at "Stage 6") is decided at this kickoff or earlier — open.
+
+---
+
+## ~~Stage 4 — Website reading and storage · Payment 4 of 5 (198)~~ — SUPERSEDED 12 Sep 2026 (D77): website reading is part of Milestone 5, not a milestone of its own
+
+*Kept in place for the record. The starting points below were carried into Milestone 5 above.*
 
 *Criteria to be tightened at Stage 4 kickoff. Starting points:*
 
@@ -618,7 +830,10 @@ the limit instead of losing work to it, but 3 requests a minute is still 3 reque
 
 ---
 
-## Stage 5 — Content, carousels, ad copy · (paid within the final 528)
+## ~~Stage 5 — Content, carousels, ad copy · (paid within the final 528)~~ — SUPERSEDED 12 Sep 2026 (D77): see Milestones 7 and 8
+
+*Kept in place for the record. Carried into Milestones 7 and 8 above; the split is settled at
+their kickoffs.*
 
 *Criteria to be tightened at Stage 5 kickoff. Starting points:*
 
@@ -633,7 +848,9 @@ the limit instead of losing work to it, but 3 requests a minute is still 3 reque
 
 ---
 
-## Stage 6 — Monitoring, testing, docs, handover · Payment 5 of 5 (528, covering Stages 5–6)
+## ~~Stage 6 — Monitoring, testing, docs, handover · Payment 5 of 5 (528, covering Stages 5–6)~~ — SUPERSEDED 12 Sep 2026 (D77): handover is Milestone 8
+
+*Kept in place for the record. Carried into Milestone 8 above.*
 
 - Monitoring workflow: daily health check, cost rollup, stale-data and token-expiry alerts —
   verified by triggering a real failure and a real cap trip.
@@ -650,14 +867,20 @@ the limit instead of losing work to it, but 3 requests a minute is still 3 reque
 
 ## What is not in any stage
 
-Each is available as a separate, separately-priced engagement:
+Each is available as a separate, separately-priced engagement. The first four below were
+**stated to the client in writing** alongside the milestones (D82):
 
+- **A drag-and-drop dashboard builder.** Milestone 4 is a fixed screen the client uses, not one
+  he composes
+- **Agent software that carries out work on its own.** The assistant answers and drafts; any
+  write it initiates is governed by D9/D81
+- **The Quickli lending calculator** — no open API, partner access only
+- **The client's separate finance CRM** — same reason (was "revisit when raised", 08 Aug)
 - **The B2B outbound lead-research engine** — organisation research, website discovery,
   decision-maker extraction, email verification, the two scoring rubrics and the Google Sheets
   export. Never asked for by the client; parked, not deleted (D23)
 - Outbound email sending, sequencing or inbox warming
 - Scheduled social *insights* tracking (Instagram / Facebook / LinkedIn metrics) — parked, R3
-- Integration with the separate finance CRM Ross mentioned
 - CRMs beyond GoHighLevel
 - Authenticated scraping of any social platform
 - Phone or SMS integration

@@ -6,8 +6,11 @@ websites and stores what it finds with a full source trail; generates social pos
 and ad copy in that voice; sits on a dashboard with GoHighLevel and Meta set up underneath.
 Built on Supabase, the Claude API, n8n on Railway, GoHighLevel and Meta.
 
-**Docs version 3.0** — aligned to **Scope v3 (22 Aug 2026)**, `docs/MEMORY.md` D23–D32. Six
-delivery stages; Stage 1 (GoHighLevel + Meta) is complete, signed off and paid. The B2B
+**Docs version 3.0** — aligned to **Scope v3 (22 Aug 2026)**, `docs/MEMORY.md` D23–D32, for
+what is built, and to the **eight-milestone delivery plan agreed 1 Sep 2026 (D77)**.
+Milestones 1–3 (CRM and ad tracking; foundations and the client's writing voice; memory and
+the app itself) are complete, signed off and paid; Milestone 4 (Your data on screen) is next.
+The six-stage map of 22 Aug is superseded. The B2B
 outbound lead-research engine described by docs v2.0 was never asked for and is **out of
 scope** — parked under "out of current scope" headings, not deleted. The repo name keeps the
 pre-rebrand business name.
@@ -19,14 +22,14 @@ pre-rebrand business name.
 | File | What it is | When |
 |---|---|---|
 | `CLAUDE.md` | Operating rules. Stack, commands, hard rules, MCP discipline | **Every session, first** |
-| `docs/MEMORY.md` | Working memory, decisions D1–D32, current state, open risks | **Every session, second** |
-| `tasks/TASKS.md` | The build checklist — six stages, Stage 2 in seven parts. One item at a time | Every session, to pick the next task |
+| `docs/MEMORY.md` | Working memory, decisions D1–D82, current state, open risks | **Every session, second** |
+| `tasks/TASKS.md` | The build checklist — eight milestones, Milestone 4 next in five parts. One item at a time | Every session, to pick the next task |
 | `docs/CLIENT-CONTEXT.md` | The client's business (§1), pipeline (§3), copy frameworks (§9), avatar (§10), operational rules (§11). Research rubrics parked in §5–§7 | Before writing any prompt — **the voice layer is built from §1, §9–§11** |
 | `docs/SCHEMA.md` | Data model, memory-layer ownership (`user_id` + `scope`), RLS pattern, migration discipline. Research tables parked | Stage 2 part 2, and any schema change |
 | `docs/SECURITY.md` | Threat model (T1–T11) and non-negotiable requirements, incl. prompt injection and the server-side-only Anthropic key rule | Stage 2, then before each stage gate |
 | `docs/TESTING.md` | Test strategy, coverage gates, regression discipline | Before the first test |
-| `docs/PHASE-ACCEPTANCE.md` | What "done" means per **stage** — client-facing; Stage 2's definition of done is here | Before each demo |
-| `docs/RUNBOOK.md` | Operations and handover procedures | Stage 6, filled in as you build |
+| `docs/PHASE-ACCEPTANCE.md` | What "done" means per **milestone** — client-facing; Milestone 4's definition of done is here | Before each demo |
+| `docs/RUNBOOK.md` | Operations and handover procedures | Milestone 8, filled in as you build |
 | `docs/PLAN.md` | Technical specification **as written for the superseded five-phase plan** (v2.0, 09 Aug). Architecture and memory-tier design still useful; where it conflicts with Scope v3, `MEMORY.md` D23–D32 win | Reference only |
 | `docs/GHL-AUDIT.md`, `docs/EXISTING-PROTOTYPE.md` | Dated investigations — the GHL account inventory (12 Aug) and the client's previous prototype assessment (11 Aug, incl. R18) | When touching GHL or the chat UI |
 
@@ -69,7 +72,7 @@ claude
 
 First session:
 
-> Read CLAUDE.md, docs/MEMORY.md (especially D23–D32 and the 22–23 Aug entries) and
+> Read CLAUDE.md, docs/MEMORY.md (especially D23–D32, D77–D82 and the 22–23 Aug entries) and
 > tasks/TASKS.md before doing anything. Then tell me the current state of the project and
 > which single task is next. Do not start work until I confirm.
 
@@ -81,7 +84,7 @@ Every session after:
 1. One task per session. `/clear` between tasks.
 2. Plan Mode (Shift+Tab) before anything touching 3+ files. Approve the plan, then build.
 3. Tests pass → mark the task `[x]` → append to `docs/MEMORY.md` → `/clear`.
-4. Never start Stage N+1 while Stage N is unsigned. Stages map to payments (D27).
+4. Never start Milestone N+1 while Milestone N is unsigned. Milestones map to payments (D77).
 
 The most common failure with Claude Code on a project this size is asking for too much at
 once. Two hours on one well-tested task beats four hours on six broken ones.
@@ -126,10 +129,13 @@ npm run test:e2e          # browser suite in installed Chrome, no stack needed
 
 ## Delivery
 
-Six stages (D26): **1** GoHighLevel + Meta — complete, signed off, paid · **2** Foundations +
-AI trained on the client's voice · **3** Memory + dashboard · **4** Website reading and
-storage · **5** Content, carousels, ad copy · **6** Monitoring, testing, docs, handover.
-198 on sign-off of each of stages 1–4, 528 at the end (1320 total, D27). Acceptance criteria
-per stage in `docs/PHASE-ACCEPTANCE.md`. The B2B lead-research engine, outbound email, social
-insights tracking and the other items listed there under "What is not in any stage" are out
-of scope and priced separately.
+Eight milestones, 2,000 USD total, agreed 1 Sep 2026 (D77; supersedes the six-stage map of
+D26/D27): **1** CRM and ad tracking set up (200) · **2** Foundations and the client's writing
+voice (200) · **3** Memory and the app itself (200) — **1–3 complete, signed off and paid, 600
+received** · **4** Your data on screen (350) — next · **5** Files, documents and research (250)
+· **6** Talking to it, and your day (350) · **7** Advertising and social (300) · **8** Content
+and handover (150). Order as the client asked on 5 Sep (D79). Acceptance criteria per milestone
+in `docs/PHASE-ACCEPTANCE.md`. A drag-and-drop dashboard builder, agent software that acts on
+its own, the Quickli calculator and the separate finance CRM are out of scope and were stated
+so in writing (D82); so are the B2B lead-research engine, outbound email, social insights
+tracking and the other items listed there under "What is not in any stage".

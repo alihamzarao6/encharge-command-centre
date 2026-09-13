@@ -32,7 +32,13 @@ const EXPECTED_TABLES = [
   'conversations',
   'crm_sync_log',
   'field_overrides',
+  'ghl_contacts',
+  'ghl_custom_fields',
   'ghl_field_map',
+  'ghl_opportunities',
+  'ghl_pipelines',
+  'ghl_stages',
+  'ghl_sync_runs',
   'memory_chunks',
   'memory_facts',
   'messages',
@@ -174,6 +180,51 @@ describe.skipIf(env === null)('schema from zero (requires a running Supabase sta
         ghl_custom_field_id: 'dea94c3a-84d0-40e4-a722-6ff3db4c8af9',
       },
     ]);
+  });
+
+  it('seeded the eleven contact custom-field rows with their real GHL field IDs (M4 part 1)', async () => {
+    const res = await db.query<{ internal_field: string; ghl_custom_field_id: string | null }>(
+      `select internal_field, ghl_custom_field_id from public.ghl_field_map
+       where entity = 'contact' order by internal_field`,
+    );
+    // Pinned like the stage rows: configuration read from the live account on 12 Sep 2026.
+    // Nine sit in the Stage 1 folder; loan_balance and current_interest_rate are the two
+    // form fields that carry live data (folder fA9zYqgDoZUUN5CKnb5G, 19–21 Aug).
+    expect(res.rows).toStrictEqual([
+      { internal_field: 'annual_income', ghl_custom_field_id: 'tQA4cVpB63irs4gBdKBO' },
+      { internal_field: 'credit_concerns', ghl_custom_field_id: '9Qm4YOeMoHMDNyl2keDL' },
+      { internal_field: 'current_interest_rate', ghl_custom_field_id: 'hX8JQblBT9iJhYEa348M' },
+      { internal_field: 'deposit_amount', ghl_custom_field_id: '8OCSa3zz8OI6by5AIM2t' },
+      { internal_field: 'employment_type', ghl_custom_field_id: 'M6vWreBBuMuRVdEefafI' },
+      { internal_field: 'lead_source', ghl_custom_field_id: 'axTFAYBC1ZCQ4KKuAMXZ' },
+      { internal_field: 'loan_amount', ghl_custom_field_id: 'UWmWQyJn1lEhC8XRjqQD' },
+      { internal_field: 'loan_balance', ghl_custom_field_id: 'TANd0sfC9wRwuJKhSGFx' },
+      { internal_field: 'loan_type', ghl_custom_field_id: 'Vpn7DLqHwMoQ91AJUjzu' },
+      { internal_field: 'preferred_contact_time', ghl_custom_field_id: 'J8AzUUemQHCzZZB0uUDc' },
+      { internal_field: 'property_value', ghl_custom_field_id: 'ZtrfHuvMZQZAPEEd7o1U' },
+    ]);
+  });
+
+  it('the GHL mirror tables carry scope pinned to workspace and no user_id (M4 part 1)', async () => {
+    const res = await db.query<{ table_name: string; column_name: string }>(
+      `select table_name, column_name from information_schema.columns
+       where table_schema = 'public'
+         and table_name in ('ghl_pipelines', 'ghl_stages', 'ghl_contacts', 'ghl_opportunities', 'ghl_custom_fields')
+         and column_name in ('scope', 'user_id')
+       order by table_name, column_name`,
+    );
+    expect(res.rows.map((r) => `${r.table_name}.${r.column_name}`)).toStrictEqual([
+      'ghl_contacts.scope',
+      'ghl_custom_fields.scope',
+      'ghl_opportunities.scope',
+      'ghl_pipelines.scope',
+      'ghl_stages.scope',
+    ]);
+    await expect(
+      db.query(
+        `insert into public.ghl_pipelines (ghl_id, name, location_id, scope) values ('SCHEMA-TEST-${RUN}', 'x', 'loc', 'user')`,
+      ),
+    ).rejects.toThrow(/ghl_pipelines_scope_workspace/);
   });
 
   it('consumer_leads carries consent_basis and a non-null opt_out defaulting to false', async () => {

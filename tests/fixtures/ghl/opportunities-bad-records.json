@@ -1,0 +1,258 @@
+{
+  "opportunities": [
+    {
+      "id": "OPP0000000000000001",
+      "name": "Alex Tran",
+      "monetaryValue": 0,
+      "pipelineId": "M4unnMKBy0TgwCwOA6wS",
+      "pipelineStageId": "3a47fe3c-57d1-41d4-bc89-20241eb978f4",
+      "pipelineStageUId": "3a47fe3c-57d1-41d4-bc89-20241eb978f4",
+      "assignedTo": null,
+      "status": "open",
+      "source": "Facebook",
+      "lastStatusChangeAt": "2026-09-01T02:15:00.000Z",
+      "lastStageChangeAt": "2026-09-03T05:40:12.000Z",
+      "createdAt": "2026-09-01T02:15:00.000Z",
+      "updatedAt": "2026-09-03T05:40:12.000Z",
+      "forecastProbability": null,
+      "effectiveProbability": 7,
+      "contactId": "CONTACT000000000001",
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+      "customFields": [],
+      "lostReasonId": null,
+      "followers": [],
+      "relations": [
+        {
+          "associationId": "assoc0000000000000000000000000001",
+          "relationId": "rel00000000000000001",
+          "primary": true,
+          "objectKey": "contact",
+          "recordId": "CONTACT000000000001",
+          "fullName": "Alex Tran",
+          "contactName": "Alex Tran",
+          "companyName": null,
+          "email": "synthetic@example.com",
+          "phone": "+61400000000",
+          "tags": [
+            "fb lead"
+          ],
+          "attributed": true
+        }
+      ],
+      "contact": {
+        "id": "CONTACT000000000001",
+        "name": "Alex Tran",
+        "companyName": null,
+        "email": "synthetic@example.com",
+        "phone": "+61400000000",
+        "tags": [
+          "fb lead"
+        ],
+        "score": []
+      },
+      "sort": [
+        1789030099030,
+        0
+      ],
+      "attributions": [
+        {
+          "pageUrl": "https://ross.fundd.com.au/offer",
+          "utmSessionSource": "Direct traffic",
+          "fbp": "fb.1.0000000000000.000000000",
+          "ip": "203.0.113.10",
+          "isFirst": true,
+          "medium": "form",
+          "mediumId": "form0000000000000001",
+          "userAgent": "Mozilla/5.0 (synthetic)",
+          "url": "https://ross.fundd.com.au/offer"
+        }
+      ]
+    },
+    {
+      "id": "OPP0000000000000001",
+      "name": "Alex Tran",
+      "monetaryValue": 0,
+      "pipelineId": "M4unnMKBy0TgwCwOA6wS",
+      "pipelineStageId": "3a47fe3c-57d1-41d4-bc89-20241eb978f4",
+      "pipelineStageUId": "3a47fe3c-57d1-41d4-bc89-20241eb978f4",
+      "assignedTo": null,
+      "status": "weird",
+      "source": "Facebook",
+      "lastStatusChangeAt": "2026-09-01T02:15:00.000Z",
+      "lastStageChangeAt": "2026-09-03T05:40:12.000Z",
+      "createdAt": "2026-09-01T02:15:00.000Z",
+      "updatedAt": "2026-09-03T05:40:12.000Z",
+      "forecastProbability": null,
+      "effectiveProbability": 7,
+      "contactId": "CONTACT000000000001",
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+      "customFields": [],
+      "lostReasonId": null,
+      "followers": [],
+      "relations": [
+        {
+          "associationId": "assoc0000000000000000000000000001",
+          "relationId": "rel00000000000000001",
+          "primary": true,
+          "objectKey": "contact",
+          "recordId": "CONTACT000000000001",
+          "fullName": "Alex Tran",
+          "contactName": "Alex Tran",
+          "companyName": null,
+          "email": "synthetic@example.com",
+          "phone": "+61400000000",
+          "tags": [
+            "fb lead"
+          ],
+          "attributed": true
+        }
+      ],
+      "contact": {
+        "id": "CONTACT000000000001",
+        "name": "Alex Tran",
+        "companyName": null,
+        "email": "synthetic@example.com",
+        "phone": "+61400000000",
+        "tags": [
+          "fb lead"
+        ],
+        "score": []
+      },
+      "sort": [
+        1789030099030,
+        0
+      ],
+      "attributions": [
+        {
+          "pageUrl": "https://ross.fundd.com.au/offer",
+          "utmSessionSource": "Direct traffic",
+          "fbp": "fb.1.0000000000000.000000000",
+          "ip": "203.0.113.10",
+          "isFirst": true,
+          "medium": "form",
+          "mediumId": "form0000000000000001",
+          "userAgent": "Mozilla/5.0 (synthetic)",
+          "url": "https://ross.fundd.com.au/offer"
+        }
+      ]
+    },
+    {
+      "id": "OPPOTHERPIPELINE0001",
+      "name": "Shared Contact",
+      "monetaryValue": 0,
+      "pipelineId": "Fz3nC2nTwSqKD5P2ibNa",
+      "pipelineStageId": "5d215f52-d09d-45c8-a192-a2555ce46317",
+      "pipelineStageUId": "5d215f52-d09d-45c8-a192-a2555ce46317",
+      "assignedTo": null,
+      "status": "won",
+      "source": "Facebook",
+      "lastStatusChangeAt": "2026-09-01T02:15:00.000Z",
+      "lastStageChangeAt": "2026-09-03T05:40:12.000Z",
+      "createdAt": "2026-09-01T02:15:00.000Z",
+      "updatedAt": "2026-09-03T05:40:12.000Z",
+      "forecastProbability": null,
+      "effectiveProbability": 7,
+      "contactId": "CONTACT000000000001",
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+      "customFields": [],
+      "lostReasonId": null,
+      "followers": [],
+      "relations": [
+        {
+          "associationId": "assoc0000000000000000000000000001",
+          "relationId": "rel00000000000000001",
+          "primary": true,
+          "objectKey": "contact",
+          "recordId": "CONTACT000000000001",
+          "fullName": "Shared Contact",
+          "contactName": "Shared Contact",
+          "companyName": null,
+          "email": "synthetic@example.com",
+          "phone": "+61400000000",
+          "tags": [
+            "fb lead"
+          ],
+          "attributed": true
+        }
+      ],
+      "contact": {
+        "id": "CONTACT000000000001",
+        "name": "Shared Contact",
+        "companyName": null,
+        "email": "synthetic@example.com",
+        "phone": "+61400000000",
+        "tags": [
+          "fb lead"
+        ],
+        "score": []
+      },
+      "sort": [
+        1789030099030,
+        0
+      ],
+      "attributions": [
+        {
+          "pageUrl": "https://ross.fundd.com.au/offer",
+          "utmSessionSource": "Direct traffic",
+          "fbp": "fb.1.0000000000000.000000000",
+          "ip": "203.0.113.10",
+          "isFirst": true,
+          "medium": "form",
+          "mediumId": "form0000000000000001",
+          "userAgent": "Mozilla/5.0 (synthetic)",
+          "url": "https://ross.fundd.com.au/offer"
+        }
+      ]
+    },
+    {
+      "name": "No Contact",
+      "monetaryValue": 450000.5,
+      "pipelineId": "M4unnMKBy0TgwCwOA6wS",
+      "pipelineStageId": "f2393065-3038-4fba-bdf1-8c39b7b18183",
+      "pipelineStageUId": "f2393065-3038-4fba-bdf1-8c39b7b18183",
+      "assignedTo": "USER000000000000001",
+      "status": "open",
+      "source": "Facebook",
+      "lastStatusChangeAt": "2026-09-01T02:15:00.000Z",
+      "lastStageChangeAt": "2026-09-03T05:40:12.000Z",
+      "createdAt": "2026-09-01T02:15:00.000Z",
+      "updatedAt": "2026-09-03T05:40:12.000Z",
+      "forecastProbability": null,
+      "effectiveProbability": 7,
+      "contactId": null,
+      "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+      "customFields": [],
+      "lostReasonId": null,
+      "followers": [],
+      "relations": [],
+      "contact": null,
+      "sort": [
+        1789030099030,
+        0
+      ],
+      "attributions": [
+        {
+          "pageUrl": "https://ross.fundd.com.au/offer",
+          "utmSessionSource": "Direct traffic",
+          "fbp": "fb.1.0000000000000.000000000",
+          "ip": "203.0.113.10",
+          "isFirst": true,
+          "medium": "form",
+          "mediumId": "form0000000000000001",
+          "userAgent": "Mozilla/5.0 (synthetic)",
+          "url": "https://ross.fundd.com.au/offer"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "total": 4,
+    "nextPageUrl": null,
+    "startAfterId": "OPP0000000000000003",
+    "startAfter": 1,
+    "currentPage": 1,
+    "nextPage": "",
+    "prevPage": null
+  },
+  "traceId": "00000000-0000-4000-8000-000000000008"
+}

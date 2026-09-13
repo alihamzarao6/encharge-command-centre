@@ -14,7 +14,9 @@ before §5**, not deleted. §1 (business), §9 (copy frameworks), §10 (avatar) 
 (operational rules) are the grounding for Stages 2–5 and are unchanged.
 **Brand:** the client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`), D25.
 GoHighLevel stays white-labelled at `app.enchargecapital.com`; notifications go to
-`rossb@fundd.com.au`.
+`rossb@fundd.com.au`. **Funnel (7 Sep 2026, D80):** live on `ross.fundd.com.au`; email sends
+from `send.fundd.com.au`. **Delivery plan (1 Sep 2026, D77):** eight milestones replace the six
+stages; what is built is unchanged — "Stages 2–5" in this file reads as milestones 2–8.
 
 ---
 
@@ -297,10 +299,11 @@ Types 4–8 are not researched or scored, but content written for them must land
 | 7 | Monthly spend cap? | $50/month, stated to Ross as the starting cap | 08 Aug |
 | 8 | Google Sheet? | "Finance leads", access granted. *Was the research-export target — parked with the engine (D23)* | 08 Aug |
 | 9 | Database platform? | **Supabase**, confirmed by the client. MongoDB question closed (D24) | 22 Aug |
-| 10 | What is the project? | **Scope v3:** AI assistant trained on the client's voice, persistent cross-device memory, reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, GHL + Meta underneath. Six stages; 1320 total, 198 per sign-off on stages 1–4, 528 at the end (D23, D26, D27) | 22 Aug |
+| 10 | What is the project? | **Scope v3:** AI assistant trained on the client's voice, persistent cross-device memory, reads websites and stores what it finds, generates social posts / carousels / ad copy, sits on a dashboard, GHL + Meta underneath (D23). ~~Six stages; 1320 total, 198 per sign-off on stages 1–4, 528 at the end (D26, D27)~~ **Superseded 1 Sep (D77):** eight milestones, 2,000 total; milestones 1–3 signed off and paid (600), 1,400 across 4–8. Scope content unchanged | 22 Aug → 1 Sep |
 | 11 | Brand? | Rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays at `app.enchargecapital.com` (D25) | 22 Aug |
-| 12 | Lead path? | Facebook ad video → **FUNDD** landing page (stays on `sites.leadconnectorhq.com` — `fundd.com.au` belongs to the aggregator group, no domain swap) → form → Discovery Session booking (D30) | 22 Aug |
+| 12 | Lead path? | Facebook ad video → **FUNDD** landing page ~~(stays on `sites.leadconnectorhq.com` — `fundd.com.au` belongs to the aggregator group, no domain swap)~~ → form → Discovery Session booking (D30). **Superseded 7 Sep (D80):** the funnel is live on **`ross.fundd.com.au`**, a subdomain obtained from the aggregator group; `info.enchargecapital.com` now serves a different funnel. The path is unchanged | 22 Aug → 7 Sep |
 | 13 | Meta pixel? | **Refi Pixel**, of six in the account. Conversions API sends `Lead` server-side on a token scoped to that pixel only (D31) | 22 Aug |
+| 14 | Email sending domain? | **`send.fundd.com.au`** (D80). Notifications still go to `rossb@fundd.com.au` (D25) | 07 Sep |
 
 ## 13. Still open
 
@@ -311,7 +314,7 @@ Types 4–8 are not researched or scored, but content written for them must land
 | ~~C~~ | ~~GoHighLevel: map to existing custom fields, or create new ones?~~ **Resolved by construction 22 Aug:** Stage 1 created ten new fields in their own folder; the 21 pre-existing fields stay unmapped and untouched (R2) | — |
 | ~~D~~ | ~~Meta Business account linked, app permissions granted?~~ **Closed 22 Aug by Stage 1 (R4):** Refi Pixel + Conversions API live; ad account and pixel access granted | — |
 | E | LinkedIn developer app approved, Ross admin on the page? — **parked (R3):** scheduled social *insights* are not in Scope v3 | parked |
-| F | Separate "finance CRM" Ross mentioned — out of current scope, revisit when raised | future |
+| F | Separate "finance CRM" Ross mentioned — ~~out of current scope, revisit when raised~~ **stated to the client in writing as out of scope: no open API, partner access only (D82)** | — |
 | G | **`finance-option.com.au` has been sending data to Refi Pixel since June 2026** — stale install, aggregator page, or a third party? Do not filter it before the origin is known (R24) | Stage 1 attribution / privacy — ask Ross |
 | H | Where do opt-outs and consent live? No contact is marked `dnd`, zero form submissions, no consent record for the ~180 existing contacts (R17) | Any outbound |
 | I | Is `Éire Óg GAA Joondalup` meant to share the GHL location? Until answered, nothing account-wide may be changed (R22, R25) | Every stage |

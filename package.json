@@ -27,7 +27,8 @@
     "web:preview": "vite preview --config web/vite.config.ts",
     "web:check": "tsx scripts/check-bundle.ts",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
-    "memory": "tsx scripts/memory.ts"
+    "memory": "tsx scripts/memory.ts",
+    "crm": "tsx scripts/crm.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

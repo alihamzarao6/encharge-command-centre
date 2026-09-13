@@ -1,0 +1,80 @@
+{
+  "contact": {
+    "id": "CONTACT000000000001",
+    "dateAdded": "2026-09-01T02:14:58.000Z",
+    "type": "lead",
+    "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+    "firstName": "Alexandra",
+    "firstNameLowerCase": "alexandra",
+    "fullNameLowerCase": "alexandra tran-nguyen",
+    "lastName": "Tran-Nguyen",
+    "lastNameLowerCase": "tran-nguyen",
+    "email": "alex.synthetic@example.com",
+    "emailLowerCase": "alex.synthetic@example.com",
+    "phone": "+61400000001",
+    "country": "AU",
+    "source": "Facebook",
+    "timezone": "Australia/Perth",
+    "attributionSource": {
+      "sessionSource": "Direct traffic",
+      "url": "https://ross.fundd.com.au/offer",
+      "utmSource": null,
+      "fbp": "fb.1.0000000000000.000000000",
+      "userAgent": "Mozilla/5.0 (synthetic)",
+      "ip": "203.0.113.10",
+      "medium": "form",
+      "mediumId": "form0000000000000001",
+      "fbEventId": "00000000-0000-4000-8000-0000000000ee"
+    },
+    "createdBy": {
+      "source": "form",
+      "channel": "funnel_form",
+      "sourceId": "form0000000000000001",
+      "timestamp": "2026-09-01T02:14:58.000Z"
+    },
+    "tags": [
+      "fb lead"
+    ],
+    "additionalPhones": [],
+    "dateUpdated": "2026-09-10T01:00:00.000Z",
+    "customFields": [
+      {
+        "id": "Ht7MfhngWRq1uloc65B3",
+        "value": [
+          "WA"
+        ]
+      },
+      {
+        "id": "TANd0sfC9wRwuJKhSGFx",
+        "value": [
+          "$500k–$750k"
+        ]
+      },
+      {
+        "id": "hX8JQblBT9iJhYEa348M",
+        "value": [
+          "6.2% - 6.5%"
+        ]
+      },
+      {
+        "id": "axTFAYBC1ZCQ4KKuAMXZ",
+        "value": "Facebook Ad"
+      },
+      {
+        "id": "UWmWQyJn1lEhC8XRjqQD",
+        "value": 650000
+      },
+      {
+        "id": "9Qm4YOeMoHMDNyl2keDL",
+        "value": ""
+      },
+      {
+        "id": "tQA4cVpB63irs4gBdKBO",
+        "value": null
+      }
+    ],
+    "additionalEmails": [],
+    "dnd": false
+  },
+  "traceId": "00000000-0000-4000-8000-0000000000c1"
+}

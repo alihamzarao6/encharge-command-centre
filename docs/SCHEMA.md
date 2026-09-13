@@ -18,7 +18,9 @@ RLS pattern (§7) and migration discipline (§8). The B2B lead-research tables �
 social-insights tables are **parked under the "OUT OF CURRENT SCOPE" heading below §6**, not
 deleted: the provenance design they carry remains correct and Stage 4's website knowledge store
 (§2a) is built on the same pattern. **Part 2 of Stage 2 writes the first migrations from this
-file.** Nothing under a parked heading ships in a migration.
+file.** Nothing under a parked heading ships in a migration. *(12 Sep 2026: delivery is now
+eight milestones, D77 — "Stage 4" in this file means Milestone 5, "Stage 5" means Milestones
+7–8, and Stages 1–3 are Milestones 1–3.)*
 
 Conventions:
 - `id uuid primary key default gen_random_uuid()`
@@ -146,10 +148,11 @@ knowledge store or published copy.
 
 ---
 
-## 2a. Stage 4 — website knowledge store (design placeholder)
+## 2a. Website knowledge store — Milestone 5, was "Stage 4" (design placeholder)
 
-Stage 4 "reads websites and stores what it finds, with a full source trail on every field"
-(Scope v3). The tables are specified at Stage 4, not here, but two things are fixed now so
+Milestone 5 (D77; Stage 4 under the six-stage map) "reads websites and stores what it finds,
+with a full source trail on every field" (Scope v3). The tables are specified at that
+milestone's kickoff, not here, but two things are fixed now so
 that Part 2 does not lay a foundation that fights them:
 
 1. **Every stored field carries `source_url`, `fetched_at`, `extraction_method`, `confidence`**
@@ -191,6 +194,52 @@ Lead Source, Preferred Contact Time, Current Interest Rate) and the **ten Financ
 stage IDs** (`entity = 'stage'`, `internal_field` = the `pipeline_stage` value). GHL objects
 are matched on ID, never on name — this account has produced three name traps already
 (`MEMORY.md` 12 Aug). The 21 pre-existing custom fields stay unmapped and untouched (R2).
+
+### GoHighLevel mirror — Milestone 4 part 1 (12 Sep 2026)
+
+The local copy of the Finance Pipeline that the screen (parts 2–4) reads. **GoHighLevel is
+the source of truth**: every row is keyed on the GHL object's own id (`ghl_id`), carries a
+`content_hash` of what was mirrored, and is overwritten from GHL whenever the two disagree.
+Scoped to ONE pipeline — `GHL_PIPELINE_ID`, verified against the pipelines list before every
+sync (an unknown id fails loudly; GHL answers 200 and an empty list for one) — and the
+contacts that have an opportunity in it, never account-wide (R22, R25). Names are stored
+for display only; matching is on id.
+
+Ownership: no `user_id` — the rows have no author — and `scope` pinned to `'workspace'` by a
+check (`*_scope_workspace`, like `memory_chunks`), so the RLS policy has the memory tables'
+shape and a private variant would be additive. `ghl_sync_runs.triggered_by` names the person
+who asked for a refresh (nullable).
+
+Deletion in GHL is a **mark**, `removed_at`, never a delete — set only from a COMPLETE read.
+No FK opportunity → stage (a stage deleted in GHL must still be representable) or
+opportunity → contact (an opportunity syncs even when its contact could not be read).
+
+| Table | Key | Holds |
+|---|---|---|
+| `ghl_pipelines` | `ghl_id` | `name · location_id · ghl_updated_at · scope · first_synced_at · last_changed_at` |
+| `ghl_stages` | `ghl_id` | `pipeline_ghl_id · name (display only) · position · win_probability · first_seen_at · last_changed_at · removed_at` |
+| `ghl_opportunities` | `ghl_id` | `pipeline_ghl_id · stage_ghl_id · contact_ghl_id · name · status (open|won|lost|abandoned) · monetary_value numeric(14,2) (NULL = GHL had none, 0 = GHL said zero — different things) · source · assigned_to · ghl_created_at · ghl_updated_at · last_stage_change_at · last_status_change_at (all UTC, exactly as GHL sent them; nothing here converts to Perth time) · content_hash · first_synced_at · last_changed_at · removed_at` |
+| `ghl_contacts` | `ghl_id` | `first_name · last_name · full_name · email · phone · source · dnd (null = not carried, never defaulted) · tags text[] · custom_fields jsonb {"<field id>": value as GHL returned it} · ghl_created_at · ghl_updated_at · content_hash · first_synced_at · last_changed_at · removed_at (set when no live opportunity references the contact)` |
+| `ghl_custom_fields` | `ghl_id` | `name · field_key · data_type · model · parent_id (folder) · position · picklist_options · first_seen_at · last_changed_at · removed_at` — the definitions a synced contact carries or that sit in `GHL_CUSTOM_FIELD_FOLDER_IDS`; a rename changes `name`, a removal sets `removed_at`, and neither touches a stored value |
+| `ghl_sync_runs` | `id` | `pipeline_ghl_id · trigger (cli|api|schedule|test) · triggered_by · status (running|success|partial|failed) · started_at · applied_at · finished_at · duration_ms · requests · pages_fetched · opportunities_fetched/rejected · contacts_fetched/failed/rejected/missing · custom_fields_fetched · stages_seen/added/updated/removed · opportunities_inserted/updated/unchanged/removed · contacts_inserted/updated/unchanged/removed · custom_fields_seen/removed · error_code · error · errors jsonb (ids only)` |
+
+Three `service_role`-only functions (migration `20260912010000_ghl_sync.sql`):
+`begin_ghl_sync_run` retires a run left `running` past the stale threshold (marked
+`failed/STALE`) and claims the one running slot per pipeline (partial unique index
+`ghl_sync_runs_one_running`) — a second caller gets SQLSTATE `55006`, never a race;
+`apply_ghl_snapshot` writes the whole snapshot in ONE transaction, skipping rows whose
+`content_hash` is unchanged so two syncs of an unchanged pipeline leave every row
+byte-identical, computing removals only when the snapshot says the read was complete, and
+recording the apply counts on the run; `finish_ghl_sync_run` closes the run with its status,
+fetch counts and error list. Code: `src/lib/crm/ghl/` (config · types · map · client · sync ·
+store); trigger: `npm run crm -- sync`; read-only check: `npm run crm -- read`.
+
+`ghl_field_map` (`entity = 'contact'`) carries the eleven internal-name → field-id rows the
+screen labels by — nine in the Stage 1 folder plus `loan_balance` and `current_interest_rate`
+from the folder the live form writes to — seeded from the 12 Sep 2026 read and pinned in
+`tests/integration/schema.test.ts`. `consumer_leads` is NOT written by the sync: its
+`lead_type` / `lead_source` / `pipeline_stage` enums would force invented values and cannot
+hold a stage GHL added (M4 part 1 decision).
 
 ### workflow_runs
 `id · workflow_name · n8n_execution_id · status (running|success|failed|partial) ·
@@ -800,6 +849,12 @@ enabled" is not accepted, the test output is.
   the local stack inherits nothing; same environment-divergence class as the CI 42501).
   Any later migration that adds a table must carry its own service_role grant —
   `tests/security/rls.test.ts` asserts full DML per table and fails CI if one is missing.
+- **Milestone 4 part 1 addition — written 12 Sep:** `20260912010000_ghl_sync.sql` — the six
+  GoHighLevel mirror tables (§3), RLS enabled and forced with the staff-allowlist SELECT
+  policy and the explicit anon / authenticated / service_role grants, and the three
+  `service_role`-only sync functions. Reversible; the drops are listed at the top of the
+  file. Seed: eleven `ghl_field_map` contact rows. Validated against the live project inside
+  one `BEGIN…ROLLBACK` transaction through the Supabase MCP (MEMORY.md 12 Sep), not applied.
 - **Stage 3 part 4 addition — written 28 Aug:** `20260828010000_users_page.sql` — the roster
   read policy plus `is_active_staff()` (§7), `delete_conversation(uuid, uuid)` (§4), and
   `set_staff_active` / `set_staff_admin`, the two flag writes that hold the last-admin

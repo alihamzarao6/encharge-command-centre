@@ -4,13 +4,16 @@
 Work **one task at a time**, top to bottom. Do not skip ahead. Do not batch.
 Plan Mode before any task touching more than two files.
 After each task: tests pass → mark `[x]` → append to `docs/MEMORY.md` → `/clear`.
-Do not begin a stage until the previous is signed off in `docs/PHASE-ACCEPTANCE.md` — stages
-map to client payments (D27).
+Do not begin a milestone until the previous is signed off in `docs/PHASE-ACCEPTANCE.md` —
+milestones map to client payments (D77).
 
-**Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32) is binding.** Six stages replace the five
-phases (D26). The original five-phase checklist is **frozen under the "PARKED / SUPERSEDED"
-heading at the bottom** — do not work from it. Where a live task is carried over from it, the
-old ID is given in brackets so the history stays traceable.
+**Scope v3 (22 Aug 2026, `docs/MEMORY.md` D23–D32) is binding for WHAT is built. The delivery
+plan is eight milestones at 2,000 USD (1 Sep 2026, D77)**, replacing the six stages of D26/D27,
+which replaced the five phases. Stages 1–3 became Milestones 1–3 unchanged and are **complete,
+signed off and paid**. **The Stage 3–6 outlines below are superseded** — marked in place, not
+deleted. The original five-phase checklist is **frozen under the "PARKED / SUPERSEDED" heading
+at the bottom** — do not work from it. Where a live task is carried over from it, the old ID is
+given in brackets so the history stays traceable.
 
 Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline) · `[~]` in progress
 
@@ -33,7 +36,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (reason inline) · `[~]` in pr
 
 ---
 
-## STAGE 1 — GoHighLevel + Meta ✅ COMPLETE · signed off and paid 22 Aug 2026 (198)
+## MILESTONE 1 — CRM and ad tracking set up *(was STAGE 1 — GoHighLevel + Meta)* ✅ COMPLETE · signed off and paid 22 Aug 2026
 
 Built directly in the client's live accounts. Recorded here as delivered, not as a checklist
 to re-run. Detail: `docs/PHASE-ACCEPTANCE.md` Stage 1, `docs/MEMORY.md` 22 Aug.
@@ -50,7 +53,12 @@ Carried forward from Stage 1, not blocking: R21 (GHL scope reconciliation), R24
 
 ---
 
-## STAGE 2 — Foundations + AI trained on the client's voice ← ACTIVE
+## MILESTONE 2 — Foundations and the client's writing voice *(was STAGE 2)* ✅ COMPLETE · signed off and paid (D77)
+
+*12 Sep: signed off and paid under the 1 Sep milestones document (D77). 2.7.4 is ticked on the
+strength of that document; 2.7.1–2.7.3 are left as they were — no acceptance run happened in
+the docs session that recorded this, and the evidence on file is the 29 Aug re-run of the
+twelve criteria (`PHASE-ACCEPTANCE.md`, Stage 3 Part B).*
 
 Ends in something the client can open on his phone and talk to. Definition of done:
 `docs/PHASE-ACCEPTANCE.md` Stage 2, items 1–12. Seven parts, in order; **do not start part
@@ -140,11 +148,17 @@ their first real run (CI on push, or credentials).*
 - [ ] 2.7.1 End-to-end test: login → send message → reply in voice → `api_usage` row → reload on a second device shows the conversation
 - [ ] 2.7.2 `npm run typecheck && npm run lint && npm run test:regress` green — counts and coverage recorded in numbers
 - [ ] 2.7.3 Acceptance items 1–12 walked through with evidence captured in `docs/MEMORY.md`
-- [ ] 2.7.4 Client demo on **his phone** + sign-off in writing → **PAYMENT 2 (198)**
+- [x] 2.7.4 Client demo on **his phone** + sign-off in writing → **PAYMENT 2 ~~(198)~~ — received: Milestone 2, 200 under the 1 Sep milestones document (D77)**
 
 ---
 
-## STAGE 3 — Memory + dashboard
+## MILESTONE 3 — Memory and the app itself *(was STAGE 3 — Memory + dashboard)* ✅ COMPLETE · signed off and paid (D77)
+
+*12 Sep: signed off and paid under the 1 Sep milestones document (D77). The unticked items
+below (3.3–3.7, 3.10–3.12) are SUPERSEDED as Stage 3 work, not carried as debt: 3.4 is
+governed by D71 and D81; 3.7 (a read-only GHL client) and 3.11 (metrics reconcile against GHL)
+are expected to resurface under Milestone 4's briefs; 3.5's remaining surfaces and 3.6 (n8n)
+land where a later milestone's kickoff puts them — open.*
 
 *Outline — detailed at Stage 3 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 3.*
 
@@ -168,13 +182,46 @@ their first real run (CI on push, or credentials).*
 - [ ] 3.10 *(was 1.39–1.42)* Notion client, views via `create_view`, phone pass, contract tests — **only if Stage 3 decides Notion is still worth wiring at runtime** (R9 — no workspace token for n8n yet)
 - [ ] 3.11 *(was 4.16)* Pipeline metrics reconcile against GoHighLevel, not our own count (CLIENT-CONTEXT §11)
 - [x] 3.11a **Users section in the dashboard** (added 26 Aug on FND-250 review — Ross must not need a script to add a user). **Done 28 Aug inside 3.2.4** — see that entry for what was built and the two departures from this description (the page is readable by everyone, not admin-only; no invite email). Acceptance met: a non-admin sees no controls and the server refuses all seven actions (`tests/unit/auth/page.test.ts`, `tests/integration/users.test.ts`, `tests/e2e/users.spec.ts`); every action lands in `audit_log` under the acting admin; the CLI keeps working and gained `reactivate` / `promote` / `demote`. **Still open:** "Forgot password" on the login page via Supabase's email reset — needs SMTP from the client's domain (R26)
-- [ ] 3.12 `npm run test:regress` green · client demo + sign-off → **PAYMENT 3 (198)**
+- [x] 3.12 `npm run test:regress` green · client demo + sign-off → **PAYMENT 3 ~~(198)~~ — received: Milestone 3, 200 under the 1 Sep milestones document (D77)**
 
 ---
 
-## STAGE 4 — Website reading and storage
+## MILESTONE 4 — Your data on screen (350) ← NEXT
 
-*Outline — detailed at Stage 4 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 4.*
+*Definition: `docs/MEMORY.md` D78. Criteria: `docs/PHASE-ACCEPTANCE.md` Milestone 4. Five
+parts, in order; **task detail arrives with each part's own brief — nothing below is a task
+yet.** Do not start part N+1 until part N is reviewed. D81 applies: a stage move by the client
+is confirmed by the drop itself, not by a dialog; D9 still binds anything the assistant
+initiates. Nothing account-wide in GHL (R22, R25); match on stage ID, never name (§3).*
+
+- [ ] **M4 data layer (brief "Milestone 4, Part 1 — GoHighLevel read and sync layer", 12 Sep) — BUILT, awaiting review, not committed.** Migration `20260912010000_ghl_sync.sql` (six `ghl_*` tables, RLS forced, three service_role-only functions), `src/lib/crm/ghl/` (GET-only client, sync, store), `npm run crm -- sync|read|runs`, fixtures, 90 unit + 7 integration + 10 security tests. Part A decisions and the live-read findings: `docs/MEMORY.md` 12 Sep. *The brief's part numbering differs from the five parts below — reviewer's call.*
+- [ ] **M4 part 1 — The screen.** The app rebuilt as a working screen rather than a chat window: the client's numbers and lists up front, the assistant as a panel beside them
+- [ ] **M4 part 2 — Leads, pipeline and stages live from GoHighLevel.** The Finance Pipeline, read by stage ID, scoped to the pipeline, the GHL token server-side only
+- [ ] **M4 part 3 — Lead detail.** Click into any lead and see the detail
+- [ ] **M4 part 4 — Moving a lead.** The client moves a lead from one stage to another himself — an idempotent write keyed on the opportunity ID, audited, the drop as the confirmation
+- [ ] **M4 part 5 — Phone and laptop.** Works the same on a phone as on a laptop — 375 / 768 / 1280 and live on his phone
+- [ ] M4 acceptance: `npm run test:regress` green · client demo + sign-off in writing → **PAYMENT 4 (350)**
+
+---
+
+## MILESTONES 5–8 — outline only
+
+*Names and amounts are the client's (D77). Content is defined at each kickoff; starting points
+are in `docs/PHASE-ACCEPTANCE.md`. Out of scope, stated in writing (D82): a drag-and-drop
+dashboard builder, agent software that acts on its own, the Quickli calculator, the separate
+finance CRM.*
+
+- [ ] **Milestone 5 — Files, documents and research (250).** Website reading (the superseded Stage 4 below) sits here, alongside files and documents. Not the parked research engine (D23)
+- [ ] **Milestone 6 — Talking to it, and your day (350)**
+- [ ] **Milestone 7 — Advertising and social (300)** — moved later at the client's request, 5 Sep (D79)
+- [ ] **Milestone 8 — Content and handover (150)** — the superseded Stage 6 handover items below are the starting point
+
+---
+
+## ~~STAGE 4 — Website reading and storage~~ — SUPERSEDED 12 Sep (D77): folded into Milestone 5
+
+*Outline kept for the record; re-cut into tasks at the Milestone 5 kickoff. Old criteria:
+`PHASE-ACCEPTANCE.md`, superseded Stage 4.*
 
 - [ ] 4.1 Migrations for the knowledge store (`web_sources`, `web_facts` — SCHEMA §2a), every field with `source_url · fetched_at · extraction_method · confidence` NOT NULL
 - [ ] 4.2 *(was 2.7–2.11)* `src/lib/crawler/` — `urlSafety` (every SSRF case in SECURITY §10), `robots`, `fetch` (rate limit, size cap, timeout, redirect limit, re-check IP after redirect), `sanitize`, `extract` — all with tests
@@ -183,13 +230,14 @@ their first real run (CI on push, or credentials).*
 - [ ] 4.5 *(was 2.20)* `tests/security/injection.test.ts` — ≥ 10 adversarial pages, zero violations
 - [ ] 4.6 Below-threshold facts → `review_queue` (`entity_type = 'web_fact'`); approve writes through with an audited override
 - [ ] 4.7 Idempotency test: read the same page twice → identical row counts
-- [ ] 4.8 `npm run test:regress` green · client demo + sign-off → **PAYMENT 4 (198)**
+- [ ] ~~4.8 `npm run test:regress` green · client demo + sign-off → **PAYMENT 4 (198)**~~ *superseded — Milestone 5 is 250 (D77)*
 
 ---
 
-## STAGE 5 — Content, carousels, ad copy
+## ~~STAGE 5 — Content, carousels, ad copy~~ — SUPERSEDED 12 Sep (D77): see Milestones 7 and 8
 
-*Outline — detailed at Stage 5 kickoff. Criteria: `PHASE-ACCEPTANCE.md` Stage 5.*
+*Outline kept for the record; the split between Milestones 7 and 8 is settled at their
+kickoffs.*
 
 - [ ] 5.1 *(was 4.10)* Generation grounded in CLIENT-CONTEXT §9 frameworks: social post, carousel (slide-by-slide copy), Meta ad, Google ad — each a typed schema
 - [ ] 5.2 Voice-conformance suite (Stage 2 part 5) extended per format; 100% pass on recorded fixtures
@@ -200,9 +248,10 @@ their first real run (CI on push, or credentials).*
 
 ---
 
-## STAGE 6 — Monitoring, testing, docs, handover
+## ~~STAGE 6 — Monitoring, testing, docs, handover~~ — SUPERSEDED 12 Sep (D77): handover is Milestone 8
 
-*Criteria: `PHASE-ACCEPTANCE.md` Stage 6. Paid with Stage 5 in the final 528.*
+*Outline kept for the record — the Milestone 8 starting point. ~~Paid with Stage 5 in the
+final 528.~~*
 
 - [ ] 6.1 *(was 5.10)* Monitoring workflow — daily health check, cost rollup, stale-data and token-expiry alerts; verified by a real failure and a real cap trip
 - [ ] 6.2 *(was 5.11)* `docs/RUNBOOK.md` completed and walked through end to end
@@ -210,7 +259,7 @@ their first real run (CI on push, or credentials).*
 - [ ] 6.4 *(was 5.13)* Rotate all keys; transfer ownership of every account to the client; LastPass access revoked in writing
 - [ ] 6.5 *(was 5.14)* Recorded walkthrough: daily use, review queue, chat, what to do when something breaks
 - [ ] 6.6 *(was 5.15)* Final `npm run test:regress` + full manual QA (TESTING.md §9)
-- [ ] 6.7 Client sign-off → **FINAL PAYMENT (528)**
+- [ ] ~~6.7 Client sign-off → **FINAL PAYMENT (528)**~~ *superseded — Milestone 8 is 150 (D77)*
 
 ---
 
