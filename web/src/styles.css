@@ -356,43 +356,12 @@ p {
   line-height: 1;
 }
 
-.nav__badge {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ink-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.nav__item--soon .nav__icon {
-  opacity: 0.5;
-}
-
 .main {
   grid-area: main;
   min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* ---------- not-yet ---------- */
-
-.notyet {
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.notyet__card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 560px;
-}
-
-.notyet__title {
-  font-size: 24px;
-  font-weight: 700;
 }
 
 /* ---------- assistant ---------- */
@@ -1445,4 +1414,467 @@ p {
 
 .convos__item--private {
   border: 1px dashed var(--line);
+}
+
+/* ---------- Milestone 4 part 2: data first ---------- */
+
+/*
+ * Same tokens, same cards, same buttons as everything above: this is a re-arrangement of the
+ * app, not a redesign. What is new is the overview (tiles, a stage list, the arrivals), the
+ * assistant panel in its three shapes, and two rules the whole app was missing — a visible
+ * focus ring on every interactive element, and respect for reduced motion.
+ */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field__input:focus-visible,
+.composer__input:focus-visible {
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The "Ask" toggle in the top bar, with a dot when a reply landed while the panel was shut. */
+.topbar__ask {
+  position: relative;
+  border-color: var(--navy);
+  color: var(--navy);
+}
+
+.topbar__ask--open {
+  background: #e6ecf7;
+}
+
+.topbar__dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+}
+
+/* overview */
+
+.overview {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Stacked on a phone: the freshness line and Refresh always take their own row, so the
+   tiles sit in the same place before and after the data lands. Side by side from 768. */
+.overview__bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overview__heading {
+  min-width: 0;
+}
+
+.overview__title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.overview__pipeline {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.overview__fresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 36px;
+}
+
+/* Freshness carries a colour AND a word AND a dot: never colour alone. */
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.fresh__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+
+.fresh--stale {
+  color: #9a3412;
+}
+
+.fresh--stale .fresh__dot {
+  background: #f79009;
+}
+
+.fresh--old {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.fresh--old .fresh__dot {
+  background: var(--danger);
+}
+
+.fresh__nudge {
+  font-weight: 400;
+}
+
+.overview__running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.overview__alert {
+  background: var(--danger-bg);
+  border: 1px solid #fda29b;
+  color: var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.overview__notice {
+  font-size: 14px;
+}
+
+.overview__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.tile__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Five digits fit at 375 without wrapping: 12,345 at 33px is ~120px in a 160px tile. */
+.tile__value {
+  font-size: clamp(28px, 9vw, 40px);
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.tile__hint {
+  font-size: 12px;
+}
+
+/* The skeleton holds the shape the data will take, so nothing moves when it lands. */
+.tile--skeleton,
+.overview__stages--skeleton,
+.overview__arrivals--skeleton {
+  background: linear-gradient(90deg, var(--surface), #eef2f8, var(--surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.overview__stages--skeleton {
+  min-height: 470px;
+}
+
+.overview__arrivals--skeleton {
+  min-height: 300px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.overview__subtitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.overview__hint {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stages__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name count'
+    'bar bar';
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 40px;
+}
+
+.stages__name {
+  grid-area: name;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* A removed or unknown stage reads differently in words AND in style. */
+.stages__row--odd .stages__name {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.stages__bar {
+  grid-area: bar;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.stages__fill {
+  display: block;
+  height: 100%;
+  background: var(--navy-700);
+  border-radius: 999px;
+  transition: width 240ms ease-out;
+}
+
+.stages__count {
+  grid-area: count;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 3ch;
+}
+
+.arrivals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.arrivals__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.arrivals__row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.arrivals__name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.arrivals__meta {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.arrivals__flag {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.overview__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+}
+
+.overview__empty-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* assistant panel: on a phone, a full-screen sheet over the current screen */
+
+.panel {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.panel__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.panel__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.panel__close {
+  min-width: var(--tap);
+  font-size: 18px;
+}
+
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 31, 58, 0.35);
+  z-index: 35;
+}
+
+@media (min-width: 768px) {
+  /* A drawer over the content: at 768 a docked column would leave the numbers 230px wide.
+     No backdrop from here up — the sidebar nav stays reachable with the drawer open, so a
+     person can move between screens without losing the conversation. Close is the button
+     or Escape. */
+  .panel {
+    inset: 0 0 0 auto;
+    width: min(420px, 100%);
+    border-left: 1px solid var(--line);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
+  }
+
+  .panel-backdrop {
+    display: none;
+  }
+
+  .overview {
+    padding: 20px 24px;
+  }
+
+  .overview__bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 12px;
+  }
+
+  .tiles,
+  .overview__stages,
+  .overview__arrivals,
+  .overview__empty,
+  .overview__alert,
+  .overview__notice,
+  .overview .mem__banner {
+    max-width: 760px;
+  }
+
+  .stages__row {
+    grid-template-columns: 200px minmax(0, 1fr) auto;
+    grid-template-areas: 'name bar count';
+    min-height: 36px;
+  }
+}
+
+@media (min-width: 1280px) {
+  /* Docked: a third column beside the numbers, the content narrowing to make room. */
+  .shell--panel {
+    grid-template-columns: 230px minmax(0, 1fr) 400px;
+    grid-template-areas:
+      'top top top'
+      'nav main panel';
+  }
+
+  .shell--panel .panel {
+    position: static;
+    grid-area: panel;
+    width: auto;
+    box-shadow: none;
+    min-height: 0;
+  }
+
+  .shell--panel .panel-backdrop {
+    display: none;
+  }
+
+  .overview {
+    padding: 24px 32px;
+  }
+
+  .stages__row {
+    grid-template-columns: 240px minmax(0, 1fr) auto;
+  }
 }

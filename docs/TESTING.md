@@ -316,6 +316,17 @@ a one-time password is **absent from `localStorage`, `sessionStorage` and the DO
 its panel is dismissed, and a non-admin's Team page makes **no call to the admin endpoint at
 all** — the controls are not merely hidden, they are never reachable.
 
+*Milestone 4 part 2 (13 Sep 2026):* `functions:bundle` builds FOUR functions (`crm` joined);
+`web:check` greps the built app for the GoHighLevel token shape (`pit-<uuid>`) and value;
+the `browser` job gains `tests/e2e/overview.spec.ts` (26 tests × 3 widths, screenshots under
+`docs/assets/milestone-4/`) and the e2e mock serves the five `ghl_*` tables and the `crm`
+endpoint, with switches for a 401, a 500 and a slow read; the `integration` job gains
+`tests/integration/overview.test.ts`, which writes a known snapshot through the part-1
+functions and reads it back under RLS the way the screen does. Two things are proved only
+in the browser: the default route after login is the overview (item 12), and a message sent
+in the docked panel is on the Assistant page (item 13 — the store half is
+`tests/unit/web/thread.test.ts`).
+
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →
 `supabase db reset --local` (the from-zero replay proof, migrations + seed, on every push) →

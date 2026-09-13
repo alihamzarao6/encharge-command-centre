@@ -464,3 +464,15 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/admin/index.ts"
 import_map = "./functions/admin/deno.json"
+
+# Milestone 4 part 2: the overview's "refresh from GoHighLevel" endpoint. The mirror tables
+# are a PostgREST select under RLS; this function exists because refreshing them means
+# reading GoHighLevel, and the GoHighLevel token has exactly one server-side reader
+# (SECURITY §12). Same generation rule as the other three: the entrypoint is written by
+# `npm run functions:bundle` and is gitignored. verify_jwt stays off because the library
+# verifies the bearer token itself and answers 401/403 with a body the UI shows.
+[functions.crm]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/crm/index.ts"
+import_map = "./functions/crm/deno.json"

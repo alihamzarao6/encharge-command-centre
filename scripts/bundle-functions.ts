@@ -29,6 +29,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'memory', entry: 'src/functions/memory/index.ts' },
   // Stage 3 part 4 (FND-330): the users page's write endpoint.
   { name: 'admin', entry: 'src/functions/admin/index.ts' },
+  // Milestone 4 part 2: the overview's "refresh from GoHighLevel" endpoint.
+  { name: 'crm', entry: 'src/functions/crm/index.ts' },
 ];
 
 const BANNER = [

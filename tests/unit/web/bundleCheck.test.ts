@@ -11,9 +11,12 @@
  * The markers are React 19's development-only warning strings, measured on this project on
  * 27 Aug 2026: 1–5 occurrences each in a development bundle, zero in a production one.
  */
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 
-import { devBuildMarkers } from '../../../scripts/check-bundle.js';
+import { devBuildMarkers, scan } from '../../../scripts/check-bundle.js';
 
 describe('devBuildMarkers', () => {
   it('finds nothing in text that carries no React development machinery', () => {
@@ -36,5 +39,40 @@ describe('devBuildMarkers', () => {
 
   it('one marker is enough — a partial dev build is still a dev build', () => {
     expect(devBuildMarkers('something something act(...) something')).toStrictEqual(['act(...)']);
+  });
+});
+
+/**
+ * Milestone 4 (PHASE-ACCEPTANCE item 4): the GoHighLevel token must never reach the bundle.
+ * The shape check catches a `pit-<uuid>` from any variable; the value check catches the
+ * one in the build environment, whatever it looks like. Built by concatenation so the secret
+ * scanners read no token-shaped literal here.
+ */
+describe('scan — the GoHighLevel token', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bundle-check-'));
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const tokenLike = ['pit', '12345678', '1234', '4234', '8234', '123456789abc'].join('-');
+
+  it('flags a token-shaped string wherever it came from, and the environment value by name', () => {
+    const file = join(dir, 'leaky.js');
+    writeFileSync(file, `const a="${tokenLike}";const b="ghl-token-value-that-is-long";`);
+    const findings = scan([file], {
+      GHL_PRIVATE_INTEGRATION_TOKEN: 'ghl-token-value-that-is-long',
+    });
+    expect(findings.map((f) => f.check)).toEqual([
+      'ghl-token-shape',
+      'value:GHL_PRIVATE_INTEGRATION_TOKEN',
+    ]);
+    expect(findings[0]?.snippet).toBe('pit-12345678…');
+    expect(findings[1]?.snippet).toBe('[redacted]');
+  });
+
+  it('a clean bundle produces no finding, and a short environment value is not matched blindly', () => {
+    const file = join(dir, 'clean.js');
+    writeFileSync(file, 'const pit = "pit-stop"; const x = 1;');
+    expect(scan([file], { GHL_PRIVATE_INTEGRATION_TOKEN: 'pit' })).toEqual([]);
   });
 });

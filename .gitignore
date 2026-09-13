@@ -15,6 +15,7 @@ supabase/.temp/
 supabase/functions/chat/index.ts
 supabase/functions/memory/index.ts
 supabase/functions/admin/index.ts
+supabase/functions/crm/index.ts
 web/dist/
 tests/e2e/.output/
 supabase/.branches/

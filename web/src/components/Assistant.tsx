@@ -1,8 +1,8 @@
 /**
- * The live section: conversations on the left (a slide-in sheet on a phone), the thread and
- * the composer on the right. Reads go straight to Supabase under RLS as the signed-in user;
- * the one write — a turn — goes to the Edge Function, which owns the voice, the cap and
- * the history.
+ * The Assistant's full page: conversations on the left (a slide-in sheet on a phone), the
+ * thread and the composer on the right. Reads go straight to Supabase under RLS as the
+ * signed-in user; the one write — a turn — goes to the Edge Function, which owns the voice,
+ * the cap and the history.
  *
  * A message that fails stays on screen as a failed bubble with the reason and a Retry that
  * resends the same text; it is never silently dropped. A 401 keeps the text and hands it
@@ -15,13 +15,18 @@
  * do not come from PostgREST (RLS refuses them, deliberately) but from the memory endpoint,
  * which writes an audit row every time. There is no composer under it. An admin reads; they
  * do not join in.
+ *
+ * Milestone 4 part 2: the THREAD — which conversation is open, its messages, the turn in
+ * flight, the draft — now lives in the shared store the shell provides (web/src/lib/thread.ts),
+ * because the docked panel shows the same thread from any other screen. Everything else on
+ * this page — the list, renaming, deleting, privacy, the administrator's views — is this
+ * page's own and unchanged.
  */
 import type { Session } from '@supabase/supabase-js';
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactElement,
   type SyntheticEvent,
@@ -43,23 +48,14 @@ import {
   PRIVACY_TOGGLE_LABEL,
   SHARED_EXPLANATION,
 } from '../lib/conversationsView.js';
-import { streamTurn, type ChatFailure } from '../lib/chatApi.js';
 import { webConfig } from '../lib/env.js';
-import {
-  clearPending,
-  loadDraft,
-  loadOpenConversation,
-  saveDraft,
-  saveOpenConversation,
-  savePending,
-  takePending,
-  type PendingDraft,
-} from '../lib/draft.js';
+import { loadOpenConversation, takePending, type PendingDraft } from '../lib/draft.js';
 import { callMemory, type MemoryRequest, type MemoryReply } from '../lib/memoryApi.js';
 import { supabase, type AppUserRow, type ConversationListRow } from '../lib/supabase.js';
 import { Composer } from './Composer.js';
 import { ConversationList, type AdminPrivateRow } from './ConversationList.js';
 import { Thread, type LocalMessage } from './Thread.js';
+import { useThreadState, useThreadStore } from './ThreadContext.js';
 
 interface Props {
   readonly session: Session;
@@ -81,18 +77,16 @@ function storage(): Storage | null {
   }
 }
 
-let localCounter = 0;
-function nextLocalId(): string {
-  localCounter += 1;
-  return `local-${String(localCounter)}`;
-}
-
 export function Assistant({
   session,
   staff,
   openConversationId,
   onSessionExpired,
 }: Props): ReactElement {
+  const store = useThreadStore();
+  const thread = useThreadState();
+  const { activeId, messages, threadState, sending, waiting, draft } = thread;
+
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
   /**
    * user_id -> email, for the author prefix every conversation is named with (part 4a).
@@ -101,12 +95,6 @@ export function Assistant({
    */
   const [emailsById, setEmailsById] = useState<ReadonlyMap<string, string>>(new Map());
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<LocalMessage[]>([]);
-  const [threadState, setThreadState] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [sending, setSending] = useState(false);
-  const [waiting, setWaiting] = useState(false);
-  const [draft, setDraft] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   // Stage 3 part 4: renaming and deleting a conversation. `managing` is the id being written
   // right now, so one slow rename never freezes the whole list; `notice` is the one sentence
@@ -125,7 +113,6 @@ export function Assistant({
     readonly messages: readonly LocalMessage[];
   } | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  const pendingRestored = useRef(false);
 
   const actor: MemoryActor = useMemo(
     () => ({ userId: staff.user_id, isAdmin: staff.is_admin }),
@@ -154,66 +141,6 @@ export function Assistant({
     setEmailsById(new Map(data.map((row): [string, string] => [row.user_id, row.email])));
   }, []);
 
-  /** Returns what it put on screen, so a caller can ask whether a given turn survived. */
-  const loadMessages = useCallback(async (conversationId: string): Promise<LocalMessage[]> => {
-    setThreadState('loading');
-    const { data, error } = await supabase
-      .from('messages')
-      .select('id, conversation_id, role, content, created_at')
-      .eq('conversation_id', conversationId)
-      .in('role', ['user', 'assistant'])
-      .order('created_at', { ascending: true })
-      .limit(500);
-    if (error !== null) {
-      setThreadState('error');
-      return [];
-    }
-    const loaded: LocalMessage[] = data
-      .filter((row) => row.content !== null)
-      .map((row) => ({
-        localId: row.id,
-        id: row.id,
-        role: row.role === 'assistant' ? 'assistant' : 'user',
-        content: row.content ?? '',
-        status: 'saved',
-      }));
-    setMessages(loaded);
-    setThreadState('idle');
-    return loaded;
-  }, []);
-
-  /**
-   * Reopen a conversation after the page came back, and work out what happened to a turn that
-   * was in flight when it went away.
-   *
-   * The fetch itself is gone — a discarded page takes its network with it — but the SERVER may
-   * well have finished and saved the turn. So the messages are re-read first and the answer is
-   * simply there. Only if the sent text is nowhere in the thread was the turn genuinely lost,
-   * and then the words go back into the composer with a line saying so, rather than
-   * disappearing and leaving the person to retype from memory.
-   */
-  const restoreThread = useCallback(
-    async (conversationId: string, pending: PendingDraft | null): Promise<void> => {
-      const saved = await loadMessages(conversationId);
-      if (pending === null || pending.text.trim() === '') {
-        setDraft(loadDraft(storage(), conversationId));
-        return;
-      }
-      const landed = saved.some(
-        (m) => m.role === 'user' && m.content.trim() === pending.text.trim(),
-      );
-      if (landed) {
-        setDraft(loadDraft(storage(), conversationId));
-        return;
-      }
-      setDraft(pending.text);
-      setNotice(
-        'You left before that message finished sending, so it was not saved. It is back in the box — send it again when you are ready.',
-      );
-    },
-    [loadMessages],
-  );
-
   /**
    * First load, in priority order (D76):
    *
@@ -224,188 +151,53 @@ export function Assistant({
    *      the page — so without this the person lands on "New conversation" and their thread
    *      looks lost. It was never lost; nothing was pointing at it.
    *
-   * The unsent draft is left in storage rather than consumed, so it survives for next time.
+   * The decision is made once per sign-in, by whichever surface shows the thread first: if
+   * the panel already opened a conversation, coming to this page shows that conversation.
    */
   useEffect(() => {
     void loadConversations();
     void loadRoster();
-    if (pendingRestored.current) return;
-    pendingRestored.current = true;
 
     if (openConversationId !== undefined && openConversationId !== null) {
-      setActiveId(openConversationId);
-      setDraft(loadDraft(storage(), openConversationId));
-      void loadMessages(openConversationId);
+      void store.open(openConversationId);
       return;
     }
+    if (store.getState().initialised) return;
 
     const pending = takePending(storage());
     const remembered = loadOpenConversation(storage());
     const target = pending?.conversationId ?? remembered;
     if (target !== null) {
-      setActiveId(target);
-      void restoreThread(target, pending);
+      void store.restore(target, pending);
       return;
     }
     // A turn that never reached the server has no conversation to go back to, but the words
     // are still the person's — put them back in the composer rather than losing them.
-    if (pending !== null) setDraft(pending.text);
-  }, [loadConversations, loadRoster, loadMessages, restoreThread, openConversationId]);
+    if (pending !== null) store.adoptDraft(pending.text);
+    else void store.open(null);
+  }, [loadConversations, loadRoster, openConversationId, store]);
+
+  // A turn saved from either surface changes the list's order and may add a row.
+  useEffect(() => {
+    if (thread.turnsSaved > 0) void loadConversations();
+  }, [thread.turnsSaved, loadConversations]);
+
+  // Whatever arrived is now on screen.
+  useEffect(() => {
+    store.markSeen();
+  }, [store, messages]);
 
   const selectConversation = useCallback(
     (id: string | null): void => {
-      saveDraft(storage(), activeId, draft);
       // Leaving an administrator's read of someone else's private conversation. Nothing to
       // save and nothing to keep: the messages were never this person's to hold on to.
       setAdminReading(null);
       setPrivacyOpen(false);
-      setActiveId(id);
-      saveOpenConversation(storage(), id);
       setSheetOpen(false);
-      setDraft(loadDraft(storage(), id));
-      if (id === null) {
-        setMessages([]);
-        setThreadState('idle');
-      } else {
-        void loadMessages(id);
-      }
+      void store.open(id);
     },
-    [activeId, draft, loadMessages],
+    [store],
   );
-
-  const onDraftChange = useCallback(
-    (text: string): void => {
-      setDraft(text);
-      saveDraft(storage(), activeId, text);
-    },
-    [activeId],
-  );
-
-  const send = useCallback(
-    async (text: string, replaceLocalId: string | null): Promise<void> => {
-      if (sending) return;
-      const trimmed = text.trim();
-      if (trimmed === '') return;
-      setSending(true);
-      // D76: record the turn as in flight BEFORE it leaves. If the page is discarded while
-      // the answer is still coming, this is the only surviving trace of what was asked — and
-      // on the way back it is either matched against what the server saved (so nothing is
-      // said) or handed back to the composer. Cleared on every completion path below.
-      savePending(storage(), { conversationId: activeId, text: trimmed });
-      setWaiting(true);
-      const localId = replaceLocalId ?? nextLocalId();
-      const userMessage: LocalMessage = {
-        localId,
-        id: null,
-        role: 'user',
-        content: trimmed,
-        status: 'sending',
-      };
-      setMessages((current) =>
-        replaceLocalId === null
-          ? [...current, userMessage]
-          : current.map((m) => (m.localId === replaceLocalId ? userMessage : m)),
-      );
-      if (replaceLocalId === null) {
-        setDraft('');
-        saveDraft(storage(), activeId, '');
-      }
-
-      // A fresh token: supabase-js refreshes it if it is about to expire.
-      const { data } = await supabase.auth.getSession();
-      const accessToken = data.session?.access_token ?? session.access_token;
-
-      // The reply bubble appears with the first token and grows; Copy waits for `done`.
-      const replyLocalId = `${localId}-reply`;
-      let started = false;
-      const outcome = await streamTurn(
-        { chatUrl: webConfig.chatUrl, anonKey: webConfig.anonKey, fetch: fetch.bind(globalThis) },
-        { accessToken, message: trimmed, conversationId: activeId },
-        {
-          onStart: (conversationId) => {
-            // The earliest moment a NEW conversation has an id. Persisting it here — rather
-            // than when the turn completes — is what makes a first message survive the page
-            // being discarded mid-answer.
-            saveOpenConversation(storage(), conversationId);
-            if (activeId === null) setActiveId(conversationId);
-          },
-          onDelta: (text) => {
-            setMessages((current) => {
-              if (!started) {
-                started = true;
-                setWaiting(false);
-                return [
-                  ...current,
-                  {
-                    localId: replyLocalId,
-                    id: null,
-                    role: 'assistant',
-                    content: text,
-                    status: 'streaming',
-                  },
-                ];
-              }
-              return current.map((m) =>
-                m.localId === replyLocalId ? { ...m, content: m.content + text } : m,
-              );
-            });
-          },
-        },
-      );
-      setWaiting(false);
-      // Whatever happens next, the streaming bubble is replaced by a verdict.
-      setMessages((current) => current.filter((m) => m.localId !== replyLocalId));
-
-      if (outcome.kind === 'ok') {
-        setMessages((current) => [
-          ...current.map((m) =>
-            m.localId === localId
-              ? { ...m, id: outcome.userMessageId, status: 'saved' as const }
-              : m,
-          ),
-          {
-            localId: outcome.assistantMessageId,
-            id: outcome.assistantMessageId,
-            role: 'assistant',
-            content: outcome.reply,
-            status: 'saved',
-          },
-        ]);
-        if (activeId === null) setActiveId(outcome.conversationId);
-        void loadConversations();
-        clearPending(storage());
-        setSending(false);
-        return;
-      }
-
-      if (outcome.failure === 'unauthenticated') {
-        setSending(false);
-        await onSessionExpired({ conversationId: activeId, text: trimmed });
-        return;
-      }
-
-      const failed: ChatFailure = outcome;
-      setMessages((current) =>
-        current.map((m) => (m.localId === localId ? { ...m, status: 'failed', error: failed } : m)),
-      );
-      // The failure is on screen as a bubble with a Retry, so the text is not lost and the
-      // in-flight record would only duplicate it on the next load.
-      clearPending(storage());
-      setSending(false);
-    },
-    [activeId, loadConversations, onSessionExpired, sending, session.access_token],
-  );
-
-  const retry = useCallback(
-    (message: LocalMessage): void => {
-      void send(message.content, message.localId);
-    },
-    [send],
-  );
-
-  const discardFailed = useCallback((localId: string): void => {
-    setMessages((current) => current.filter((m) => m.localId !== localId));
-  }, []);
 
   /**
    * One call to the verified endpoint every conversation change uses — and, since part 5,
@@ -460,17 +252,13 @@ export function Assistant({
       const done = await manage({ action: 'delete_conversation', conversationId }, conversationId);
       if (done === null) return;
       // Whatever was on screen is now describing rows that are gone.
-      if (conversationId === activeId) {
-        setActiveId(null);
-        setMessages([]);
-        setThreadState('idle');
-      }
+      if (conversationId === activeId) store.clear();
       setNotice(
         'Conversation deleted. Its messages are gone for good; anything you asked the assistant to remember is still on the Memory page.',
       );
       await loadConversations();
     },
-    [activeId, loadConversations, manage],
+    [activeId, loadConversations, manage, store],
   );
 
   /**
@@ -521,8 +309,7 @@ export function Assistant({
       );
       if (reply?.action !== 'admin_read_conversation') return;
       setSheetOpen(false);
-      setActiveId(null);
-      setMessages([]);
+      store.clear();
       setAdminReading({
         conversationId,
         name: conversationDisplayName(reply.title, reply.authorEmail),
@@ -535,7 +322,7 @@ export function Assistant({
         })),
       });
     },
-    [manage],
+    [manage, store],
   );
 
   const views = useMemo(
@@ -697,6 +484,11 @@ export function Assistant({
             {notice}
           </p>
         )}
+        {thread.notice !== null && (
+          <p className="notice thread-pane__notice" role="status">
+            {thread.notice}
+          </p>
+        )}
         {/* An administrator is reading somebody else's conversation. Say so, say it was
             recorded, and give one way out. Nothing here is editable and there is no
             composer below — an admin reads, and does not join in. */}
@@ -755,16 +547,16 @@ export function Assistant({
           messages={adminReading === null ? messages : [...adminReading.messages]}
           state={adminReading === null ? threadState : 'idle'}
           waiting={adminReading === null && waiting}
-          onRetry={retry}
-          onDiscard={discardFailed}
+          onRetry={store.retry}
+          onDiscard={store.discard}
         />
         {adminReading === null && (
           <Composer
             value={draft}
             disabled={sending}
-            onChange={onDraftChange}
+            onChange={store.setDraft}
             onSend={() => {
-              void send(draft, null);
+              void store.send(draft, null);
             }}
           />
         )}

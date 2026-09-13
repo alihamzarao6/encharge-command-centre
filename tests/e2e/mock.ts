@@ -112,9 +112,68 @@ export interface ScriptedStaff {
   created_at: string;
 }
 
+/**
+ * Milestone 4 part 2: the part-1 mirror of GoHighLevel as the overview reads it under RLS —
+ * the five tables, shaped exactly as PostgREST returns the columns the screen selects.
+ */
+export interface ScriptedGhl {
+  pipelines: { ghl_id: string; name: string; last_changed_at: string }[];
+  stages: {
+    ghl_id: string;
+    pipeline_ghl_id: string;
+    name: string;
+    position: number;
+    removed_at: string | null;
+  }[];
+  opportunities: {
+    ghl_id: string;
+    pipeline_ghl_id: string;
+    stage_ghl_id: string;
+    contact_ghl_id: string | null;
+    name: string;
+    status: string;
+    ghl_created_at: string | null;
+    removed_at: string | null;
+  }[];
+  contacts: {
+    ghl_id: string;
+    full_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    removed_at: string | null;
+  }[];
+  runs: {
+    id: string;
+    pipeline_ghl_id: string;
+    status: string;
+    started_at: string;
+    applied_at: string | null;
+    finished_at: string | null;
+    error_code: string | null;
+    contacts_failed: number | null;
+    contacts_missing: number | null;
+    contacts_rejected: number | null;
+    opportunities_rejected: number | null;
+  }[];
+}
+
+export interface CrmScript {
+  /** Called per POST /functions/v1/crm; may mutate `ghl` the way a real sync would. */
+  respond: (call: number, ghl: ScriptedGhl) => { status: number; body: unknown };
+}
+
 export interface MockOptions {
   /** 'active' → app_users row readable; 'deactivated' → zero rows (RLS); 'banned' → GoTrue refuses. */
   account?: 'active' | 'deactivated' | 'banned' | 'wrong-password';
+  /** The mirror tables. Absent = empty tables, which the overview reads as "not set up". */
+  ghl?: ScriptedGhl;
+  /** Every `ghl_*` read answers 401 (an expired session at PostgREST) until a test says otherwise. */
+  ghlUnauthorized?: boolean;
+  /** Every `ghl_*` read answers 500 until a test flips `state.ghlFailing`. */
+  ghlFailing?: boolean;
+  /** Every `ghl_*` read waits this long first — a slow connection. */
+  ghlDelayMs?: number;
+  crm?: CrmScript;
   admin?: boolean;
   /** Everyone BESIDES the signed-in user. Their own row is always present when active. */
   roster?: ScriptedStaff[];
@@ -171,6 +230,20 @@ export interface MockState {
   readonly adminReads: string[];
   /** Every password the scripted admin endpoint has generated, so a test can look for leaks. */
   readonly issuedPasswords: string[];
+  /** Milestone 4 part 2: the mirror as the overview reads it; a test may change it mid-way. */
+  readonly ghl: ScriptedGhl;
+  /** Every POST to /functions/v1/crm — the only sanctioned way the mirror is refreshed. */
+  readonly crmCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  /** Every `ghl_*` read the app made, by table, so a test can prove nothing was read twice. */
+  readonly ghlReads: string[];
+  ghlUnauthorized: boolean;
+  ghlFailing: boolean;
+  ghlDelayMs: number;
+}
+
+/** A mirror with nothing in it: the sync has never run. */
+export function emptyGhl(): ScriptedGhl {
+  return { pipelines: [], stages: [], opportunities: [], contacts: [], runs: [] };
 }
 
 function json(
@@ -235,8 +308,15 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     })),
     adminReads: [],
     issuedPasswords: [],
+    ghl: options.ghl ?? emptyGhl(),
+    crmCalls: [],
+    ghlReads: [],
+    ghlUnauthorized: options.ghlUnauthorized === true,
+    ghlFailing: options.ghlFailing === true,
+    ghlDelayMs: options.ghlDelayMs ?? 0,
   };
   let chatCall = 0;
+  let crmCall = 0;
   let newRow = 0;
   let newPerson = 0;
 
@@ -305,6 +385,59 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         code: '42501',
         message: `permission denied for table ${path.replace('/rest/v1/', '')}`,
       });
+      return;
+    }
+
+    // ---- the GoHighLevel mirror (Milestone 4 part 2) ----
+    // Five selects under RLS, answered from `state.ghl` with the filters the overview sends
+    // (`removed_at=is.null`, `status=eq.open`, `ghl_id=in.(…)`, `limit`) honoured, so a test
+    // that scripts a removed or a won opportunity proves the screen never shows it.
+    if (path.startsWith('/rest/v1/ghl_')) {
+      const table = path.slice('/rest/v1/'.length);
+      state.ghlReads.push(table);
+      if (state.ghlDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, state.ghlDelayMs));
+      }
+      if (state.ghlUnauthorized) {
+        await json(route, 401, { code: 'PGRST301', message: 'JWT expired' });
+        return;
+      }
+      if (state.ghlFailing) {
+        await json(route, 500, { code: 'XX000', message: 'scripted failure' });
+        return;
+      }
+      const limit = Number(url.searchParams.get('limit') ?? '1000');
+      const ghl = state.ghl;
+      let rows: unknown[] = [];
+      switch (table) {
+        case 'ghl_pipelines':
+          rows = ghl.pipelines;
+          break;
+        case 'ghl_stages':
+          rows = ghl.stages;
+          break;
+        case 'ghl_opportunities': {
+          const liveOnly = url.searchParams.get('removed_at') === 'is.null';
+          const openOnly = url.searchParams.get('status') === 'eq.open';
+          rows = ghl.opportunities.filter(
+            (o) => (!liveOnly || o.removed_at === null) && (!openOnly || o.status === 'open'),
+          );
+          break;
+        }
+        case 'ghl_contacts': {
+          const filter = url.searchParams.get('ghl_id') ?? '';
+          const wanted = /^in\.\((.*)\)$/.exec(filter)?.[1]?.split(',') ?? null;
+          rows =
+            wanted === null ? ghl.contacts : ghl.contacts.filter((c) => wanted.includes(c.ghl_id));
+          break;
+        }
+        case 'ghl_sync_runs':
+          rows = [...ghl.runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
+          break;
+        default:
+          break;
+      }
+      await json(route, 200, rows.slice(0, limit));
       return;
     }
 
@@ -718,6 +851,54 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       return;
     }
 
+    // ---- the crm Edge Function (Milestone 4 part 2) ----
+    // Faithful to src/lib/crm/ghl/page.ts on what the interface depends on: the default
+    // answer is a successful run, written to the mirror's run rows the way the real sync
+    // writes them, so the screen's re-read finds a fresh `applied_at`. A script replaces it.
+    if (path === '/functions/v1/crm' && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.crmCalls.push({ body, authorization: request.headers()['authorization'] ?? null });
+      crmCall += 1;
+      const script: CrmScript = options.crm ?? {
+        respond: (call, ghl) => {
+          const now = new Date().toISOString();
+          const runId = `run-refresh-${String(call)}`;
+          const pipeline = ghl.pipelines[0]?.ghl_id ?? 'M4unnMKBy0TgwCwOA6wS';
+          ghl.runs.unshift({
+            id: runId,
+            pipeline_ghl_id: pipeline,
+            status: 'success',
+            started_at: now,
+            applied_at: now,
+            finished_at: now,
+            error_code: null,
+            contacts_failed: 0,
+            contacts_missing: 0,
+            contacts_rejected: 0,
+            opportunities_rejected: 0,
+          });
+          const open = ghl.opportunities.filter(
+            (o) => o.status === 'open' && o.removed_at === null,
+          );
+          return {
+            status: 200,
+            body: {
+              action: 'sync',
+              status: 'success',
+              runId,
+              durationMs: 1_200,
+              opportunitiesFetched: open.length,
+              contactsFetched: ghl.contacts.length,
+              contactsUnread: 0,
+            },
+          };
+        },
+      };
+      const answer = script.respond(crmCall, state.ghl);
+      await json(route, answer.status, answer.body);
+      return;
+    }
+
     // ---- the chat Edge Function ----
     if (path === '/functions/v1/chat' && method === 'POST') {
       const body = request.postDataJSON() as { message: string; conversationId?: string };
@@ -774,8 +955,13 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
   return state;
 }
 
-export async function signIn(page: Page): Promise<void> {
-  await page.goto('/');
+/**
+ * Sign in from `path`. Milestone 4 part 2 gave every section an address and made the
+ * overview the landing screen; the assistant suites pass '/assistant' to land where they
+ * used to, and the overview suite proves that '/' lands on the numbers.
+ */
+export async function signIn(page: Page, path = '/'): Promise<void> {
+  await page.goto(path);
   await page.getByLabel('Email').fill(EMAIL);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

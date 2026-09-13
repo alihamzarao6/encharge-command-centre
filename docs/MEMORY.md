@@ -19,12 +19,12 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug) for *what* is built — the B2B outbound lead-research engine is **out of scope**, see D23. **The 1 Sep 2026 milestones document for *how it is delivered and paid*: eight milestones, 2,000 USD total (D77)** — the six-stage map (D26, D27) is superseded |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
-| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: the GoHighLevel read-and-sync layer is staged (12 Sep entry, not committed).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
+| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: the GoHighLevel read-and-sync layer is committed and pushed (12 Sep entry; `924489b`, test fixes `85a368f` + `b9e35e1`, 13 Sep); the layout shell + overview screen is staged, NOT committed (13 Sep entry).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
-| Next task | **Milestone 4, part 1 — the screen**: the app rebuilt as a working screen rather than a chat window, the client's numbers and lists up front, the assistant as a panel beside them. Nothing is started until the part's brief arrives |
+| Next task | **Review of "Milestone 4, Part 2 — Layout shell and overview screen" (13 Sep entry) → push → CI → deploy `crm` + secrets (RUNBOOK §1d) → first Refresh from the app.** Then the next brief: the pipeline board and the leads list (Part 3), lead detail and moving a lead (Part 4) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
-| Known broken | Nothing outstanding. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
+| Last regression run | **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Known broken | The `crm` Edge Function is not deployed and the part-1 migration is not applied to the live project — the deployed app still serves the Milestone 3 bundle; after deploy the overview will read "Not set up yet" until the first Refresh (expected, RUNBOOK §1d). Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
 ---
@@ -132,6 +132,91 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-09-13 — [M4 part 2 · Layout shell + overview] The app opens on his data — staged, NOT committed
+
+**Did:** The app is data-first. **Routes** (`web/src/lib/routes.ts`, no router dependency —
+`pushState`/`popstate` in `Shell.tsx`): `/` is the **Overview**, `/assistant` the Assistant's
+full page (unchanged in behaviour), `/memory`, `/team`; unknown paths and the old single URL
+land on the overview; signing in never touches the path, so a deep link opened while signed
+out lands where it pointed. **Nav shows only what exists** — the `content` / `ads` placeholders
+and `NotYet.tsx` are gone. **One thread, two surfaces:** the conversation state that lived in
+`Assistant.tsx` (active id, messages, turn in flight, draft, the D76 restore) moved unchanged
+into a framework-free store, `web/src/lib/thread.ts`, created once per sign-in in `Shell.tsx`
+and read by both the Assistant page and the new **docked panel** (`AssistantPanel.tsx`: thread
++ composer + "+ New" + "Full page"; the page keeps history, rename, privacy, admin views). A
+reply that lands while the person is elsewhere waits in the store and the "Ask" button says
+so (`unseenReply`). **Overview** (`Overview.tsx` over the pure `overviewView.ts`): open leads,
+new this week, leads per stage BY ID in pipeline order (zeros shown; a removed stage and a
+stage id the pipeline never listed are shown with their counts, in words), the five most
+recent arrivals named from `ghl_contacts` where the sync has the row; freshness from the last
+applied run ("Updated 12 minutes ago" → amber past an hour → red past a day with a nudge);
+running / stuck / failed / partial / capped states as sentences; Refresh POSTs the new **`crm`
+Edge Function** (`src/lib/crm/ghl/page.ts`, `src/lib/crm/ghl/wiring.ts`, `src/functions/crm/`,
+`config.toml`, `bundle-functions.ts`) which verifies the caller, runs `runGhlSync` with
+`trigger 'api'` + `triggered_by`, and answers ids/counts (200), 409 `SYNC_RUNNING`, or 502 with
+a sentence naming the cause; the screen polls `ghl_sync_runs` every 4 s while a run is in
+progress and re-reads on tab focus. Reads are the five `ghl_*` tables via PostgREST under RLS
+(`WebDatabase` gained them); a 401 from PostgREST sends the person to login. `web:check`
+gains the `pit-<uuid>` shape + `GHL_PRIVATE_INTEGRATION_TOKEN` value. New CSS: visible
+`:focus-visible` on everything interactive, `prefers-reduced-motion`, the overview, the panel
+(phone = full-screen sheet; 768 = drawer with no backdrop so the nav stays reachable; 1280 =
+docked third column). **Tests:** unit — `overview.test.ts` (24: routes, every number and state
+against known rows, the refresh client), `thread.test.ts` (11: two subscribers one state,
+D76, failures, 401), `crm/ghl/page.test.ts` (14), `bundleCheck` +2, `pure` updated;
+integration — `overview.test.ts` (5, stack: a known snapshot through the part-1 functions,
+read back under RLS as a member exactly as the screen reads, view identical to the
+service-role view); browser — `overview.spec.ts` (27 × 3 widths; 3 phone/tablet skips by
+design), the five existing suites re-pointed at `/assistant` (201/201). Docs: RUNBOOK §1d
+(deploy `crm`, the four `GHL_*` secrets, "Not set up yet" is expected first), SECURITY §12,
+TESTING §8, TASKS.
+**Decided (Part A, before code):** (1) *Routes* — paths per section, overview default,
+unknown → overview, no 404 page (nothing was ever linked that could be missing), no
+dependency added. (2) *Shared state* — one store, `useSyncExternalStore`, both surfaces
+subscribe; the panel never shows on `/assistant` (same thread twice), so "both open" cannot
+happen; a turn in flight belongs to the store, not a component, so closing the panel or
+changing screen mid-stream loses nothing. (3) *What the overview shows* — open leads, new
+this week, per stage, five most recent; **no value tile** (every opportunity carries 0 today,
+"$0" reads as a fact), no conversion rate, no trend: everything traces to a row. (4)
+*Freshness* — `applied_at` of the last run that wrote rows, relative in words, three tones
+with a word and a dot (never colour alone); a failed or partial last run is a sentence above
+the numbers; Refresh is manual, open to any active member (a read of GHL + a rewrite of a
+mirror they can already read; `triggered_by` is the audit); a client-side timeout says "will
+update on its own", never "failed", because the server may still finish. (5) *375* — a docked
+column has no room; the panel is a full-screen sheet over the screen, the screen's state and
+scroll kept underneath, close = ✕ or Escape, focus back to the button.
+**Surprised by:** (1) **CI's first run of the part-1 stack suites failed 4 of 7** — the changed
+custom-fields fixture had inherited the unit fixture's deliberately broken definition (a
+rejected definition = incomplete read = removals skipped = `partial`), and test 5 applied an
+empty snapshot to a retired run and got 22023 before the 55006 it asserted, leaving its run
+slot `running` so 6 and 7 read `refused`. Fixed in `85a368f`. The re-run then showed
+`custom_fields_removed` **2, not 1**: the definition contact 2 carried was stored only because
+a synced contact carried it, and contact 2's opportunity is deleted in that fixture — the
+sync's own rule; fixed the expectation in `b9e35e1`. **Follow-up for part 1, not patched
+here:** `ghl_custom_fields.removed_at` is documented as "the definitions read no longer lists
+the field" but is also set when a definition merely leaves the folder-or-in-play filter;
+harmless for display, worth a clearer name or a removal check against the full read. The
+third run then reached `tests/security/ghl.test.ts`: `pg_policies.roles` is `name[]`, which
+node-pg returns as the text `{authenticated}`, not an array — cast to `text[]` in `096b396`.
+Three commits to get part 1's stack suites through CI, none of them a code change. (2) CI
+sat `queued` for ~2 h with Actions reporting operational; cancel + rerun unstuck it. (3) The
+existing `MESSAGES.sessionExpired` says "your message has been kept" — the overview's 401
+path shows that sentence too (it is App-level); a neutral variant is a small follow-up. (4)
+Chrome renders the populated tile 2 px taller than its skeleton; min-height 120 covers both.
+(5) `en-AU` short September is "Sept". (6) **A staged deletion (`git rm NotYet.tsx`, part-2
+work) was swept into the part-1 test-fix commit `b9e35e1`** because `git commit` takes the
+whole index — main briefly imported a missing file; restored in `8da674d`. Rule from now on:
+`git commit` only with `git diff --cached --stat` checked first, and never `git rm` on a tree
+that also holds unreviewed work.
+**Not verified:** CI for this part (do not commit / push — the two Part 1 test fixes ARE
+pushed and CI is running on `b9e35e1`); the stack half (`overview.test.ts`) ran nowhere but
+CI once pushed; the `crm` function is not deployed and no refresh has run from the app against
+the live project; five-digit counts are proven at unit level (`formatCount`) and by the tile's
+font clamp, in the browser only four digits (the 2,000 read cap); "reduced motion" is proven
+on computed durations, not by eye.
+**Next:** reviewer reads this → push → CI → `supabase db push` + secrets + `functions deploy
+crm` (RUNBOOK §1d) → first Refresh from the app → M4 part 3: the pipeline board and the leads
+list.
 
 ### 2026-09-12 — [M4 part 1 · GHL read + sync] The data layer under the screen — staged, NOT committed
 **Did:** The GoHighLevel read-and-sync layer, read-only against GHL. **One migration**

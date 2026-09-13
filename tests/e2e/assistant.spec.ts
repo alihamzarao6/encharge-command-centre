@@ -106,7 +106,7 @@ test.describe('login', () => {
     page,
   }) => {
     const state = await installMock(page, { account: 'banned' });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await expect(page.getByRole('alert')).toHaveText(
       'This account has been deactivated. Contact your administrator.',
     );
@@ -130,7 +130,7 @@ test.describe('login', () => {
 
   test('session persists across a reload', async ({ page }) => {
     await installMock(page);
-    await signIn(page);
+    await signIn(page, '/assistant');
     await expect(page.getByRole('heading', { name: 'What do you want to say?' })).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'What do you want to say?' })).toBeVisible();
@@ -143,7 +143,7 @@ test.describe('assistant', () => {
     page,
   }, testInfo) => {
     const state = await installMock(page);
-    await signIn(page);
+    await signIn(page, '/assistant');
     await expect(page.getByRole('heading', { name: 'What do you want to say?' })).toBeVisible();
     await expectInputsAtLeast16px(page);
     await expectNoHorizontalScroll(page);
@@ -214,7 +214,7 @@ test.describe('assistant', () => {
         }),
       },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Write a post');
     await page.getByRole('button', { name: 'Send' }).click();
     const alert = page.getByRole('alert');
@@ -265,7 +265,7 @@ test.describe('assistant', () => {
               },
       },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     const composer = page.getByPlaceholder('Ask for a post, an ad, a reply…');
     await composer.fill('First');
     await page.getByRole('button', { name: 'Send' }).click();
@@ -308,7 +308,7 @@ test.describe('assistant', () => {
         await route.fallback();
       }
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Keep me');
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('alert')).toContainText("Couldn't reach the assistant.");
@@ -358,7 +358,7 @@ test.describe('assistant', () => {
         },
       },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Do not lose this');
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('status')).toHaveText(
@@ -399,7 +399,7 @@ test.describe('assistant', () => {
         ],
       },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     const width = page.viewportSize()?.width ?? 0;
     if (width < 768) {
       await page.getByRole('button', { name: 'Open conversations' }).click();
@@ -416,21 +416,26 @@ test.describe('assistant', () => {
     await expectNoHorizontalScroll(page);
   });
 
-  test('the not-yet sections are visible, labelled with their stage, and honest', async ({
+  test('the navigation shows only what exists — no placeholder for a later milestone', async ({
     page,
   }) => {
     await installMock(page);
-    await signIn(page);
-    // Stage 3 part 3: Memory is live now, so the honest placeholders are Content and Ads.
-    await page.getByRole('button', { name: /Memory/ }).click();
+    await signIn(page, '/assistant');
+    // Milestone 4 part 2: the two "not yet built" entries are gone. An entry that opens a page
+    // saying so invites a tap and returns nothing.
+    const nav = page.getByRole('navigation', { name: 'Sections' });
+    await expect(nav.getByRole('button')).toHaveCount(4);
+    await expect(nav.getByRole('button')).toContainText([
+      'Overview',
+      'Assistant',
+      'Memory',
+      'Team',
+    ]);
+    await expect(page.getByText(/not yet/i)).toHaveCount(0);
+    await nav.getByRole('button', { name: /Memory/ }).click();
     await expect(page.getByRole('heading', { name: 'Memory' })).toBeVisible();
-    await expect(page.getByText('not yet built')).toHaveCount(0);
-    await page.getByRole('button', { name: /Content/ }).click();
-    await expect(page.getByText('Stage 5 · not yet built')).toBeVisible();
-    await page.getByRole('button', { name: /Ads/ }).click();
-    await expect(page.getByText('Stage 5 · not yet built')).toBeVisible();
     await expectNoHorizontalScroll(page);
-    await page.getByRole('button', { name: /Assistant/ }).click();
+    await nav.getByRole('button', { name: /Assistant/ }).click();
     await expect(page.getByRole('heading', { name: 'What do you want to say?' })).toBeVisible();
   });
 });
@@ -469,7 +474,7 @@ test.describe('streaming', () => {
         body: `: open\n\n${head}${tail}`,
       });
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Write a post');
     await page.getByRole('button', { name: 'Send' }).click();
     // Before any byte: progress bubble, no reply bubble, no Copy on a reply.
@@ -489,7 +494,7 @@ test.describe('streaming', () => {
     await installMock(page, {
       chat: { respond: (_input, call) => ({ sse: sseDone(reply, call), truncate: true }) },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Write a post');
     await page.getByRole('button', { name: 'Send' }).click();
     const alert = page.getByRole('alert');
@@ -526,7 +531,7 @@ test.describe('streaming', () => {
         }),
       },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Write a post');
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('alert')).toContainText('The assistant returned an empty reply.');
@@ -539,7 +544,7 @@ test.describe('streaming', () => {
     await installMock(page, {
       chat: { respond: (_input, call) => ({ sse: sseDone(reply, call) }) },
     });
-    await signIn(page);
+    await signIn(page, '/assistant');
     await page.getByPlaceholder('Ask for a post, an ad, a reply…').fill('Write a post');
     await page.getByRole('button', { name: 'Send' }).click();
     const bubble = page.locator('[data-role="assistant"][data-status="saved"]');

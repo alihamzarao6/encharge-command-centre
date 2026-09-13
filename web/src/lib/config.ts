@@ -13,6 +13,8 @@ export interface WebConfig {
   readonly memoryUrl: string;
   /** Stage 3 part 4: the users page's write endpoint. The roster is read under RLS. */
   readonly adminUrl: string;
+  /** Milestone 4 part 2: the overview's refresh endpoint. The mirror is read under RLS. */
+  readonly crmUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -29,5 +31,6 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
     chatUrl: `${supabaseUrl}/functions/v1/chat`,
     memoryUrl: `${supabaseUrl}/functions/v1/memory`,
     adminUrl: `${supabaseUrl}/functions/v1/admin`,
+    crmUrl: `${supabaseUrl}/functions/v1/crm`,
   };
 }

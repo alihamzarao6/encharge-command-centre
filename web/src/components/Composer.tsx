@@ -5,6 +5,10 @@ interface Props {
   readonly disabled: boolean;
   readonly onChange: (text: string) => void;
   readonly onSend: () => void;
+  /** Milestone 4 part 2: the panel's composer needs its own id beside the page's. */
+  readonly inputId?: string;
+  /** Focus the box on mount — the panel opens ready to type. */
+  readonly autoFocus?: boolean;
 }
 
 export const MAX_MESSAGE_CHARS = 8_000;
@@ -14,7 +18,14 @@ function enterSends(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches;
 }
 
-export function Composer({ value, disabled, onChange, onSend }: Props): ReactElement {
+export function Composer({
+  value,
+  disabled,
+  onChange,
+  onSend,
+  inputId = 'composer-input',
+  autoFocus = false,
+}: Props): ReactElement {
   const area = useRef<HTMLTextAreaElement>(null);
 
   // Grow with the text up to a cap, so a long brief is visible without a tiny scrollbox.
@@ -24,6 +35,10 @@ export function Composer({ value, disabled, onChange, onSend }: Props): ReactEle
     node.style.height = 'auto';
     node.style.height = `${String(Math.min(node.scrollHeight, 160))}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (autoFocus) area.current?.focus();
+  }, [autoFocus]);
 
   const canSend = !disabled && value.trim() !== '' && value.length <= MAX_MESSAGE_CHARS;
 
@@ -42,11 +57,11 @@ export function Composer({ value, disabled, onChange, onSend }: Props): ReactEle
         if (canSend) onSend();
       }}
     >
-      <label className="sr-only" htmlFor="composer-input">
+      <label className="sr-only" htmlFor={inputId}>
         Message
       </label>
       <textarea
-        id="composer-input"
+        id={inputId}
         ref={area}
         className="composer__input"
         placeholder="Ask for a post, an ad, a reply…"

@@ -51,6 +51,12 @@ const SHAPES: readonly { readonly name: string; readonly pattern: RegExp }[] = [
   // Stage 3: Voyage keys are `pa-` + a long token. The length bound is what keeps this from
   // matching ordinary minified identifiers that happen to contain "pa-".
   { name: 'voyage-key-shape', pattern: /pa-[A-Za-z0-9_-]{30,}/ },
+  // Milestone 4: a GoHighLevel Private Integration token is `pit-` + a UUID. It is read by
+  // one server-side module and has no VITE_ name (PHASE-ACCEPTANCE Milestone 4 item 4).
+  {
+    name: 'ghl-token-shape',
+    pattern: /pit-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  },
   {
     name: 'jwt-shape',
     pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
@@ -113,6 +119,8 @@ export function scan(
     // Stage 3: the Voyage key is server-side only (memory/config.ts is its sole reader) and
     // has no VITE_ name, so this is the proof rather than the hope.
     ['VOYAGE_API_KEY', env['VOYAGE_API_KEY']],
+    // Milestone 4: the GoHighLevel token, same rule — server-side only, no VITE_ name.
+    ['GHL_PRIVATE_INTEGRATION_TOKEN', env['GHL_PRIVATE_INTEGRATION_TOKEN']],
   ] as const;
 
   for (const file of files) {

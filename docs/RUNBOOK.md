@@ -171,6 +171,46 @@ Notes that will otherwise cost an hour:
   test 9 asserts a deactivated account still reads zero rows, but the live smoke test is a
   sign-out and a sign-in.
 
+### 1d. Deploying the overview and the crm refresh endpoint (Milestone 4 part 2)
+
+A **fourth** Edge Function, `crm`, and the first time the running system reads GoHighLevel.
+The migration is part 1's (`20260912010000_ghl_sync.sql`). In order, from the repo root:
+
+```bash
+supabase db push                 # 20260912010000 — six ghl_* tables, RLS forced, three functions
+supabase secrets set --project-ref mxdfptqdshdgdszizlbo \
+  GHL_PRIVATE_INTEGRATION_TOKEN=pit-… \
+  GHL_LOCATION_ID=tgw5Q3BnoZoSsVOnRUxB \
+  GHL_PIPELINE_ID=M4unnMKBy0TgwCwOA6wS \
+  GHL_CUSTOM_FIELD_FOLDER_IDS=BEFyPDjs8dlcpRuz3ZcL,fA9zYqgDoZUUN5CKnb5G
+npm run functions:bundle         # writes all FOUR supabase/functions/{chat,memory,admin,crm}/index.ts
+supabase functions deploy crm --no-verify-jwt
+npm run web:build && npm run web:check && vercel deploy --prod
+```
+
+Notes:
+
+- `crm` reads the **same** `CHAT_ALLOWED_ORIGIN` as the other three. It needs the four `GHL_*`
+  values above (the caps have defaults — `.env.example` lists them) and the platform-injected
+  `SUPABASE_*` values, and nothing else. The GoHighLevel token exists in exactly two places
+  once this is live: the Supabase secrets of this function, and the n8n credential store.
+  Never a `VITE_` name — `npm run web:check` greps the built app for the `pit-` shape.
+- **The first thing the client sees after this deploy is "Not set up yet"**: the mirror is
+  empty until a refresh runs. Press Refresh on the overview (any active member can), or run
+  `npm run crm -- sync` from a machine with the `.env`. Either way the run lands in
+  `ghl_sync_runs` with who triggered it, and `npm run crm -- runs` shows it.
+- A refresh takes ~13 GoHighLevel requests for today's pipeline of ten. The Edge runtime's
+  wall-clock limit is far above that; the part-1 caps (`GHL_MAX_PAGES`,
+  `GHL_MAX_CONTACTS_PER_RUN`) make a pipeline too big for one request a loud failure rather
+  than a silent partial. Revisit before ~2,000 contacts (MEMORY.md 12 Sep, Part A decision 3).
+- **"The last refresh failed (UNAUTHENTICATED)" on the overview means the token was
+  rejected.** The numbers on screen are from the last successful refresh and the screen says
+  so; the fix is a new Private Integration token in GoHighLevel and a `supabase secrets set`.
+  This is the failure that sat unnoticed on this project once; it is now a sentence on the
+  landing screen.
+- There is no scheduled refresh yet. The client refreshes by hand; a schedule is an n8n
+  workflow calling this function, which is a later part.
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.

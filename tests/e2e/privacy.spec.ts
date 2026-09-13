@@ -89,7 +89,7 @@ async function open(page: Page, options: MockOptions = {}) {
     ...options,
   });
   await seedStoredSession(page);
-  await page.goto('/');
+  await page.goto('/assistant');
   await expect(page.getByRole('button', { name: '+ New', exact: true })).toBeVisible();
   return state;
 }

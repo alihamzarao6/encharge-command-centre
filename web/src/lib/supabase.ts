@@ -15,6 +15,13 @@ import { webConfig } from './env.js';
 // app expects a row type to come from.
 import type { ConversationListRow } from './conversationsView.js';
 import type { MemoryChunkRow, MemoryFactRow } from './memoryView.js';
+import type {
+  GhlContactRow,
+  GhlOpportunityRow,
+  GhlPipelineRow,
+  GhlStageRow,
+  GhlSyncRunRow,
+} from './overviewView.js';
 import type { AppUserRow } from './usersView.js';
 
 export type { AppUserRow, ConversationListRow, MemoryChunkRow, MemoryFactRow };
@@ -67,6 +74,39 @@ export type WebDatabase = {
         Row: MemoryChunkRow;
         Insert: Partial<MemoryChunkRow>;
         Update: Partial<MemoryChunkRow>;
+        Relationships: [];
+      };
+      // Milestone 4 part 1's mirror of GoHighLevel, read by the overview (part 2). SELECT for
+      // active staff and nothing else (migration 20260912010000); refreshed only by the crm
+      // endpoint, which holds the service role and the GoHighLevel token.
+      ghl_pipelines: {
+        Row: GhlPipelineRow;
+        Insert: Partial<GhlPipelineRow>;
+        Update: Partial<GhlPipelineRow>;
+        Relationships: [];
+      };
+      ghl_stages: {
+        Row: GhlStageRow;
+        Insert: Partial<GhlStageRow>;
+        Update: Partial<GhlStageRow>;
+        Relationships: [];
+      };
+      ghl_opportunities: {
+        Row: GhlOpportunityRow;
+        Insert: Partial<GhlOpportunityRow>;
+        Update: Partial<GhlOpportunityRow>;
+        Relationships: [];
+      };
+      ghl_contacts: {
+        Row: GhlContactRow;
+        Insert: Partial<GhlContactRow>;
+        Update: Partial<GhlContactRow>;
+        Relationships: [];
+      };
+      ghl_sync_runs: {
+        Row: GhlSyncRunRow;
+        Insert: Partial<GhlSyncRunRow>;
+        Update: Partial<GhlSyncRunRow>;
         Relationships: [];
       };
     };

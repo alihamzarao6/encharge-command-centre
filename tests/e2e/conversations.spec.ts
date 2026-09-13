@@ -70,7 +70,7 @@ const TWO = [
 async function open(page: Page, options: MockOptions = {}) {
   const state = await installMock(page, { conversations: TWO, ...options });
   await seedStoredSession(page);
-  await page.goto('/');
+  await page.goto('/assistant');
   await expect(page.getByRole('button', { name: '+ New', exact: true })).toBeVisible();
   return state;
 }

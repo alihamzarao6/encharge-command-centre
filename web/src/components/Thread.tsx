@@ -1,21 +1,11 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 
-import type { ChatFailure } from '../lib/chatApi.js';
 import { browserClipboardDeps, copyText } from '../lib/clipboard.js';
 import { splitNotes } from '../lib/notes.js';
+import type { ThreadMessage } from '../lib/thread.js';
 
-export interface LocalMessage {
-  readonly localId: string;
-  readonly id: string | null;
-  readonly role: 'user' | 'assistant';
-  readonly content: string;
-  /**
-   * saved — on the server; sending — the user's message, in flight; streaming — the reply,
-   * arriving; failed — the user's message, with the reason and (maybe) the partial reply.
-   */
-  readonly status: 'saved' | 'sending' | 'streaming' | 'failed';
-  readonly error?: ChatFailure;
-}
+/** Milestone 4 part 2: the shape now lives with the shared store; the name stays. */
+export type LocalMessage = ThreadMessage;
 
 interface Props {
   readonly messages: readonly LocalMessage[];
@@ -24,6 +14,8 @@ interface Props {
   readonly waiting: boolean;
   readonly onRetry: (message: LocalMessage) => void;
   readonly onDiscard: (localId: string) => void;
+  /** The page and the panel each have a thread; tests tell them apart by this. */
+  readonly testId?: string;
 }
 
 /** Honest progress: how long the wait has been, and a word when it is running long. */
@@ -110,7 +102,14 @@ function AssistantContent({ content }: { readonly content: string }): ReactEleme
   );
 }
 
-export function Thread({ messages, state, waiting, onRetry, onDiscard }: Props): ReactElement {
+export function Thread({
+  messages,
+  state,
+  waiting,
+  onRetry,
+  onDiscard,
+  testId = 'thread',
+}: Props): ReactElement {
   const scroller = useRef<HTMLDivElement>(null);
 
   // Scroll the thread container, never the page: the composer and the header stay put.
@@ -120,7 +119,7 @@ export function Thread({ messages, state, waiting, onRetry, onDiscard }: Props):
   }, [messages, waiting]);
 
   return (
-    <div className="thread" ref={scroller} data-testid="thread">
+    <div className="thread" ref={scroller} data-testid={testId}>
       {state === 'loading' && <p className="muted thread__note">Loading conversation…</p>}
       {state === 'error' && (
         <p className="error thread__note">

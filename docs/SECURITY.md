@@ -515,8 +515,17 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
   rule). The M4 part 1 client (`src/lib/crm/ghl/client.ts`) issues GETs and nothing else —
   the same test greps it for a write verb. Every read is scoped by `GHL_PIPELINE_ID`,
   verified against the pipelines list before a sync; the logger redacts the `pit-` shape.
-- The token lives in `.env` and in the n8n credential store. It was sent over WhatsApp and
-  the message was deleted after receipt.
+- **Milestone 4 part 2: the running system reads GoHighLevel through one Edge Function,
+  `crm`** (`src/functions/crm/index.ts` over `src/lib/crm/ghl/page.ts`). It verifies the
+  bearer token itself, accepts one action (`sync`) from any active allowlisted member, runs
+  the part-1 sync with `triggered_by` set to that person, and answers with ids and counts
+  only. The browser never holds the token and never talks to GoHighLevel: it reads the
+  mirror under RLS and asks the server to refresh it. `npm run web:check` greps the built
+  app for the `pit-<uuid>` shape and for the token's value (T11 rule, same as the Anthropic
+  and Voyage keys); `tests/security/ghl.test.ts` still asserts nothing under `web/src`
+  names the client, the token or the origin.
+- The token lives in `.env`, in the `crm` function's Supabase secrets, and in the n8n
+  credential store. It was sent over WhatsApp and the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.
 - A leaked over-scoped token would expose the client's entire CRM — contacts, conversations,
   payments, calendars. Minimum scope is the whole defence here.
