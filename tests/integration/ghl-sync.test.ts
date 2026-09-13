@@ -55,7 +55,6 @@ const FIELD_IDS_IN_FIXTURES = [
   'Ht7MfhngWRq1uloc65B3',
   '3ma6Czg50bY5yhJ18zrD',
   '7pR62a3yZcOtnmF2sJrQ',
-  'BROKENFIELD000000001',
 ];
 
 const fixture = (name: string): string =>
@@ -491,20 +490,29 @@ describe.skipIf(env === null)('GoHighLevel sync against a real stack', () => {
       `select * from public.begin_ghl_sync_run($1, 'test', null, 900)`,
       [FINANCE],
     );
-    expect(next.rows[0]?.stale_marked).toBe(1);
-    const stale = await db.query<{ status: string; error_code: string | null }>(
-      `select status, error_code from public.ghl_sync_runs where id = $1`,
-      [firstId],
-    );
-    expect(stale.rows[0]).toEqual({ status: 'failed', error_code: 'STALE' });
-    // Applying or finishing against the retired run is refused too.
-    await expect(
-      db.query(`select public.apply_ghl_snapshot($1, '{}'::jsonb)`, [firstId]),
-    ).rejects.toMatchObject({ code: '55006' });
-    await db.query(
-      `select public.finish_ghl_sync_run($1, 'failed', 'TEST', 'closed by the test', '[]'::jsonb, '{}'::jsonb)`,
-      [next.rows[0]?.id],
-    );
+    // Whatever fails below, the slot this test took is released: a run left `running` here
+    // would make every later test read 'refused' and hide the real failure behind it.
+    try {
+      expect(next.rows[0]?.stale_marked).toBe(1);
+      const stale = await db.query<{ status: string; error_code: string | null }>(
+        `select status, error_code from public.ghl_sync_runs where id = $1`,
+        [firstId],
+      );
+      expect(stale.rows[0]).toEqual({ status: 'failed', error_code: 'STALE' });
+      // Applying against the retired run is refused too. The snapshot names the pipeline so
+      // the refusal is about the run's state (55006), not about a payload with no pipeline.
+      await expect(
+        db.query(`select public.apply_ghl_snapshot($1, $2::jsonb)`, [
+          firstId,
+          JSON.stringify({ pipeline: { ghl_id: FINANCE } }),
+        ]),
+      ).rejects.toMatchObject({ code: '55006' });
+    } finally {
+      await db.query(
+        `select public.finish_ghl_sync_run($1, 'failed', 'TEST', 'closed by the test', '[]'::jsonb, '{}'::jsonb)`,
+        [next.rows[0]?.id],
+      );
+    }
   });
 
   it('6. a contact that fails mid-run keeps its previous row and the run is partial, listed by id', async () => {

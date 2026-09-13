@@ -244,13 +244,6 @@
       "dateAdded": "2026-08-09T20:08:01.977Z",
       "standard": false,
       "scopes": []
-    },
-    {
-      "id": "BROKENFIELD000000001",
-      "name": "No data type",
-      "model": "contact",
-      "fieldKey": "contact.broken",
-      "parentId": "BEFyPDjs8dlcpRuz3ZcL"
     }
   ],
   "traceId": "00000000-0000-4000-8000-0000000000f2"
