@@ -275,7 +275,8 @@ describe.skipIf(env === null)('GHL mirror RLS (requires a running Supabase stack
 
   it('no policy on a GHL table grants anything but SELECT, and only to authenticated', async () => {
     const policies = await db.query<{ tablename: string; cmd: string; roles: string[] }>(
-      `select tablename, cmd, roles from pg_policies where schemaname = 'public' and tablename = any($1)`,
+      // roles is name[], which node-pg hands back as text ('{authenticated}'); text[] it parses.
+      `select tablename, cmd, roles::text[] as roles from pg_policies where schemaname = 'public' and tablename = any($1)`,
       [GHL_TABLES],
     );
     expect(policies.rows).toHaveLength(GHL_TABLES.length);
