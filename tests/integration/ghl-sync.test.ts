@@ -370,7 +370,10 @@ describe.skipIf(env === null)('GoHighLevel sync against a real stack', () => {
       opportunities_removed: 1,
       contacts_updated: 1,
       contacts_removed: 1,
-      custom_fields_removed: 1,
+      // Two, not one: J8Az… left the definitions read, and 3ma6… was stored only because
+      // contact 2 carried it — contact 2's opportunity is gone in this fixture, so the
+      // definition leaves scope with it (sync.ts keeps folder fields + fields in play).
+      custom_fields_removed: 2,
     });
     expect(report.apply?.stages_updated).toBeGreaterThanOrEqual(1);
 
