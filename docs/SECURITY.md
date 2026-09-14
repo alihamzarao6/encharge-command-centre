@@ -524,6 +524,18 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
   app for the `pit-<uuid>` shape and for the token's value (T11 rule, same as the Anthropic
   and Voyage keys); `tests/security/ghl.test.ts` still asserts nothing under `web/src`
   names the client, the token or the origin.
+- **Milestone 4 part 3: the endpoint rate-limits itself.** The same token serves the
+  client's live lead flow, and GoHighLevel allows 100 requests per 10 seconds on it; a refresh
+  is a dozen requests today and grows with the pipeline. The `crm` endpoint reads the newest
+  `ghl_sync_runs` row before starting and refuses a run inside 60 seconds of the previous run
+  ending — whatever that run's outcome — with `429 SYNC_COOLDOWN` (`src/lib/crm/cooldown.ts`,
+  enforced in `page.ts` after authentication, fail-closed with `503` if the row cannot be
+  read). The browser's disabled button is a courtesy, not the limit. The leads screen adds no
+  reader of the token and no new route to GoHighLevel: it reads three more columns of the
+  mirror (`email`, `phone`, `custom_fields`) and the seeded `ghl_field_map`, all under the
+  same staff-only SELECT policies; `tests/security/ghl.test.ts` still asserts nothing under
+  `web/src` names the client directory, the token or the origin — which is why the cooldown
+  module lives in `src/lib/crm/`, beside the client directory rather than inside it.
 - The token lives in `.env`, in the `crm` function's Supabase secrets, and in the n8n
   credential store. It was sent over WhatsApp and the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.

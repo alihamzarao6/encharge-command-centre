@@ -210,6 +210,17 @@ Notes:
   landing screen.
 - There is no scheduled refresh yet. The client refreshes by hand; a schedule is an n8n
   workflow calling this function, which is a later part.
+- **Part 3 (14 Sep) changed the `crm` function: redeploy it** (`npm run functions:bundle &&
+  supabase functions deploy crm --no-verify-jwt`) together with the web app. It now refuses a
+  refresh that starts within **60 seconds of the previous run ending** (any outcome) with
+  `429 SYNC_COOLDOWN`, a sentence saying how long to wait, `retryAfterSeconds` and a
+  `retry-after` header — the token also serves the live lead flow and GoHighLevel allows 100
+  requests per 10 seconds on it. The screens disable Refresh and count down before the server
+  would refuse; a 429 the screen did not foresee (a colleague refreshed) is shown in the
+  server's words. The window is `SYNC_COOLDOWN_MS` in `src/lib/crm/cooldown.ts`; it is not an
+  environment variable. `npm run crm -- sync` (developer-only) is not gated. If the endpoint
+  answers `503 COOLDOWN_UNKNOWN`, it could not read the last run row and refused rather than
+  waived the limit — check the database, then try again.
 
 ### Adding a person — what the admin actually does
 

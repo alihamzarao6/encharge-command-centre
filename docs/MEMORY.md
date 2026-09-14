@@ -19,11 +19,11 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug) for *what* is built — the B2B outbound lead-research engine is **out of scope**, see D23. **The 1 Sep 2026 milestones document for *how it is delivered and paid*: eight milestones, 2,000 USD total (D77)** — the six-stage map (D26, D27) is superseded |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
-| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: the GoHighLevel read-and-sync layer is committed and pushed (12 Sep entry; `924489b`, test fixes `85a368f` + `b9e35e1`, 13 Sep); the layout shell + overview screen is staged, NOT committed (13 Sep entry).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
+| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: the GoHighLevel read-and-sync layer (12 Sep entry) and the layout shell + overview (13 Sep entry) are committed, pushed and LIVE; the pipeline board + leads list (part 3, 14 Sep entry) is in the working tree, NOT committed.** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
-| Next task | **Review of "Milestone 4, Part 2 — Layout shell and overview screen" (13 Sep entry) → push → CI → deploy `crm` + secrets (RUNBOOK §1d) → first Refresh from the app.** Then the next brief: the pipeline board and the leads list (Part 3), lead detail and moving a lead (Part 4) |
+| Next task | **Review of "Milestone 4, Part 3 — Pipeline board and leads list" (14 Sep entry) → push → CI (first run of `tests/integration/leads.test.ts` on a stack) → redeploy `crm` (the cooldown) + the web app (RUNBOOK §1d).** Then the next brief: lead detail and moving a lead (Part 4) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Last regression run | **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
 | Known broken | **M4 part 2 is LIVE (13 Sep):** part-1 migration applied to the live project (through the Supabase MCP because the CLI/management token in `.env` answers 401; applied verbatim, then the version row was corrected from the MCP's `20260913061442` to `20260912010000` in the SQL editor — `list_migrations` now matches the repo, 18 of 18); `crm` v1 deployed (MCP); the four `GHL_*` secrets set by the reviewer in the dashboard; **first Refresh from the app succeeded** — run row `success`, trigger `api`, 13 requests, 10 opportunities, 10 contacts, 15 definitions, 6,050 ms — and the overview shows 10 open / 7 Appointment Booked / 2 New Lead / 1 Contacted, equal to `npm run crm -- read` taken the same minute (PHASE-ACCEPTANCE M4 item 3, first evidence). The `.env` management token needs replacing before the next CLI deploy. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -132,6 +132,126 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-09-14 — [M4 part 3 · Pipeline board + leads list] Every lead on screen — working tree, NOT committed
+
+**Preconditions confirmed first:** CI run 34743571806 on `d81a0ba` (Part 2's pushed head)
+green, all three jobs; the 13 Sep "Known broken" row records the first Refresh from the
+deployed app against the live project succeeding (run row `success`, 10 opportunities, 10
+contacts). `git status` clean at the start; nothing staged at the end — every change is in the
+working tree only.
+
+**Did:** A **Leads** section (`/leads`, nav between Overview and Assistant) with two views over
+ONE read. **Routes** (`routes.ts`): `/leads` opens the remembered view, else the width's default
+(board ≥ 768, list on a phone); `/leads/board` and `/leads/list` are addresses of their own;
+`/leads/<opportunity id>` is the lead. `board` and `list` are reserved words (GHL ids never are);
+a deeper or non-id path lands on the overview as every unknown path does. The shell now keeps
+the PATH as state (`pathname`), the section and the leads route follow from it, and one `go()`
+pushes history — so Back returns from a lead to the view it was opened from. **The read**
+(`Leads.tsx` → pure `leadsView.ts`): the overview's five selects plus three contact columns
+(`email`, `phone`, `custom_fields`) for every live contact (cap 2,000) and the seeded
+`ghl_field_map` contact rows, under RLS as the member. **A lead** = live open opportunity in
+the mirrored pipeline; stage BY ID (a removed stage and an unknown stage id become columns of
+their own after the pipeline, named in words); name from the contact (full → first + last →
+the opportunity's own name → "Unnamed lead"); loan balance and interest rate read from
+`custom_fields` under the ids the map holds for `loan_balance` / `current_interest_rate` (a
+string or a one-element array; blank/null/absent → nothing shown). **The board**
+(`Board.tsx`): a column per stage in pipeline order with a number and the count, zeros shown,
+cards newest first, each column scrolling its own cards and the board scrolling sideways in
+its own box (82vw columns with scroll-snap at 375; arrow keys scroll it when it has focus);
+100 cards per column then "Show N more". **Drag-ready, nothing drags:** `data-stage-id` on
+the column, `data-drop-target` on its list, `data-opportunity-id` on each card, keys = GHL
+ids, nothing absolutely positioned; no control anywhere that could change a stage. **The
+list** (`LeadsList.tsx`): name (the link), stage, arrived, phone, email, loan balance, rate;
+a `<table>` from 768 with `aria-sort` header buttons, stacked rows with CSS labels at 375
+(explicit table roles keep the semantics) and a sort select; 100 rows then "Show more".
+**Search + stage filter** live above both views and survive a switch (Part A 5); search is
+case- and accent-insensitive over name, email and phone, plus a digits-only phone match for
+two or more digits. **The detail** (`LeadDetail.tsx`): the name, stage, arrival and the bands
+we hold, then a notice that the contact, opportunity and form answers and the move control
+arrive in the next part — "Nothing is broken"; an id not in the pipeline says so. **Cooldown
+(item 10):** `src/lib/crm/cooldown.ts` (beside, not inside, `crm/ghl/` — `tests/security/
+ghl.test.ts` forbids that path under `web/src`): 60 s after the last run ENDED, any outcome;
+`page.ts` reads the newest run row after authentication and answers **429 `SYNC_COOLDOWN`**
+with the sentence, `retryAfterSeconds` and a `retry-after` header (Deno adapter), 503
+`COOLDOWN_UNKNOWN` if the row cannot be read (fail closed); `wiring.ts` supplies
+`latestRun` over the existing `listGhlSyncRuns`. **Shared sync behaviour:** the overview's
+read / polling / visibility re-read / refresh / banner logic moved into `useMirror.ts` and the
+freshness line, refresh control, notices and "not set up" card into `SyncStatus.tsx`;
+`Overview.tsx` renders the same DOM through them; the button disables and counts down
+("Next refresh in 40 s", a 1 s tick only while counting) computed from the run rows, and a
+429 the browser did not foresee is shown in the server's words then the rows re-read. CSS
+appended (`.leads*`, `.board*`, `.lead-card*`, `.lt*`, `.lead*`). e2e mock: contact columns
+with defaults, `ghl_field_map`, `removed_at` on contacts. Docs: TESTING §8, RUNBOOK §1d
+(redeploy `crm`; the window), SECURITY §12, TASKS.
+**Decided (Part A, before code — full text in the session's plan, summarised):** (1) *Card* —
+name, arrived, loan balance band when captured, a flag for "contact details not synced" or
+"no phone or email on file". Left off: monetary value (fixed decision 1); interest rate (a
+second band is noise on a card; on the row and in part 4's detail); phone/email (a card is
+for recognising a lead, not dialling — the row carries them, the detail will carry `tel:`/
+`mailto:`); source/assigned_to/tags (one broker, one source); `last_stage_change_at` (null on
+every live row — a part 4 candidate for "in this stage since"). (2) *Row + sort* — name,
+stage, arrived, phone, email, balance, rate; newest first by default ("who came in this
+week"), oldest, name A–Z, stage order; a stage filter ("where is that person"). (3) *Search*
+— client-side: the whole set is already in memory under the same 2,000 cap the overview
+reads; a round trip per keystroke against a pipeline of ten is a second code path for
+nothing. **Revisit at the cap:** when the pipeline nears 2,000 open leads the read must page
+and search moves to PostgREST (`ilike`/`or`), the list paged by the query; until then 100 at a
+time on screen, counts always true. (4) *Within a stage* — newest first, ties by id; nothing
+else offered: the mirror holds no within-stage position (GHL exposes none), so an order the
+CRM cannot hold would be a lie, and part 4's drag moves BETWEEN columns only. (5) *Shared
+state* — search and filter survive a view switch; neither survives a reload (a silently
+surviving search looks like missing leads); the view choice persists (`localStorage`
+`fundd-leads-view`). *Cooldown* — 60 s from the END of the last run of any status (a failing
+GoHighLevel is the case to prevent); a stuck run older than the window has aged out and
+`begin_ghl_sync_run` retires it; two requests in the same instant can both pass the check and
+the one-running-slot index refuses the second (409) — no test depends on winning that race.
+`npm run crm -- sync` (developer-only) is not gated — stated.
+**Tests:** unit `tests/unit/web/leads.test.ts` (routes; column counts against known rows —
+every Part C data state; card/row content; custom-field shapes; search/filter/sort; the
+remembered view; the 429 as the screen reads it), `tests/unit/crm/cooldown.test.ts`,
+`page.test.ts` + "the cooldown, enforced server-side" (9 — every case asserts the sync was NOT
+started, so the block fails without the check); integration `tests/integration/leads.test.ts`
+(stack: a known snapshot through the part-1 functions, read back under RLS as a member with
+the six selects, field ids resolved through the seeded map, member view ≡ service view);
+browser `tests/e2e/leads.spec.ts` (Part C and Part D items 11 and 14, the cooldown refusal in
+words, the panel over both views) and `overview.spec.ts` now expects Refresh to wait out the
+cooldown after a run finishes; `assistant.spec.ts` expects five nav entries.
+**Numbers (local, 14 Sep):** typecheck clean · lint clean · `vitest run --coverage` **1432
+passed, 125 skipped (13 stack-backed files, no Docker) in 73 files** (was 1389 / 121 / 70),
+coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** ·
+`functions:bundle` four functions · browser (installed Chrome, `npm run test:e2e`): **366 passed, 0 failed, 3 skipped by design (a phone-only and a tablet-only case each way) in 9.0 min** — `leads.spec.ts` 28 × 3 widths, the five earlier suites and `overview.spec.ts` all green against the new shell; screenshots `leads-board`, `leads-list`, `leads-empty`, `leads-panel` and the overview set (re-rendered: the nav now has five entries) at 375 / 768 / 1280 under `docs/assets/milestone-4/`. The stage-2 / stage-3 screenshots the suite re-renders were reverted, as Part 2 did.
+**Not verified:** the stack half (`leads.test.ts` integration) and the RLS assertions in it
+ran nowhere but CI (no Docker here) — CI is the evidence; the live project has NOT been
+touched (no deploy, no migration — there is none); the `retry-after` header is in the Deno
+adapter, which the repo's tsc does not type-check (bundled fine); "reduced motion" is proved
+on computed durations, not by eye; the many-cards column and the 2,000-row list are proved
+in Chrome only. **Not covered, and why:** "a stage with a very long name" on the board is
+covered by the list test's switch to the board; a *phone-shaped* test of scroll-snap is not
+possible in Playwright (snap is a compositor behaviour) — the columns' widths and the
+no-page-scroll rule are what is asserted.
+**Surprised by:** (1) `tests/security/ghl.test.ts` forbids the string `crm/ghl` anywhere
+under `web/src`, comments included — the cooldown module first sat in `crm/ghl/` and the
+browser import failed the suite; moved to `src/lib/crm/cooldown.ts` rather than weaken the
+test. (2) `en-AU` weekday+day formatting is "Fri, 11 Sept" with a comma; a unit expectation
+was wrong, not the code. (3) A one-digit search matches phone text as typed ("1" finds
+"+61…"), which is right; the digits-only match is reserved for two or more digits. (4) The
+Part 2 overview e2e 'numbers land when it finishes' expected Refresh enabled the moment a
+run finished — with the cooldown that is now disabled with "Next refresh in N s"; the
+assertion was updated, not the rule. (5) **The browser suite found three real bugs the unit tests could not:** the shell's canonical-path rewrite turned `/Leads/BOARD` into `/leads` (the view was lost — now `leadsPath(leadsRouteFor(...))`); the pipeline-name line under the heading held a plain space, which collapses to zero height, so the tiles dropped a line when the name landed (a non-breaking space now holds the line — the Part 2 layout-jump test caught it); and at 768 the list's `tbody` was styled `display: table` (a table nested in a table — every cell one character wide) while a fixed five-column controls grid squeezed the search box and the match count to nothing in a 538px main column — `table-row-group` and a wrapping flex row from 768. Seen in the screenshots, not in any assertion: the screenshots are the point.
+**Data:** nothing in the client's data was read in this session (no live call, no live
+read); the 12 Sep findings stand — every opportunity at $0, the two 19 Aug form fields, the
+mislabelled "employed" field. **Part 1 provided everything this part needed** except a
+within-stage order, which GoHighLevel itself does not expose.
+**Would build differently:** fixed decision 2 stands, but the board at 375 is a swipe through
+ten columns even with snap — a "jump to stage" select on the board would help a phone and
+costs little (not added: the list is the phone's primary and already has the stage filter).
+Fixed decision 3 stands; the placeholder deliberately shows the two bands so the client sees
+the form's answers are in the system before part 4 lays them all out.
+**Next:** reviewer reads this → push → CI (first run of `leads.test.ts` on a stack) →
+`functions:bundle` + `supabase functions deploy crm` + `vercel deploy --prod` (RUNBOOK §1d)
+→ M4 part 4: lead detail and moving a lead (drag + a plain "move to stage" control + the
+idempotent, audited write, D81).
 
 ### 2026-09-13 — [M4 part 2 · Layout shell + overview] The app opens on his data — staged, NOT committed
 

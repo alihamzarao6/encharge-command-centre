@@ -22,9 +22,24 @@
  *
  * Two syncs cannot overlap: the database refuses the second with a definite error, which
  * this endpoint turns into 409 rather than a wait. The screen polls the run row instead.
+ *
+ * TWO SYNCS CANNOT FOLLOW EACH OTHER TOO CLOSELY EITHER (part 3, item 10). The token behind
+ * this read also serves the client's live lead flow, and GoHighLevel allows 100 requests per
+ * 10 seconds on it; a refresh is a dozen of those and grows with the pipeline. Before a run
+ * starts, the newest run row is read, and a run that ended inside the window
+ * `src/lib/crm/cooldown.ts` defines is a 429 with how long to wait — enforced here, not only
+ * by a disabled button. Two requests in the same instant can both pass this check; the
+ * database's one-running-slot rule then refuses the second, so the worst case is one run.
  */
 import { verifyStaffAccess, type VerifyDeps } from '../../auth/verify.js';
+import type { Result } from '../../errors.js';
 import type { Logger } from '../../logger.js';
+import {
+  SYNC_COOLDOWN_MS,
+  cooldownRemainingMs,
+  describeCooldown,
+  type CooldownRun,
+} from '../cooldown.js';
 import type { RunOptions, SyncErrorEntry, SyncReport } from './sync.js';
 
 export interface CrmRequestBody {
@@ -57,9 +72,11 @@ export interface CrmErrorBody {
   };
   /** Set when a run row exists for the failure, so the screen can show the same row. */
   readonly runId?: string;
+  /** Set on 429: whole seconds until a refresh will be accepted. */
+  readonly retryAfterSeconds?: number;
 }
 
-export type CrmErrorStatus = 400 | 401 | 403 | 409 | 500 | 502 | 503;
+export type CrmErrorStatus = 400 | 401 | 403 | 409 | 429 | 500 | 502 | 503;
 
 export type CrmPageResult =
   | { readonly status: 200; readonly body: CrmSyncReply }
@@ -69,7 +86,12 @@ export interface CrmPageDeps {
   readonly verify: VerifyDeps;
   /** `runGhlSync` over the real client and store, or a fake in tests. */
   readonly runSync: (options: RunOptions) => Promise<SyncReport>;
+  /** The newest `ghl_sync_runs` row, any status, or null when no run has ever started. */
+  readonly latestRun: () => Promise<Result<CooldownRun | null>>;
   readonly log: Logger;
+  /** Defaults to SYNC_COOLDOWN_MS; a test shortens it. */
+  readonly cooldownMs?: number;
+  readonly now?: () => number;
 }
 
 function failure(
@@ -82,6 +104,17 @@ function failure(
   return runId === undefined
     ? { status, body: { error: { code, message, retryable } } }
     : { status, body: { error: { code, message, retryable }, runId } };
+}
+
+function cooldown(remainingMs: number, cooldownMs: number): CrmPageResult {
+  const described = describeCooldown(remainingMs, cooldownMs);
+  return {
+    status: 429,
+    body: {
+      error: { code: 'SYNC_COOLDOWN', message: described.message, retryable: true },
+      retryAfterSeconds: described.retryAfterSeconds,
+    },
+  };
 }
 
 /**
@@ -154,6 +187,23 @@ async function route(deps: CrmPageDeps, input: CrmPageInput): Promise<CrmPageRes
   }
   if (access.value.kind === 'forbidden') {
     return failure(403, 'FORBIDDEN', 'This account does not have access.');
+  }
+
+  // Fail closed: a rate limit that cannot be checked is not a rate limit that is waived.
+  const latest = await deps.latestRun();
+  if (!latest.ok) {
+    deps.log.error('crm: could not read the last run before refreshing', { error: latest.error });
+    return failure(503, 'COOLDOWN_UNKNOWN', "Couldn't check the last refresh. Try again.", true);
+  }
+  const cooldownMs = deps.cooldownMs ?? SYNC_COOLDOWN_MS;
+  const remaining = cooldownRemainingMs(latest.value, (deps.now ?? Date.now)(), cooldownMs);
+  if (remaining > 0) {
+    deps.log.info('crm: refresh refused, inside the cooldown', {
+      remainingMs: remaining,
+      cooldownMs,
+      requestedBy: access.value.user.userId,
+    });
+    return cooldown(remaining, cooldownMs);
   }
 
   const report = await deps.runSync({ trigger: 'api', triggeredBy: access.value.user.userId });

@@ -121,6 +121,9 @@ function makeHarness(
       runs.push(options);
       return answer(options);
     },
+    // No run has ever started: the cooldown (part 3) never applies in this harness. The
+    // cooldown's own tests build their harness with a run row.
+    latestRun: () => Promise.resolve(ok(null)),
     log: createLogger({
       level: 'debug',
       sink: (line) => {
@@ -343,6 +346,104 @@ describe('what comes back', () => {
   it('a success without a run id is a 500, not a reply the screen would trust', async () => {
     const h = makeHarness(() => Promise.resolve(report({ runId: null })));
     expect(await call(h, 'admin-token')).toMatchObject({ status: 500 });
+  });
+});
+
+/**
+ * Part 3 item 13: the cooldown is enforced by the ENDPOINT, not only by a disabled button.
+ * Every test here would fail without the check in page.ts — the assertion is that the sync
+ * was never started, which is the whole point of a rate limit.
+ */
+describe('the cooldown, enforced server-side', () => {
+  const NOW = Date.parse('2026-09-14T02:00:00Z');
+  const at = (msAgo: number): string => new Date(NOW - msAgo).toISOString();
+
+  function withLastRun(
+    lastRun: { started_at: string; finished_at: string | null } | null,
+    extra: Partial<CrmPageDeps> = {},
+  ): Harness {
+    const h = makeHarness(() => Promise.resolve(report({})));
+    const deps: CrmPageDeps = {
+      ...h.deps,
+      latestRun: () => Promise.resolve(ok(lastRun)),
+      now: () => NOW,
+      ...extra,
+    };
+    return { ...h, deps };
+  }
+
+  it('a run that ended 20 seconds ago → 429, how long to wait, and NO sync started', async () => {
+    const h = withLastRun({ started_at: at(25_000), finished_at: at(20_000) });
+    const result = await call(h, 'staff-token');
+    expect(result.status).toBe(429);
+    expect(result.body).toEqual({
+      error: {
+        code: 'SYNC_COOLDOWN',
+        message: 'The pipeline was refreshed 20 seconds ago. You can refresh again in 40 seconds.',
+        retryable: true,
+      },
+      retryAfterSeconds: 40,
+    });
+    expect(h.runs).toHaveLength(0);
+    expectNoPersonalDetails(h, result);
+  });
+
+  it('a run that FAILED 20 seconds ago counts just the same — hammering a failing GoHighLevel is the case to prevent', async () => {
+    const h = withLastRun({ started_at: at(21_000), finished_at: at(20_000) });
+    const result = await call(h, 'admin-token');
+    expect(result.status).toBe(429);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it('a run that ended a minute ago → the sync starts', async () => {
+    const h = withLastRun({ started_at: at(70_000), finished_at: at(60_000) });
+    const result = await call(h, 'staff-token');
+    expect(result.status).toBe(200);
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it('no run ever → the sync starts', async () => {
+    const h = withLastRun(null);
+    expect((await call(h, 'staff-token')).status).toBe(200);
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it('a run still in progress from 10 seconds ago → 429 here, before the database would say 409', async () => {
+    const h = withLastRun({ started_at: at(10_000), finished_at: null });
+    expect((await call(h, 'staff-token')).status).toBe(429);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it('a run stalled 20 minutes ago has aged out: the sync starts and the database retires it', async () => {
+    const h = withLastRun({ started_at: at(20 * 60_000), finished_at: null });
+    expect((await call(h, 'staff-token')).status).toBe(200);
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it('the window is configurable: a 5-second window lets a 20-second-old run through', async () => {
+    const h = withLastRun(
+      { started_at: at(25_000), finished_at: at(20_000) },
+      { cooldownMs: 5_000 },
+    );
+    expect((await call(h, 'staff-token')).status).toBe(200);
+  });
+
+  it('the check comes AFTER authentication: an outsider inside the window is 401/403, not 429', async () => {
+    const h = withLastRun({ started_at: at(25_000), finished_at: at(20_000) });
+    expect((await call(h, null)).status).toBe(401);
+    expect((await call(h, 'outsider-token')).status).toBe(403);
+    expect((await call(h, 'gone-token')).status).toBe(403);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it('the last run cannot be read → 503, retryable, and no sync: the limit fails closed', async () => {
+    const h = withLastRun(null, {
+      latestRun: () => Promise.resolve(err(new NetworkError('database unreachable'))),
+    });
+    const result = await call(h, 'staff-token');
+    expect(result.status).toBe(503);
+    expect(result.body).toMatchObject({ error: { code: 'COOLDOWN_UNKNOWN', retryable: true } });
+    expect(h.runs).toHaveLength(0);
   });
 });
 

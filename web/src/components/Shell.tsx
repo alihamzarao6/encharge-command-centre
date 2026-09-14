@@ -32,16 +32,19 @@ import { streamTurn } from '../lib/chatApi.js';
 import type { PendingDraft } from '../lib/draft.js';
 import { webConfig } from '../lib/env.js';
 import {
-  DEFAULT_SECTION,
   isCanonicalPath,
+  leadsPath,
+  leadsRouteFor,
   pathFor,
   sectionFor,
+  type LeadsRoute,
   type SectionId,
 } from '../lib/routes.js';
 import { supabase, type AppUserRow } from '../lib/supabase.js';
 import { createThreadStore, type ThreadMessage } from '../lib/thread.js';
 import { Assistant } from './Assistant.js';
 import { AssistantPanel } from './AssistantPanel.js';
+import { Leads } from './Leads.js';
 import { Memory } from './Memory.js';
 import { Overview } from './Overview.js';
 import { ThreadContext } from './ThreadContext.js';
@@ -56,6 +59,7 @@ export interface Section {
 
 export const SECTIONS: readonly Section[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'leads', label: 'Leads' },
   { id: 'assistant', label: 'Assistant' },
   { id: 'memory', label: 'Memory' },
   { id: 'team', label: 'Team' },
@@ -63,10 +67,13 @@ export const SECTIONS: readonly Section[] = [
 
 const ICONS: Readonly<Record<SectionId, string>> = {
   overview: '📊',
+  leads: '📋',
   assistant: '💬',
   memory: '🧠',
   team: '👥',
 };
+
+const INDEX_ROUTE: LeadsRoute = { kind: 'index' };
 
 interface Props {
   readonly session: Session;
@@ -83,8 +90,8 @@ function storage(): Storage | null {
   }
 }
 
-function sectionFromLocation(): SectionId {
-  return typeof window === 'undefined' ? DEFAULT_SECTION : sectionFor(window.location.pathname);
+function currentPath(): string {
+  return typeof window === 'undefined' ? '/' : window.location.pathname;
 }
 
 /** The thread's saved messages, read under RLS as the signed-in person; null = could not. */
@@ -109,7 +116,11 @@ async function loadMessages(conversationId: string): Promise<readonly ThreadMess
 }
 
 export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): ReactElement {
-  const [section, setSection] = useState<SectionId>(sectionFromLocation);
+  // The address is the state (part 3): the section and, under /leads, which view or which
+  // lead, all follow from it, so a view switch or a lead opened is one pushState.
+  const [pathname, setPathname] = useState<string>(currentPath);
+  const section = sectionFor(pathname);
+  const leadsRoute = leadsRouteFor(pathname) ?? INDEX_ROUTE;
   /**
    * Set only when the Memory page asks to open the conversation a note came from, and
    * cleared by any ordinary navigation — otherwise leaving Memory and coming back to the
@@ -151,11 +162,16 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
   // on, and Back / Forward move the section without a reload.
   useEffect(() => {
     if (!isCanonicalPath(window.location.pathname)) {
-      window.history.replaceState(null, '', pathFor(sectionFromLocation()));
+      // A wrong-case or trailing-slash leads address keeps its view or its lead.
+      const leads = leadsRouteFor(window.location.pathname);
+      const canonical =
+        leads === null ? pathFor(sectionFor(window.location.pathname)) : leadsPath(leads);
+      window.history.replaceState(null, '', canonical);
+      setPathname(canonical);
     }
     const onPop = (): void => {
       setPendingConversationId(null);
-      setSection(sectionFromLocation());
+      setPathname(currentPath());
     };
     window.addEventListener('popstate', onPop);
     return () => {
@@ -163,14 +179,23 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
     };
   }, []);
 
-  const navigate = useCallback((id: SectionId): void => {
-    setSection((current) => {
-      if (current !== id) window.history.pushState(null, '', pathFor(id));
-      return id;
+  /** One new history entry per address change; the same address twice is no entry. */
+  const go = useCallback((path: string): void => {
+    setPathname((current) => {
+      if (current !== path) window.history.pushState(null, '', path);
+      return path;
     });
-    // The page IS the assistant: a panel beside it would be the same thread twice.
-    if (id === 'assistant') setPanelOpen(false);
   }, []);
+
+  const navigate = useCallback(
+    (id: SectionId): void => {
+      // Already in the section: stay exactly where we are (a lead, a view) — no push.
+      if (sectionFor(currentPath()) !== id) go(pathFor(id));
+      // The page IS the assistant: a panel beside it would be the same thread twice.
+      if (id === 'assistant') setPanelOpen(false);
+    },
+    [go],
+  );
 
   const goTo = (id: SectionId): void => {
     setPendingConversationId(null);
@@ -263,6 +288,14 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
         <main className="main">
           {section === 'overview' && (
             <Overview session={session} onSessionExpired={() => onSessionExpired(null)} />
+          )}
+          {section === 'leads' && (
+            <Leads
+              session={session}
+              route={leadsRoute}
+              onNavigate={go}
+              onSessionExpired={() => onSessionExpired(null)}
+            />
           )}
           {section === 'assistant' && (
             <Assistant

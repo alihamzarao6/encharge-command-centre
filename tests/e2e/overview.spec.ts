@@ -413,7 +413,9 @@ test.describe('data states', () => {
     await expect(
       page.getByRole('status').filter({ hasText: 'Refreshing from GoHighLevel' }),
     ).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled();
+    // Part 3: the run just ended, so Refresh waits out the cooldown — disabled, and it says so.
+    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeDisabled();
+    await expect(page.getByRole('status').filter({ hasText: 'Next refresh in' })).toBeVisible();
   });
 
   test('a second refresh while one is running is refused, in words', async ({ page }) => {

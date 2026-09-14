@@ -250,7 +250,7 @@ function contactName(contact: GhlContactRow | undefined): string | null {
   return parts.length === 0 ? null : parts.join(' ');
 }
 
-function syncStateOf(runs: readonly GhlSyncRunRow[], nowMs: number): SyncState {
+export function syncStateOf(runs: readonly GhlSyncRunRow[], nowMs: number): SyncState {
   const latest = runs[0];
   let running = false;
   let stuck = false;
@@ -291,7 +291,9 @@ function syncStateOf(runs: readonly GhlSyncRunRow[], nowMs: number): SyncState {
  * database's side, and a lone pipeline row is the fallback for a mirror that has rows but
  * (somehow) no run history.
  */
-function pipelineOf(input: OverviewInput): GhlPipelineRow | null {
+export function pipelineOf(
+  input: Pick<OverviewInput, 'pipelines' | 'runs'>,
+): GhlPipelineRow | null {
   const fromRun = input.runs.find((r) => r.applied_at !== null)?.pipeline_ghl_id ?? null;
   if (fromRun !== null) {
     const row = input.pipelines.find((p) => p.ghl_id === fromRun);

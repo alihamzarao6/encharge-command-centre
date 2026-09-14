@@ -422,11 +422,12 @@ test.describe('assistant', () => {
     await installMock(page);
     await signIn(page, '/assistant');
     // Milestone 4 part 2: the two "not yet built" entries are gone. An entry that opens a page
-    // saying so invites a tap and returns nothing.
+    // saying so invites a tap and returns nothing. Part 3 adds Leads, which exists.
     const nav = page.getByRole('navigation', { name: 'Sections' });
-    await expect(nav.getByRole('button')).toHaveCount(4);
+    await expect(nav.getByRole('button')).toHaveCount(5);
     await expect(nav.getByRole('button')).toContainText([
       'Overview',
+      'Leads',
       'Assistant',
       'Memory',
       'Team',

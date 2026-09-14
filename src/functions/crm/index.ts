@@ -35,11 +35,17 @@ const CORS_HEADERS = {
 };
 
 function json(status: number, body: unknown): Response {
+  // A cooldown refusal (429, part 3) also says so the HTTP way, for any client that reads it.
+  const retryAfter =
+    status === 429 && typeof body?.retryAfterSeconds === 'number'
+      ? { 'retry-after': String(body.retryAfterSeconds) }
+      : {};
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'content-type': 'application/json',
       'cache-control': 'no-store',
+      ...retryAfter,
       ...CORS_HEADERS,
     },
   });

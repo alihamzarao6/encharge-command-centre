@@ -37,6 +37,8 @@ export type CrmFailureKind =
   | 'forbidden'
   /** Another refresh is running; the screen will pick its result up. */
   | 'running'
+  /** The last refresh ended too recently (Milestone 4 part 3, item 10); wait, then try. */
+  | 'cooldown'
   /** The server tried and GoHighLevel could not be read; the run row says why. */
   | 'failed'
   /** Try again. */
@@ -51,6 +53,8 @@ export interface CrmFailure {
   readonly message: string;
   readonly code: string;
   readonly status: number | null;
+  /** Set on a cooldown refusal: how long the server says to wait. */
+  readonly retryAfterSeconds?: number;
 }
 
 export type CrmOutcome = CrmSuccess | CrmFailure;
@@ -66,6 +70,7 @@ export const CRM_MESSAGES = {
   sessionExpired: 'Your session has expired. Sign in again.',
   forbidden: 'This account does not have access.',
   running: 'A refresh is already running. The numbers will update when it finishes.',
+  cooldown: 'The pipeline was refreshed a moment ago. Wait a minute, then try again.',
   network: "Couldn't reach the Command Centre. Check your connection and try again.",
   timeout:
     'The refresh is taking longer than usual. The numbers will update on their own when it finishes.',
@@ -131,8 +136,11 @@ function failure(
   message: string,
   code: string,
   status: number | null,
+  retryAfterSeconds?: number,
 ): CrmFailure {
-  return { kind: 'error', failure: kind, message, code, status };
+  return retryAfterSeconds === undefined
+    ? { kind: 'error', failure: kind, message, code, status }
+    : { kind: 'error', failure: kind, message, code, status, retryAfterSeconds };
 }
 
 /**
@@ -156,6 +164,17 @@ export function interpretCrmResponse(status: number, body: unknown): CrmOutcome 
       return failure('forbidden', CRM_MESSAGES.forbidden, code, status);
     case 409:
       return failure('running', CRM_MESSAGES.running, code, status);
+    case 429: {
+      // The server's sentence says how long ago and how long to wait; shown as written.
+      const retryAfter = isRecord(body) ? num(body['retryAfterSeconds']) : null;
+      return failure(
+        'cooldown',
+        envelope?.message ?? CRM_MESSAGES.cooldown,
+        code,
+        status,
+        retryAfter ?? undefined,
+      );
+    }
     case 502:
       return failure('failed', envelope?.message ?? CRM_MESSAGES.unknown, code, status);
     case 504:

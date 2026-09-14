@@ -6,9 +6,9 @@
  * synced copy believed to be current is how a week-old number gets acted on.
  *
  * The one write is Refresh: a POST to our crm endpoint, which reads GoHighLevel on the
- * server and rewrites the mirror; this screen then re-reads it. While a run is in progress
- * the screen keeps its numbers and polls the run row until the run finishes, so a refresh
- * started here, from the command line, or from a colleague's screen all end the same way.
+ * server and rewrites the mirror; this screen then re-reads it. Since part 3 the read, the
+ * polling, the refresh and its cooldown live in useMirror.ts and the sentences in
+ * SyncStatus.tsx, shared with the leads screen, so a refresh from either behaves the same.
  *
  * States, each deliberately distinct (Part C): never synced reads as "not set up yet", never
  * as zero leads; a stage with nothing in it is a zero on the list; a failed or partial last
@@ -16,40 +16,33 @@
  * the login screen, never an empty dashboard that looks like data loss.
  */
 import type { Session } from '@supabase/supabase-js';
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, type ReactElement } from 'react';
 
-import { callCrm, type CrmOutcome } from '../lib/crmApi.js';
-import { webConfig } from '../lib/env.js';
 import {
   ARRIVALS_SHOWN,
   OVERVIEW_OPPORTUNITY_LIMIT,
   buildOverview,
   formatCount,
   type OverviewInput,
-  type OverviewView,
 } from '../lib/overviewView.js';
 import { supabase } from '../lib/supabase.js';
+import { FreshnessLine, NotSetUp, RefreshControl, SyncNotices } from './SyncStatus.js';
+import { useMirror, type MirrorRead } from './useMirror.js';
+
+/** A plain space collapses to nothing; the line must keep its height before the name lands. */
+const NBSP = ' ';
 
 interface Props {
   readonly session: Session;
   readonly onSessionExpired: () => Promise<void>;
 }
 
-type Banner = { readonly tone: 'ok' | 'warn'; readonly text: string } | null;
-
-/** How often the run row is re-read while a refresh is in progress. */
-const POLL_MS = 4_000;
-/** How often "x minutes ago" is recomputed while the screen is open. */
-const TICK_MS = 60_000;
-
 /**
  * Every read on this screen, together. A 401 from PostgREST means the session is gone —
  * supabase-js will have tried to refresh it already — and the right answer is the login
  * screen with the message, not a dashboard of zeros.
  */
-async function readOverview(): Promise<
-  { kind: 'ok'; input: OverviewInput } | { kind: 'unauthenticated' } | { kind: 'error' }
-> {
+async function readOverview(): Promise<MirrorRead<OverviewInput>> {
   const [pipelines, stages, opportunities, runs] = await Promise.all([
     supabase.from('ghl_pipelines').select('ghl_id, name, last_changed_at').limit(20),
     supabase
@@ -113,37 +106,6 @@ async function readOverview(): Promise<
   };
 }
 
-function refreshBanner(outcome: CrmOutcome): Banner {
-  if (outcome.kind === 'ok') {
-    const { reply } = outcome;
-    if (reply.status === 'partial') {
-      return {
-        tone: 'warn',
-        text: `Refreshed, but ${formatCount(reply.contactsUnread)} contact${reply.contactsUnread === 1 ? '' : 's'} could not be read from GoHighLevel. Their leads are counted; their names may be out of date.`,
-      };
-    }
-    return {
-      tone: 'ok',
-      text: `Refreshed from GoHighLevel: ${formatCount(reply.opportunitiesFetched)} open lead${reply.opportunitiesFetched === 1 ? '' : 's'} read.`,
-    };
-  }
-  return { tone: 'warn', text: outcome.message };
-}
-
-function FreshnessLine({ view }: { readonly view: OverviewView }): ReactElement | null {
-  if (view.freshness.kind === 'never') return null;
-  const { tone, label, at } = view.freshness;
-  const word = tone === 'fresh' ? 'Current' : tone === 'stale' ? 'Ageing' : 'Old';
-  return (
-    <p className={`fresh fresh--${tone}`} role="status" title={at}>
-      <span className="fresh__dot" aria-hidden="true" />
-      <span className="sr-only">{word}: </span>
-      {label}
-      {tone === 'old' && <span className="fresh__nudge"> — refresh before you rely on these</span>}
-    </p>
-  );
-}
-
 function Skeleton(): ReactElement {
   return (
     <div className="overview__body" aria-busy="true" aria-live="polite">
@@ -159,121 +121,23 @@ function Skeleton(): ReactElement {
 }
 
 export function Overview({ session, onSessionExpired }: Props): ReactElement {
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [view, setView] = useState<OverviewView | null>(null);
-  const [input, setInput] = useState<OverviewInput | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [banner, setBanner] = useState<Banner>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const alive = useRef(true);
+  const build = useCallback((input: OverviewInput, now: number) => buildOverview(input, now), []);
+  const mirror = useMirror({
+    session,
+    onSessionExpired,
+    read: readOverview,
+    build,
+    readFailedMessage: "Couldn't read your pipeline. Check your connection and retry.",
+  });
+  const { state, view, banner } = mirror;
 
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-
-  const load = useCallback(async (): Promise<OverviewView | null> => {
-    const read = await readOverview();
-    if (!alive.current) return null;
-    if (read.kind === 'unauthenticated') {
-      await onSessionExpired();
-      return null;
-    }
-    if (read.kind === 'error') {
-      // Whatever was on screen stays: a failed re-read must not blank a dashboard that was
-      // fine a second ago. Only a first read with nothing to show is the error state.
-      setState((current) => (current === 'ready' ? current : 'error'));
-      setBanner({
-        tone: 'warn',
-        text: "Couldn't read your pipeline. Check your connection and retry.",
-      });
-      return null;
-    }
-    const at = Date.now();
-    const built = buildOverview(read.input, at);
-    setInput(read.input);
-    setView(built);
-    setNow(at);
-    setState('ready');
-    return built;
-  }, [onSessionExpired]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  // "12 minutes ago" is only true for a minute; the input is unchanged, the clock is not.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, TICK_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
-  useEffect(() => {
-    if (input !== null) setView(buildOverview(input, now));
-  }, [input, now]);
-
-  // Coming back to the tab re-reads: a refresh from elsewhere lands without a tap here.
-  useEffect(() => {
-    const onVisible = (): void => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [load]);
-
-  // While a run is in progress the run row is polled until it is not.
-  const running = view?.sync.running === true;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => {
-      void load();
-    }, POLL_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [running, load]);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    if (refreshing) return;
-    setRefreshing(true);
-    setBanner(null);
-    const { data } = await supabase.auth.getSession();
-    const accessToken = data.session?.access_token ?? session.access_token;
-    const outcome = await callCrm(
-      { crmUrl: webConfig.crmUrl, anonKey: webConfig.anonKey, fetch: fetch.bind(globalThis) },
-      accessToken,
-      { action: 'sync' },
-    );
-    if (!alive.current) return;
-    setRefreshing(false);
-    if (outcome.kind === 'error' && outcome.failure === 'unauthenticated') {
-      await onSessionExpired();
-      return;
-    }
-    setBanner(refreshBanner(outcome));
-    // Whatever the answer, the run row now says what happened; read it back.
-    await load();
-  }, [load, onSessionExpired, refreshing, session.access_token]);
-
-  const refreshButton = (
-    <button
-      className="button button--primary button--small overview__refresh"
-      type="button"
-      disabled={refreshing || running}
-      aria-busy={refreshing || running}
-      onClick={() => {
-        void refresh();
-      }}
-    >
-      {refreshing ? 'Refreshing…' : running ? 'Refresh running…' : 'Refresh'}
-    </button>
+  const refreshControl = (
+    <RefreshControl
+      refreshing={mirror.refreshing}
+      running={mirror.running}
+      cooldownMs={mirror.cooldownMs}
+      onRefresh={mirror.refresh}
+    />
   );
 
   return (
@@ -285,12 +149,12 @@ export function Overview({ session, onSessionExpired }: Props): ReactElement {
           </h1>
           {/* Always one line tall, so the pipeline's name landing does not push the tiles down. */}
           <p className="overview__pipeline muted" title={view?.pipelineName ?? undefined}>
-            {view?.pipelineName ?? ' '}
+            {view?.pipelineName ?? NBSP}
           </p>
         </div>
         <div className="overview__fresh">
-          {view !== null && <FreshnessLine view={view} />}
-          {view?.kind === 'ready' && refreshButton}
+          {view !== null && <FreshnessLine freshness={view.freshness} />}
+          {view?.kind === 'ready' && refreshControl}
         </div>
       </div>
 
@@ -300,45 +164,14 @@ export function Overview({ session, onSessionExpired }: Props): ReactElement {
         </p>
       )}
 
-      {view !== null && view.sync.running && (
-        <p className="overview__running" role="status" aria-live="polite">
-          <span className="dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
-          Refreshing from GoHighLevel… the numbers below are from the last refresh until it
-          finishes.
-        </p>
-      )}
-      {view !== null && view.sync.stuck && (
-        <p className="notice overview__notice" role="status">
-          A refresh started {view.sync.lastRun === null ? 'earlier' : 'a while ago'} and did not
-          finish. Refresh again.
-        </p>
-      )}
-      {view !== null && view.kind === 'ready' && view.sync.lastFailed && (
-        <p className="overview__alert" role="alert">
-          <strong>The last refresh failed</strong>
-          {view.sync.lastRun?.errorCode != null && ` (${view.sync.lastRun.errorCode})`}, so these
-          numbers may be behind GoHighLevel.{' '}
-          {view.sync.lastRun?.errorCode === 'UNAUTHENTICATED'
-            ? 'GoHighLevel rejected our access key — it needs replacing on the server.'
-            : 'Try again; if it keeps failing, the run needs looking at.'}
-        </p>
-      )}
-      {view !== null && view.kind === 'ready' && view.sync.lastPartial && (
-        <p className="notice overview__notice" role="status">
-          The last refresh could not read {formatCount(view.sync.contactsUnread)} contact
-          {view.sync.contactsUnread === 1 ? '' : 's'} from GoHighLevel. Their leads are counted;
-          their names may be missing or out of date below.
-        </p>
-      )}
-      {view !== null && view.capped && (
-        <p className="notice overview__notice" role="status">
-          Only the first {formatCount(OVERVIEW_OPPORTUNITY_LIMIT)} open leads were read, so the
-          counts may be short.
-        </p>
+      {view !== null && (
+        <SyncNotices
+          sync={view.sync}
+          ready={view.kind === 'ready'}
+          capped={view.capped}
+          limit={OVERVIEW_OPPORTUNITY_LIMIT}
+          cappedNoun="open leads"
+        />
       )}
 
       {state === 'loading' && <Skeleton />}
@@ -347,39 +180,20 @@ export function Overview({ session, onSessionExpired }: Props): ReactElement {
         <div className="card overview__empty" role="alert">
           <h2 className="overview__empty-title">Couldn&rsquo;t load your pipeline</h2>
           <p>The numbers could not be read just now. Nothing is lost — try again.</p>
-          <button
-            className="button button--primary"
-            type="button"
-            onClick={() => {
-              setState('loading');
-              setBanner(null);
-              void load();
-            }}
-          >
+          <button className="button button--primary" type="button" onClick={mirror.retry}>
             Try again
           </button>
         </div>
       )}
 
       {view !== null && view.kind === 'not-set-up' && (
-        <div className="card overview__empty">
-          <h2 className="overview__empty-title">Not set up yet</h2>
+        <NotSetUp sync={view.sync} refresh={refreshControl}>
           <p>
             Nothing has been read from GoHighLevel yet, so there are no numbers to show. This is not
             an empty pipeline — it has simply not been read. Press Refresh to read the Finance
             Pipeline for the first time.
           </p>
-          {view.sync.lastFailed && (
-            <p className="error" role="alert">
-              The first refresh failed
-              {view.sync.lastRun?.errorCode != null && ` (${view.sync.lastRun.errorCode})`}.
-              {view.sync.lastRun?.errorCode === 'UNAUTHENTICATED'
-                ? ' GoHighLevel rejected our access key — it needs replacing on the server.'
-                : ' Try again; if it keeps failing, the run needs looking at.'}
-            </p>
-          )}
-          <div className="mem__row">{refreshButton}</div>
-        </div>
+        </NotSetUp>
       )}
 
       {view !== null && view.kind === 'ready' && (

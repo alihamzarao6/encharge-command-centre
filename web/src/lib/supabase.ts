@@ -15,8 +15,8 @@ import { webConfig } from './env.js';
 // app expects a row type to come from.
 import type { ConversationListRow } from './conversationsView.js';
 import type { MemoryChunkRow, MemoryFactRow } from './memoryView.js';
+import type { GhlContactDetailRow, GhlFieldMapRow } from './leadsView.js';
 import type {
-  GhlContactRow,
   GhlOpportunityRow,
   GhlPipelineRow,
   GhlStageRow,
@@ -97,10 +97,20 @@ export type WebDatabase = {
         Update: Partial<GhlOpportunityRow>;
         Relationships: [];
       };
+      // Part 3 selects the contact's email, phone and form answers as well as the name the
+      // overview selects; one Row type covers both selects.
       ghl_contacts: {
-        Row: GhlContactRow;
-        Insert: Partial<GhlContactRow>;
-        Update: Partial<GhlContactRow>;
+        Row: GhlContactDetailRow;
+        Insert: Partial<GhlContactDetailRow>;
+        Update: Partial<GhlContactDetailRow>;
+        Relationships: [];
+      };
+      // Seeded configuration (migration 20260824010400, seed.sql): which GoHighLevel
+      // custom-field id holds `loan_balance` and `current_interest_rate`. Read-only for staff.
+      ghl_field_map: {
+        Row: GhlFieldMapRow;
+        Insert: Partial<GhlFieldMapRow>;
+        Update: Partial<GhlFieldMapRow>;
         Relationships: [];
       };
       ghl_sync_runs: {

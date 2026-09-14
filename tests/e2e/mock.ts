@@ -17,6 +17,9 @@ export const USER_ID = '11111111-1111-4111-8111-111111111111';
 export const EMAIL = 'ross.test@example.com';
 export const PASSWORD = 'correct-horse';
 export const CONV_ID = 'c0000000-0000-4000-8000-000000000001';
+/** The two custom-field ids seed.sql maps (the 19 Aug form fields), used by the leads suite. */
+export const LOAN_BALANCE_FIELD = 'TANd0sfC9wRwuJKhSGFx';
+export const INTEREST_RATE_FIELD = 'hX8JQblBT9iJhYEa348M';
 
 /** A structurally valid JWT (three base64url parts) whose payload says `authenticated`. */
 export function fakeAccessToken(): string {
@@ -141,7 +144,13 @@ export interface ScriptedGhl {
     first_name: string | null;
     last_name: string | null;
     removed_at: string | null;
+    /** Milestone 4 part 3: the leads screen selects these too. Absent = null / {}. */
+    email?: string | null;
+    phone?: string | null;
+    custom_fields?: Record<string, unknown>;
   }[];
+  /** Milestone 4 part 3: the seeded field map. Absent = the two rows the seed carries. */
+  fieldMap?: { internal_field: string; ghl_custom_field_id: string | null; entity: string }[];
   runs: {
     id: string;
     pipeline_ghl_id: string;
@@ -427,10 +436,37 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         case 'ghl_contacts': {
           const filter = url.searchParams.get('ghl_id') ?? '';
           const wanted = /^in\.\((.*)\)$/.exec(filter)?.[1]?.split(',') ?? null;
-          rows =
-            wanted === null ? ghl.contacts : ghl.contacts.filter((c) => wanted.includes(c.ghl_id));
+          const liveContacts = url.searchParams.get('removed_at') === 'is.null';
+          rows = ghl.contacts
+            .filter((c) => wanted === null || wanted.includes(c.ghl_id))
+            .filter((c) => !liveContacts || c.removed_at === null)
+            .map((c) => ({
+              ...c,
+              email: c.email ?? null,
+              phone: c.phone ?? null,
+              custom_fields: c.custom_fields ?? {},
+            }));
           break;
         }
+        case 'ghl_field_map':
+          // The seed's two form-answer rows (seed.sql), as the leads screen reads them.
+          rows = (
+            ghl.fieldMap ?? [
+              {
+                internal_field: 'loan_balance',
+                ghl_custom_field_id: LOAN_BALANCE_FIELD,
+                entity: 'contact',
+              },
+              {
+                internal_field: 'current_interest_rate',
+                ghl_custom_field_id: INTEREST_RATE_FIELD,
+                entity: 'contact',
+              },
+            ]
+          ).filter(
+            (r) => url.searchParams.get('entity') !== 'eq.contact' || r.entity === 'contact',
+          );
+          break;
         case 'ghl_sync_runs':
           rows = [...ghl.runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
           break;

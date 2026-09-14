@@ -1883,3 +1883,549 @@ p {
     grid-template-columns: 240px minmax(0, 1fr) auto;
   }
 }
+
+/* ---------- Milestone 4 part 3: the leads screen ---------- */
+
+/*
+ * The board and the list, inside the part-2 shell. Same tokens, same cards, same buttons.
+ * Rules that hold at every width: the page never scrolls sideways — the board scrolls inside
+ * its own box and each column scrolls its own cards; every input is 16px; every card and row
+ * is a real link, reachable and openable by keyboard; a stage is told apart by its number and
+ * its name, never by a colour alone.
+ */
+
+.leads {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0 0;
+  overflow: hidden;
+}
+
+.leads > * {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+/* The bar keeps one height before and after the data lands (the pipeline's name line is
+   always one line tall, as on the overview). */
+.leads__bar {
+  flex: none;
+}
+
+.fresh__cooldown {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.leads__controls {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'search search'
+    'stage sort'
+    'switch summary';
+  gap: 8px;
+  align-items: center;
+}
+
+.leads__search {
+  grid-area: search;
+  display: block;
+  min-width: 0;
+}
+
+.leads__select {
+  display: block;
+  min-width: 0;
+}
+
+.leads__stage {
+  grid-area: stage;
+}
+
+.leads__sort {
+  grid-area: sort;
+}
+
+.leads__input {
+  min-height: var(--tap);
+  font-size: 16px;
+  padding: 8px 12px;
+}
+
+select.leads__input {
+  appearance: auto;
+  background: #fff;
+}
+
+.leads__switch {
+  grid-area: switch;
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  width: max-content;
+}
+
+.leads__view {
+  border: 0;
+  border-radius: 0;
+  min-height: 40px;
+}
+
+.leads__view--on {
+  background: var(--navy);
+  color: #fff;
+}
+
+.leads__summary {
+  grid-area: summary;
+  font-size: 13px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.leads__body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.leads__hint {
+  flex: none;
+  font-size: 14px;
+}
+
+/* the board */
+
+.board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* One column fills most of a phone's width so the next is visibly there to swipe to. */
+.board__col {
+  flex: none;
+  width: min(82vw, 300px);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #eaeef5;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.board__col--odd {
+  background: #f3efe6;
+  border-style: dashed;
+}
+
+.board__head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 12px 8px;
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.board__num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  align-self: center;
+}
+
+.board__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.board__col--odd .board__name {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.board__count {
+  flex: none;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.board__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.board__item {
+  flex: none;
+}
+
+.board__empty {
+  padding: 4px 12px 12px;
+  font-size: 14px;
+}
+
+.board__more {
+  margin: 0 8px 8px;
+}
+
+.lead-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  min-height: var(--tap);
+  min-width: 0;
+}
+
+.lead-card:hover {
+  border-color: var(--navy-700);
+}
+
+.lead-card__name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.lead-card__meta {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.lead-card__flag {
+  font-size: 12px;
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.board--skeleton .board__col--skeleton {
+  min-height: 240px;
+  background: linear-gradient(90deg, #eaeef5, #f4f6fa, #eaeef5);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+/* the list: stacked rows at 375, a table from 768 */
+
+.leads__body--list {
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.lt__card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.lt--skeleton {
+  min-height: 320px;
+  background: linear-gradient(90deg, var(--surface), #eef2f8, var(--surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.lt {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+}
+
+.lt__head {
+  display: none;
+}
+
+.lt tbody {
+  display: block;
+}
+
+.lt__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.lt__row:first-child {
+  border-top: 0;
+}
+
+.lt__td {
+  display: block;
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.lt__td--name {
+  grid-column: 1 / -1;
+}
+
+.lt__td--stage {
+  grid-column: 1;
+}
+
+.lt__td--when {
+  grid-column: 2;
+  text-align: right;
+  color: var(--ink-2);
+}
+
+/* Each stacked cell says what it is; the table header is hidden at this width. */
+.lt__td--labelled {
+  grid-column: 1 / -1;
+}
+
+.lt__td--labelled::before {
+  content: attr(data-label) ': ';
+  color: var(--ink-2);
+}
+
+.lt__td--odd {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.lt__link {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--navy);
+  text-decoration: none;
+  display: inline-block;
+  min-height: 24px;
+}
+
+.lt__link:hover {
+  text-decoration: underline;
+}
+
+.lt__flag {
+  display: block;
+  font-size: 12px;
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.lt__none {
+  color: var(--ink-3);
+}
+
+.lt__sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  min-height: 36px;
+}
+
+.lt__sort--on {
+  color: var(--navy);
+}
+
+.lt__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* the lead detail placeholder */
+
+.lead {
+  overflow-y: auto;
+}
+
+.lead__bar {
+  flex: none;
+}
+
+.lead__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.lead__name {
+  overflow-wrap: anywhere;
+}
+
+.lead__meta {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.lead__label {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.lead__next {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  .leads {
+    padding-top: 20px;
+  }
+
+  .leads > * {
+    margin-left: 24px;
+    margin-right: 24px;
+  }
+
+  /* Wrapping, not a grid: the main column is 538px at 768 with the sidebar and 650px at
+     1280 with the panel docked, and a fixed column count squeezed the search box or the
+     match count to nothing. The search keeps at least 220px and the rest wrap after it. */
+  .leads__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .leads__search {
+    flex: 1 1 220px;
+    min-width: 220px;
+  }
+
+  .leads__select {
+    flex: 0 1 auto;
+  }
+
+  .leads__switch {
+    flex: none;
+  }
+
+  .leads__summary {
+    flex-basis: 100%;
+    text-align: left;
+  }
+
+  .board__col {
+    width: 270px;
+  }
+
+  /* The table proper: the header row shows, the rows are rows. */
+  .lt {
+    display: table;
+    width: 100%;
+  }
+
+  .lt tbody {
+    display: table-row-group;
+  }
+
+  .lt__head {
+    display: table-header-group;
+  }
+
+  .lt__head tr,
+  .lt__row {
+    display: table-row;
+  }
+
+  .lt__row {
+    padding: 0;
+  }
+
+  .lt__th,
+  .lt__td {
+    display: table-cell;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+    vertical-align: top;
+    text-align: left;
+  }
+
+  .lt__th {
+    border-top: 0;
+    font-size: 13px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  .lt__td--labelled::before {
+    content: none;
+  }
+
+  .lt__td--when {
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .lt__td--email {
+    max-width: 240px;
+  }
+
+  .leads__body--list {
+    overflow-x: auto;
+  }
+
+  .lt__card {
+    min-width: 700px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .leads {
+    padding-top: 24px;
+  }
+
+  .leads > * {
+    margin-left: 32px;
+    margin-right: 32px;
+  }
+
+  .board__col {
+    width: 280px;
+  }
+}

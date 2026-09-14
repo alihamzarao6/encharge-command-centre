@@ -327,6 +327,20 @@ in the browser: the default route after login is the overview (item 12), and a m
 in the docked panel is on the Assistant page (item 13 — the store half is
 `tests/unit/web/thread.test.ts`).
 
+*Milestone 4 part 3 (14 Sep 2026):* the `browser` job gains `tests/e2e/leads.spec.ts` (the
+board, the list, the view switch, the click-through from both views, the refresh cooldown
+refused in words, and every Part C state; screenshots `leads-board`, `leads-list`,
+`leads-empty`, `leads-panel` at the three widths under `docs/assets/milestone-4/`); the e2e
+mock serves the contact columns the screen selects (`email`, `phone`, `custom_fields`) and
+the seeded `ghl_field_map` rows. The `integration` job gains `tests/integration/leads.test.ts`
+(a known snapshot through the part-1 functions, read back under RLS as a member exactly as
+the leads screen reads it — six selects — with the two form-field ids resolved through the
+seeded map, and the member's view identical to the service role's). The refresh cooldown is
+proved server-side in `tests/unit/crm/ghl/page.test.ts` ("the cooldown, enforced
+server-side"): every case asserts the sync was NOT started, so the suite fails without the
+check in `page.ts`; the pure half is `tests/unit/crm/cooldown.test.ts`. `overview.spec.ts`
+now expects Refresh to wait out the cooldown after a run finishes.
+
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →
 `supabase db reset --local` (the from-zero replay proof, migrations + seed, on every push) →
