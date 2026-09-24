@@ -2429,3 +2429,276 @@ select.leads__input {
     width: 280px;
   }
 }
+
+/* ---------- Milestone 4 part 4: moving a lead, the lead detail, notes ---------- */
+
+/*
+ * Same tokens, same cards, same buttons. Rules that hold at every width: the move control
+ * is a native select at 16px (iOS does not zoom, the keyboard and a screen reader get it for
+ * free); a card being dragged dims in place while a ghost follows the pointer; a column the
+ * drag is over says so with a border AND a background, never a colour alone; a saving card
+ * is marked in words; the ghost's snap on drop respects reduced motion through the global
+ * rule above (transition-duration 0.01ms).
+ */
+
+.lead-card {
+  gap: 6px;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.lead-card__link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.lead-card__link:hover .lead-card__name {
+  text-decoration: underline;
+}
+
+.lead-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lead-card--dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+
+.lead-card--ghost {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  border-color: var(--navy-700);
+  background: var(--surface);
+  cursor: grabbing;
+}
+
+.lead-card--saving {
+  border-style: dashed;
+  border-color: var(--navy-700);
+}
+
+.lead-card__saving,
+.lead__saving {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+body.is-dragging,
+body.is-dragging * {
+  cursor: grabbing !important;
+}
+
+.board__col--over {
+  border: 2px solid var(--navy-700);
+  background: #dfe7f5;
+}
+
+.board--busy .lead-card:not(.lead-card--saving) {
+  cursor: default;
+}
+
+/* The move control: a select that reads as a small button on a card. */
+.move {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.move__select {
+  width: 100%;
+  min-height: 40px;
+  font-size: 16px;
+  padding: 6px 10px;
+  appearance: auto;
+  background: #fff;
+  cursor: pointer;
+}
+
+.move--compact .move__select {
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: 16px;
+}
+
+.move__select:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* The detail: one column of cards, each a section, readable at 375. */
+.lead__h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.lead__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lead__stage-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.lead__stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.lead__stage-now {
+  font-weight: 600;
+}
+
+.lead__stage-row .move {
+  flex: 1 1 220px;
+}
+
+.lead__notice {
+  margin: 0;
+  font-size: 14px;
+}
+
+.lead__notice--ok {
+  color: #166534;
+}
+
+.lead__dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lead__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin: 0;
+}
+
+.lead__line dt,
+.lead__line dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lead__value--none {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.lead__value--warn {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.lead__label--id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lead__link {
+  color: var(--navy);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.lead__ids {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.lead__note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lead__note-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.lead__note-box {
+  width: 100%;
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.lead__note-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.lead__note-count {
+  font-size: 13px;
+}
+
+.lead__notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lead__note {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.lead__note-body {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lead__note-meta {
+  margin: 0;
+  font-size: 13px;
+}
+
+.lead__note-author {
+  font-weight: 600;
+}
+
+.lead__note-hint {
+  font-size: 12px;
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .lead__line {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .lead__card {
+    max-width: 720px;
+  }
+}

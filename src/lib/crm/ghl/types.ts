@@ -183,3 +183,45 @@ export const CUSTOM_FIELDS_RESPONSE_SCHEMA = z.object({
 });
 
 export type GhlCustomFieldDefinition = z.infer<typeof CUSTOM_FIELD_DEFINITION_SCHEMA>;
+
+// ---------------------------------------------------------------------------------------
+// Writes (Milestone 4 part 4) — shapes taken from the live probe on 24 Sep 2026 against a
+// test opportunity, not from documentation.
+// ---------------------------------------------------------------------------------------
+
+/**
+ * `GET /opportunities/{id}` and the `PUT` that moves a stage both answer
+ * `{ opportunity: {...} }` — the search record plus a `contact` sub-object carrying the
+ * person's name and email. OPPORTUNITY_SCHEMA strips that sub-object: nothing here needs
+ * it and nothing here may log it.
+ */
+export const OPPORTUNITY_RESPONSE_SCHEMA = z.object({ opportunity: OPPORTUNITY_SCHEMA });
+
+/** `POST /contacts/{id}/notes` → 201 `{ note }`; `userId` is null for an integration. */
+export const NOTE_SCHEMA = z.object({
+  id: ghlId,
+  body: z.string(),
+  userId: optionalString,
+  dateAdded: optionalTimestamp,
+  contactId: optionalString,
+});
+
+export const NOTE_RESPONSE_SCHEMA = z.object({ note: NOTE_SCHEMA });
+
+export type GhlNote = z.infer<typeof NOTE_SCHEMA>;
+
+/**
+ * GoHighLevel's error envelope, as seen live: `{ statusCode, error, message, code }` for the
+ * opportunities API (`OPPORTUNITY_STAGE_ID_INVALID`, `OPPORTUNITY_NOT_FOUND`), `{ message:
+ * string[] , statusCode }` for a 422, and `{ error, status }` for a note on a missing
+ * contact. Everything is optional so the parse never fails; `code` is what is matched on.
+ */
+export const GHL_ERROR_BODY_SCHEMA = z.object({
+  statusCode: z.number().optional(),
+  status: z.number().optional(),
+  code: z.string().optional(),
+  error: z.string().optional(),
+  message: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+export type GhlErrorBody = z.infer<typeof GHL_ERROR_BODY_SCHEMA>;

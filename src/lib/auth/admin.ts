@@ -143,6 +143,11 @@ export type AuditAction =
    * would leave no trace anywhere.
    */
   | 'CONVERSATION_ADMIN_READ'
+  // Moving a lead and notes (Milestone 4 part 4) — written by `finish_ghl_write` in the
+  // database, in the same transaction as the mirror update, so a change and its audit row
+  // cannot exist without each other.
+  | 'LEAD_STAGE_MOVED'
+  | 'LEAD_NOTE_ADDED'
   // Memory page (Stage 3 part 3, src/lib/memory/page.ts)
   | 'MEMORY_FACT_ADDED'
   | 'MEMORY_FACT_REPLACED'
@@ -151,7 +156,15 @@ export type AuditAction =
   | 'MEMORY_FACT_FORGOTTEN'
   | 'MEMORY_CHUNK_DELETED';
 
-export type AuditEntityType = 'app_users' | 'memory_facts' | 'memory_chunks' | 'conversations';
+export type AuditEntityType =
+  | 'app_users'
+  | 'memory_facts'
+  | 'memory_chunks'
+  | 'conversations'
+  // Milestone 4 part 4: a stage move or a note, written to GoHighLevel. The audit row points
+  // at the `ghl_writes` record (a uuid); the opportunity and stage ids ride in before/after.
+  // Written by the database function `finish_ghl_write`, not by this writer.
+  | 'ghl_writes';
 
 export interface AuditEntry {
   readonly actor: string;

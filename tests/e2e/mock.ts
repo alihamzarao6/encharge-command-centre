@@ -151,6 +151,16 @@ export interface ScriptedGhl {
   }[];
   /** Milestone 4 part 3: the seeded field map. Absent = the two rows the seed carries. */
   fieldMap?: { internal_field: string; ghl_custom_field_id: string | null; entity: string }[];
+  /** Milestone 4 part 4: the notes this app wrote through (ghl_notes). Absent = none. */
+  notes?: ScriptedNote[];
+  /** Milestone 4 part 4: custom-field definitions, for the detail's labels. Absent = none. */
+  customFields?: {
+    ghl_id: string;
+    name: string;
+    data_type: string;
+    parent_id: string | null;
+    removed_at: string | null;
+  }[];
   runs: {
     id: string;
     pipeline_ghl_id: string;
@@ -164,6 +174,28 @@ export interface ScriptedGhl {
     contacts_rejected: number | null;
     opportunities_rejected: number | null;
   }[];
+}
+
+export interface ScriptedNote {
+  ghl_id: string;
+  contact_ghl_id: string;
+  opportunity_ghl_id: string;
+  author_user_id: string | null;
+  body: string;
+  ghl_date_added: string | null;
+  created_at: string;
+}
+
+/**
+ * Milestone 4 part 4: a scripted answer to a move or a note. Return null to let the faithful
+ * default run (the opportunity changes stage / the note is appended, as the server would).
+ */
+export interface CrmWriteScript {
+  respond: (
+    body: Record<string, unknown>,
+    call: number,
+    ghl: ScriptedGhl,
+  ) => { status: number; body: unknown; delayMs?: number } | null;
 }
 
 export interface CrmScript {
@@ -183,6 +215,8 @@ export interface MockOptions {
   /** Every `ghl_*` read waits this long first — a slow connection. */
   ghlDelayMs?: number;
   crm?: CrmScript;
+  /** Milestone 4 part 4: how the crm endpoint answers a move or a note. */
+  crmWrite?: CrmWriteScript;
   admin?: boolean;
   /** Everyone BESIDES the signed-in user. Their own row is always present when active. */
   roster?: ScriptedStaff[];
@@ -248,6 +282,113 @@ export interface MockState {
   ghlUnauthorized: boolean;
   ghlFailing: boolean;
   ghlDelayMs: number;
+}
+
+/**
+ * Milestone 4 part 4: what the real crm endpoint does with a move or a note, as far as the
+ * browser can tell — the opportunity's stage changes in the mirror (GoHighLevel first, then
+ * the row), a note is appended with the signed-in author, and the reply carries ids and
+ * flags only. A missing opportunity answers 410 as the server would.
+ */
+/** A body field as text; anything that is not a string is an empty string. */
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+export function faithfulWrite(
+  body: Record<string, unknown>,
+  call: number,
+  ghl: ScriptedGhl,
+): { status: number; body: unknown } {
+  const opportunityId = asText(body['opportunityId']);
+  const opp = ghl.opportunities.find((o) => o.ghl_id === opportunityId && o.removed_at === null);
+  const writeId = `w-${String(call)}`;
+  if (opp === undefined) {
+    return {
+      status: 410,
+      body: {
+        error: {
+          code: 'OPPORTUNITY_GONE',
+          message:
+            'This lead was deleted in GoHighLevel since your screen loaded. Nothing was changed — refresh to update the board.',
+          retryable: false,
+        },
+      },
+    };
+  }
+  if (body['action'] === 'move') {
+    const toStageId = asText(body['toStageId']);
+    const from = opp.stage_ghl_id;
+    const screen = typeof body['fromStageId'] === 'string' ? body['fromStageId'] : null;
+    if (!ghl.stages.some((s) => s.ghl_id === toStageId && s.removed_at === null)) {
+      return {
+        status: 409,
+        body: {
+          error: {
+            code: 'STAGE_UNKNOWN',
+            message:
+              'That stage is no longer in the pipeline. Nothing was changed — refresh to see the current stages.',
+            retryable: false,
+          },
+        },
+      };
+    }
+    opp.stage_ghl_id = toStageId;
+    return {
+      status: 200,
+      body: {
+        action: 'move',
+        opportunityId,
+        fromStageId: from,
+        toStageId,
+        changed: from !== toStageId,
+        movedByOther: screen !== null && screen !== from,
+        replay: false,
+        landedAfterTimeout: false,
+        mirrored: true,
+        writeId,
+        durationMs: 700,
+      },
+    };
+  }
+  const text = asText(body['body']).trim();
+  if (text === '') {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'EMPTY_NOTE',
+          message: 'Write something before saving the note.',
+          retryable: false,
+        },
+      },
+    };
+  }
+  const now = new Date().toISOString();
+  const note: ScriptedNote = {
+    ghl_id: `note-${String(call)}`,
+    contact_ghl_id: opp.contact_ghl_id ?? '',
+    opportunity_ghl_id: opportunityId,
+    author_user_id: USER_ID,
+    body: text,
+    ghl_date_added: now,
+    created_at: now,
+  };
+  ghl.notes = [note, ...(ghl.notes ?? [])];
+  return {
+    status: 200,
+    body: {
+      action: 'note',
+      opportunityId,
+      noteId: note.ghl_id,
+      body: text,
+      createdAt: now,
+      authorUserId: USER_ID,
+      mirrored: true,
+      writeId,
+      durationMs: 400,
+    },
+  };
 }
 
 /** A mirror with nothing in it: the sync has never run. */
@@ -326,6 +467,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
   };
   let chatCall = 0;
   let crmCall = 0;
+  let crmWriteCall = 0;
   let newRow = 0;
   let newPerson = 0;
 
@@ -428,19 +570,43 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         case 'ghl_opportunities': {
           const liveOnly = url.searchParams.get('removed_at') === 'is.null';
           const openOnly = url.searchParams.get('status') === 'eq.open';
-          rows = ghl.opportunities.filter(
-            (o) => (!liveOnly || o.removed_at === null) && (!openOnly || o.status === 'open'),
-          );
+          const one = /^eq\.(.+)$/.exec(url.searchParams.get('ghl_id') ?? '')?.[1] ?? null;
+          rows = ghl.opportunities
+            .filter(
+              (o) =>
+                (!liveOnly || o.removed_at === null) &&
+                (!openOnly || o.status === 'open') &&
+                (one === null || o.ghl_id === one),
+            )
+            // Part 4: the detail selects the whole row; a scripted row carries the columns
+            // the board needs and the rest default to what a fresh sync writes.
+            .map((o) => ({
+              monetary_value: 0,
+              source: null,
+              assigned_to: null,
+              ghl_updated_at: null,
+              last_stage_change_at: null,
+              last_status_change_at: null,
+              ...o,
+            }));
           break;
         }
         case 'ghl_contacts': {
           const filter = url.searchParams.get('ghl_id') ?? '';
-          const wanted = /^in\.\((.*)\)$/.exec(filter)?.[1]?.split(',') ?? null;
+          const single = /^eq\.(.+)$/.exec(filter)?.[1];
+          const wanted =
+            /^in\.\((.*)\)$/.exec(filter)?.[1]?.split(',') ??
+            (single === undefined ? null : [single]);
           const liveContacts = url.searchParams.get('removed_at') === 'is.null';
           rows = ghl.contacts
             .filter((c) => wanted === null || wanted.includes(c.ghl_id))
             .filter((c) => !liveContacts || c.removed_at === null)
             .map((c) => ({
+              source: null,
+              dnd: null,
+              tags: [],
+              ghl_created_at: null,
+              ghl_updated_at: null,
               ...c,
               email: c.email ?? null,
               phone: c.phone ?? null,
@@ -448,6 +614,19 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
             }));
           break;
         }
+        case 'ghl_notes': {
+          const forOpp =
+            /^eq\.(.+)$/.exec(url.searchParams.get('opportunity_ghl_id') ?? '')?.[1] ?? null;
+          rows = (ghl.notes ?? [])
+            .filter((n) => forOpp === null || n.opportunity_ghl_id === forOpp)
+            .sort((a, b) =>
+              (b.ghl_date_added ?? b.created_at).localeCompare(a.ghl_date_added ?? a.created_at),
+            );
+          break;
+        }
+        case 'ghl_custom_fields':
+          rows = ghl.customFields ?? [];
+          break;
         case 'ghl_field_map':
           // The seed's two form-answer rows (seed.sql), as the leads screen reads them.
           rows = (
@@ -894,6 +1073,21 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     if (path === '/functions/v1/crm' && method === 'POST') {
       const body = request.postDataJSON() as Record<string, unknown>;
       state.crmCalls.push({ body, authorization: request.headers()['authorization'] ?? null });
+      // ---- Milestone 4 part 4: a move or a note ----
+      if (body['action'] === 'move' || body['action'] === 'note') {
+        crmWriteCall += 1;
+        const scripted = options.crmWrite?.respond(body, crmWriteCall, state.ghl) ?? null;
+        if (scripted !== null) {
+          if (scripted.delayMs !== undefined) {
+            await new Promise((resolve) => setTimeout(resolve, scripted.delayMs));
+          }
+          await json(route, scripted.status, scripted.body);
+          return;
+        }
+        const answer = faithfulWrite(body, crmWriteCall, state.ghl);
+        await json(route, answer.status, answer.body);
+        return;
+      }
       crmCall += 1;
       const script: CrmScript = options.crm ?? {
         respond: (call, ghl) => {

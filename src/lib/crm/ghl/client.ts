@@ -208,16 +208,13 @@ export function createGhlClient(deps: GhlClientDeps): GhlClient {
 
   /** GHL says how many requests are left in the current window; stay under it. */
   const paceOnHeaders = async (response: HttpResponse): Promise<void> => {
-    const remaining = Number(response.headers.get('x-ratelimit-remaining'));
-    const interval = Number(response.headers.get('x-ratelimit-interval-milliseconds'));
-    if (
-      Number.isFinite(remaining) &&
-      Number.isFinite(interval) &&
-      interval > 0 &&
-      remaining <= config.rateLimitFloor
-    ) {
-      log.info('ghl rate-limit window nearly spent; pausing', { remaining, waitMs: interval });
-      await sleep(interval);
+    const wait = rateLimitWaitMs(response, config.rateLimitFloor);
+    if (wait > 0) {
+      log.info('ghl rate-limit window nearly spent; pausing', {
+        remaining: response.headers.get('x-ratelimit-remaining'),
+        waitMs: wait,
+      });
+      await sleep(wait);
     }
   };
 
@@ -424,6 +421,25 @@ export function createGhlClient(deps: GhlClientDeps): GhlClient {
     getCustomFields,
     requestsMade: () => requests,
   };
+}
+
+/**
+ * How long to wait after this response before the next request, from GoHighLevel's own
+ * headers: the window's length when the remaining count has reached the floor, else 0.
+ * Shared with the write client (write.ts) so both pace on the same rule.
+ */
+export function rateLimitWaitMs(response: HttpResponse, floor: number): number {
+  const remaining = Number(response.headers.get('x-ratelimit-remaining'));
+  const interval = Number(response.headers.get('x-ratelimit-interval-milliseconds'));
+  if (
+    Number.isFinite(remaining) &&
+    Number.isFinite(interval) &&
+    interval > 0 &&
+    remaining <= floor
+  ) {
+    return interval;
+  }
+  return 0;
 }
 
 function numberOf(value: unknown): number {

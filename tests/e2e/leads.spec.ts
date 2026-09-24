@@ -508,9 +508,9 @@ test.describe('the view switch and the click-through', () => {
     await page.locator('.board__item[data-opportunity-id="o1"] .lead-card').click();
     expect(new URL(page.url()).pathname).toBe('/leads/o1');
     await expect(page.getByRole('heading', { name: 'Alex Tran', level: 1 })).toBeVisible();
-    await expect(page.getByText('New Lead')).toBeVisible();
-    await expect(page.getByRole('status')).toContainText('coming in the next part');
-    await expect(page.getByText('Nothing is broken')).toBeVisible();
+    // Part 4 filled the detail in: the stage line, the move control and the form answers.
+    await expect(page.locator('.lead__stage-now')).toHaveText('New Lead');
+    await expect(page.locator('#lead-stage')).toHaveValue('stage-01');
     await expect(page.getByText('$500k–$750k')).toBeVisible();
     await expectNoHorizontalScroll(page);
     await page.goBack();
@@ -541,7 +541,7 @@ test.describe('the view switch and the click-through', () => {
     await expect(
       page.getByRole('heading', { name: 'Not in the pipeline', level: 1 }),
     ).toBeVisible();
-    await expect(page.getByText('closed or removed in GoHighLevel')).toBeVisible();
+    await expect(page.getByText('never have been synced, or the link may be wrong')).toBeVisible();
     await page.getByRole('button', { name: /Back to leads/ }).click();
     await expect(page.getByRole('heading', { name: 'Leads', level: 1 })).toBeVisible();
   });
@@ -786,12 +786,17 @@ test.describe('data and interface states', () => {
     page,
   }) => {
     await openLeads(page, '/leads/board');
-    const first = page.locator('.board__item[data-opportunity-id="o1"] .lead-card');
+    // Part 4: a card is a link plus its move control; Tab goes link → control → next link.
+    const first = page.locator('.board__item[data-opportunity-id="o1"] .lead-card__link');
     await first.focus();
     await expect(first).toBeFocused();
     expect(await first.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
     await page.keyboard.press('Tab');
-    await expect(page.locator('.board__item[data-opportunity-id="o2"] .lead-card')).toBeFocused();
+    await expect(page.locator('.board__item[data-opportunity-id="o1"] select')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.locator('.board__item[data-opportunity-id="o2"] .lead-card__link'),
+    ).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: 'Sam Ó Brádaigh 🏠', level: 1 })).toBeVisible();
     await page.goBack();

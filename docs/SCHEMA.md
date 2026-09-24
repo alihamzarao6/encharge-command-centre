@@ -241,6 +241,34 @@ from the folder the live form writes to — seeded from the 12 Sep 2026 read and
 `lead_type` / `lead_source` / `pipeline_stage` enums would force invented values and cannot
 hold a stage GHL added (M4 part 1 decision).
 
+### GoHighLevel writes — Milestone 4 part 4 (24 Sep 2026)
+
+The first writes from the running system to GoHighLevel: a stage move and a contact note,
+through the `crm` Edge Function (`move` / `note`). **GoHighLevel first, mirror second**: the
+server reads the opportunity live, writes GoHighLevel, and then one function updates the
+mirror row from GoHighLevel's own reply, closes the write record and inserts the audit row in
+one transaction — the mirror never holds a stage the CRM does not have.
+
+| Table | Key | Holds |
+|---|---|---|
+| `ghl_writes` | `id` | one row per ATTEMPTED write, claimed before GoHighLevel is called: `request_id` (uuid, unique — the browser mints one per gesture; the idempotency key) · `actor` (auth user) · `kind (stage_move|note)` · `pipeline_ghl_id · opportunity_ghl_id · contact_ghl_id` · `from_stage_ghl_id` (the stage GoHighLevel held LIVE when the write began) · `to_stage_ghl_id` · `screen_stage_ghl_id` (what the screen showed; differs when someone else moved the lead first) · `status (in_flight|success|noop|failed|unknown|mirror_failed)` · `ghl_status · error_code · duration_ms · started_at · finished_at` · `scope` pinned to `'workspace'` |
+| `ghl_notes` | `ghl_id` (the GoHighLevel note id) | `contact_ghl_id · opportunity_ghl_id · author_user_id · body` (as typed, without the `[Fundd app · email]` prefix GoHighLevel shows) · `ghl_date_added · write_id · created_at · scope`. Only notes this app wrote through: nothing reads notes back from GoHighLevel yet |
+
+Three `service_role`-only functions (migration `20260924010000_ghl_writes.sql`):
+`begin_ghl_write` claims the request id (`on conflict do nothing`) or hands back the row that
+already claimed it with its status, so a replay is answered from the record and never sent
+twice; `finish_ghl_write` closes the write row, upserts the mirror opportunity from
+GoHighLevel's reply (same columns and hash rule as the sync; only within the write's pipeline),
+inserts the note row, and — for `success` and `mirror_failed` only, because those are the
+outcomes in which GoHighLevel changed — the `audit_log` row (`LEAD_STAGE_MOVED` /
+`LEAD_NOTE_ADDED`; `entity_type = 'ghl_writes'`, `entity_id` = the write row because
+`audit_log.entity_id` is a uuid and GoHighLevel ids are not; the opportunity id and both stage
+ids in `before`/`after`); a second finish for the same write raises `55006`.
+`mark_ghl_opportunity_removed` sets `removed_at` when a live read answered 404 — a definite
+signal, applied now rather than at the next full sync. RLS enabled and forced on both tables,
+staff-allowlist SELECT only, explicit grants (`tests/security/rls.test.ts` and
+`tests/security/ghl.test.ts`). Code: `src/lib/crm/ghl/` (write · moves · writeStore).
+
 ### workflow_runs
 `id · workflow_name · n8n_execution_id · status (running|success|failed|partial) ·
 started_at · finished_at · input jsonb · output jsonb · error · items_in · items_out ·
@@ -855,6 +883,13 @@ enabled" is not accepted, the test output is.
   `service_role`-only sync functions. Reversible; the drops are listed at the top of the
   file. Seed: eleven `ghl_field_map` contact rows. Validated against the live project inside
   one `BEGIN…ROLLBACK` transaction through the Supabase MCP (MEMORY.md 12 Sep), not applied.
+- **Milestone 4 part 4 addition — written 24 Sep:** `20260924010000_ghl_writes.sql` — the
+  write record (`ghl_writes`, unique on `request_id`) and the mirrored notes (`ghl_notes`),
+  RLS enabled and forced, staff-allowlist SELECT, explicit grants, and the three
+  `service_role`-only write functions (`begin_ghl_write`, `finish_ghl_write`,
+  `mark_ghl_opportunity_removed`, §3). Reversible; the drops are listed at the top of the
+  file. **Not applied to the live project from this machine** (no CLI credentials, MCP down —
+  MEMORY.md 24 Sep); CI replays it from zero.
 - **Stage 3 part 4 addition — written 28 Aug:** `20260828010000_users_page.sql` — the roster
   read policy plus `is_active_staff()` (§7), `delete_conversation(uuid, uuid)` (§4), and
   `set_staff_active` / `set_staff_admin`, the two flag writes that hold the last-admin

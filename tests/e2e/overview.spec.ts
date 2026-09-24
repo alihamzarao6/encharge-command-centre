@@ -788,10 +788,13 @@ test.describe('the panel', () => {
     expect(await overview.evaluate((el) => el.scrollTop)).toBe(scrolled);
   });
 
-  test('navigating between screens with the panel open keeps the conversation (768 and up)', async ({
+  test('navigating between screens keeps the panel conversation (docked from 768; the sheet reopens on a phone)', async ({
     page,
   }) => {
-    test.skip((page.viewportSize()?.width ?? 0) < 768, 'on a phone the sheet covers the nav');
+    // Runs at every width (zero skips): from 768 the docked panel stays open across the
+    // navigation; on a phone the sheet covers the nav, so it is closed, the section changed,
+    // and the sheet reopened — the thread must survive both.
+    const phone = (page.viewportSize()?.width ?? 0) < 768;
     await openOverview(page, { admin: true });
     await page.getByRole('button', { name: /Ask/ }).click();
     const panel = page.getByRole('complementary', { name: 'Assistant' });
@@ -800,11 +803,13 @@ test.describe('the panel', () => {
     await expect(
       page.getByTestId('panel-thread').locator('[data-role="assistant"]').last(),
     ).toContainText('Reply 1 to: Still here?');
+    if (phone) await page.getByRole('button', { name: 'Close assistant panel' }).click();
     await page
       .getByRole('navigation', { name: 'Sections' })
       .getByRole('button', { name: /Team/ })
       .click();
     await expect(page.getByRole('heading', { name: 'Team', level: 1 })).toBeVisible();
+    if (phone) await page.getByRole('button', { name: /Ask/ }).click();
     await expect(panel).toBeVisible();
     await expect(
       page.getByTestId('panel-thread').locator('[data-role="assistant"]').last(),
@@ -850,10 +855,12 @@ test.describe('the panel', () => {
     await expect(ask).not.toContainText('a reply is waiting');
   });
 
-  test('on a phone the sheet scrolls its own thread, never the screen behind it', async ({
+  test('the panel scrolls its own thread, never the screen behind it (a full sheet on a phone, docked from 768)', async ({
     page,
   }) => {
-    test.skip((page.viewportSize()?.width ?? 0) >= 768, 'the sheet is the phone treatment');
+    // Runs at every width (zero skips): the shape differs — a full-width sheet on a phone, a
+    // docked column from 768 — but the rule is the same, and asserted at all three.
+    const phone = (page.viewportSize()?.width ?? 0) < 768;
     const ghl = populated();
     await openOverview(page, {
       ghl,
@@ -880,9 +887,12 @@ test.describe('the panel', () => {
     await page.getByRole('button', { name: /Ask/ }).click();
     const panel = page.getByRole('complementary', { name: 'Assistant' });
     await expect(panel).toBeVisible();
-    // The sheet covers the whole viewport on a phone.
+    // The sheet covers the whole viewport on a phone; the docked panel is a column beside
+    // the screen from 768.
     const box = await panel.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual((page.viewportSize()?.width ?? 0) - 1);
+    const viewport = page.viewportSize()?.width ?? 0;
+    if (phone) expect(box?.width ?? 0).toBeGreaterThanOrEqual(viewport - 1);
+    else expect(box?.width ?? viewport).toBeLessThan(viewport);
     // Send a long thread's worth of scrolling inside the sheet: the page does not move.
     await page.getByTestId('panel-thread').hover();
     await page.mouse.wheel(0, 600);

@@ -536,6 +536,28 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
   same staff-only SELECT policies; `tests/security/ghl.test.ts` still asserts nothing under
   `web/src` names the client directory, the token or the origin — which is why the cooldown
   module lives in `src/lib/crm/`, beside the client directory rather than inside it.
+- **Milestone 4 part 4: the first WRITES to GoHighLevel from the running system** — a stage
+  move (`PUT /opportunities/{id}`) and a contact note (`POST /contacts/{id}/notes`), as two
+  more actions (`move`, `note`) on the same `crm` Edge Function, behind the same caller
+  verification, open to every active allowlisted member (the Team page is the permission
+  model; the write record and the audit row name the person). The write client is ONE
+  module, `src/lib/crm/ghl/write.ts` — `client.ts` stays GET-only and
+  `tests/security/ghl.test.ts` now asserts that no other module under `src/` sends a write
+  verb to a GoHighLevel path, that every stage write carries `config.pipelineId` (never a
+  pipeline from the request), and that nothing sends DELETE. The server reads the
+  opportunity LIVE before writing and refuses without a write when it is not in the
+  configured pipeline (R22, R25), deleted, or closed; GoHighLevel's own
+  `OPPORTUNITY_STAGE_ID_INVALID` refusal (observed live for a stage of another pipeline) is
+  the second fence. A write is sent ONCE (rule 8): 429 is waited out and retried (it was not
+  applied); a timeout, a dropped connection or a 5xx is followed by a READ, never a second
+  write, and the outcome is recorded as landed / not landed / unknown. Every attempt is a
+  `ghl_writes` row keyed on the browser's per-gesture `request_id` (unique — a replay is
+  answered from the record, rule 9) and every change is an `audit_log` row
+  (`LEAD_STAGE_MOVED` / `LEAD_NOTE_ADDED`, actor = the person, entity = the write row, the
+  opportunity id and both stage ids in before/after — never a name, email or phone). The
+  browser's part: a `requestId`, ids, and a note body; no token, no GoHighLevel URL, and
+  `npm run web:check` still greps the bundle for the `pit-` shape. The response's `contact`
+  sub-object (name, email) is stripped by the Zod schema before it can reach a log line.
 - The token lives in `.env`, in the `crm` function's Supabase secrets, and in the n8n
   credential store. It was sent over WhatsApp and the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.

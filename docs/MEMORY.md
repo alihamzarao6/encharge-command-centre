@@ -19,7 +19,7 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug) for *what* is built — the B2B outbound lead-research engine is **out of scope**, see D23. **The 1 Sep 2026 milestones document for *how it is delivered and paid*: eight milestones, 2,000 USD total (D77)** — the six-stage map (D26, D27) is superseded |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
-| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: the GoHighLevel read-and-sync layer (12 Sep entry) and the layout shell + overview (13 Sep entry) are committed, pushed and LIVE; the pipeline board + leads list (part 3, 14 Sep entry) is in the working tree, NOT committed.** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
+| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is in the working tree, NOT committed, with a new migration `20260924010000_ghl_writes.sql` not yet applied and the `crm` function not yet redeployed. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
 | Next task | **Review of "Milestone 4, Part 3 — Pipeline board and leads list" (14 Sep entry) → push → CI (first run of `tests/integration/leads.test.ts` on a stack) → redeploy `crm` (the cooldown) + the web app (RUNBOOK §1d).** Then the next brief: lead detail and moving a lead (Part 4) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
@@ -132,6 +132,143 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-09-24 — [M4 part 4 · Lead detail, stage moves and notes] The first writes to GoHighLevel — working tree, NOT committed
+
+**Preconditions confirmed first:** Part 3 is committed (`069ba7c`) and CI run 34831201083 on it
+is green — checks 1,417 · integration 93 · security 47 · browser 366 passed, **3 skipped**. The
+three were the two viewport-conditional `test.skip` calls in `overview.spec.ts` (a tablet-and-up
+case and a phone-only case); this part replaces both with tests that assert the right shape at
+every width, so the browser job reports zero skipped. **Whether the `crm` function was
+redeployed after Part 3 could NOT be verified from this machine** (the `.env` Supabase access
+token is 401 to the CLI and the management API, the Supabase MCP timed out, and an
+unauthenticated POST answers the same 401 in both versions); the live project answers, the
+mirror holds 10 opportunities, the newest `api` run is 14 Sep 05:51 UTC. `git status` was clean
+at the start; nothing is staged.
+
+**Live check (Part A item 1), authorised by the brief:** a test contact `Kglw9sSb0SI8tg1Lukh7`
+("ZZ-TEST Fundd app write test (delete me)", tag `fundd-app-test`) and a test opportunity
+`bxsEZfR8ghLL19YAL31t` created in the Finance Pipeline at 00:57 UTC, moved New Lead → Contacted
+→ Qualified, given notes, probed for every failure shape (23 requests, 0 rejections). Findings,
+all recorded as fixtures `tests/fixtures/ghl/write-*.json`: `PUT /opportunities/{id}`
+`{pipelineId, pipelineStageId}` → 200 with the GET shape **plus a `contact` sub-object (name,
+email)** — stripped by the schema; the same PUT again → 200, `lastStageChangeAt` unchanged
+(GHL's own no-op); a bogus stage, or a stage from ANOTHER pipeline with or without `pipelineId`
+→ 400 `OPPORTUNITY_STAGE_ID_INVALID` naming the valid ids, opportunity untouched (re-read); a
+bogus opportunity → 404 `OPPORTUNITY_NOT_FOUND`; `POST /contacts/{id}/notes` → 201 `{note}`
+(`userId` null for an integration), empty → 422, unknown contact → 400 `{error, status}`, 5,000
+and 20,000 characters accepted; rate-limit headers on writes as on reads. **The test data is
+still in the client's account** — see "Data" below.
+
+**Did:** **Server:** `src/lib/crm/ghl/write.ts` (the ONE write module: GET opportunity, PUT
+stage, POST note; a write is sent once — 429 waited out on Retry-After, capped at 2 retries;
+every other failure typed and returned; the configured `pipelineId` in every stage write; 401
+loud), `moves.ts` (the orchestration: claim the request id → check the target stage against the
+mirror → READ the opportunity live → PUT → the PUT's own reply becomes the mirror row; deleted →
+refused + row marked removed; another pipeline → refused with zero writes; closed → refused;
+moved by someone else → proceeds and says so with the real previous stage; same target → noop,
+read not written; timeout / dropped connection / 5xx / wrong shape → ONE re-read: landed →
+success (`landedAfterTimeout`), not landed → failed with the mirror set to the truth, read also
+failed → `unknown`; `addNote` the same with the live contact id and a `[Fundd app · email]`
+prefix), `writeStore.ts` (the three RPCs and two mirror reads), `page.ts` (actions `move` and
+`note`: validation → 400, every refusal/failure → its status and a sentence that says the lead
+was NOT moved: 403 outside pipeline, 409 stage unknown / closed / in flight, 410 gone, 422 note
+refused, 502 GHL failed (401 says "needs reauthorising"), 503 rate limited / store, 504 unknown),
+`wiring.ts`, `src/lib/crm/notes.ts` (the 5,000 cap the browser may import; `web/src` may not
+name `crm/ghl`). **Migration `20260924010000_ghl_writes.sql`:** `ghl_writes` (unique
+`request_id`, actor, kind, pipeline, opportunity, contact, from/to/screen stage, status
+`in_flight|success|noop|failed|unknown|mirror_failed`, GHL status, error code, duration),
+`ghl_notes` (keyed on the GHL note id, author user id, unprefixed body), both RLS forced with
+staff SELECT only; `begin_ghl_write` (claim or hand back the existing row), `finish_ghl_write`
+(ONE transaction: write row + mirror upsert within the write's pipeline + note row + `audit_log`
+row `LEAD_STAGE_MOVED` / `LEAD_NOTE_ADDED` with `entity_type = 'ghl_writes'`, `entity_id` = the
+write row, ids only in before/after — audited only for `success` / `mirror_failed`, the outcomes
+in which GHL changed; a second finish raises 55006), `mark_ghl_opportunity_removed`. **Browser:**
+`LeadDetail.tsx` rebuilt over `leadDetailView.ts` (name, stage with the move control, arrived,
+in-stage-since, contact with `tel:` / `mailto:` / tags / source / do-not-disturb, the eleven
+mapped form answers in seed order labelled by the mirrored definition — "Not captured" when
+absent — then any other captured field by definition or by id, the opportunity's own columns
+incl. `$0` as GHL said it, ids, notes newest first with "You" / the roster email / "A former
+team member"); `MoveMenu.tsx` (a native 16px `<select>` on every card and in the detail);
+`drag.ts` (Pointer Events, no library: a mouse drags after 6px, a finger after a 300 ms hold; a
+ghost follows the pointer; the column under it is highlighted; a drop back into the same column
+or outside every column is nothing; Escape and pointercancel cancel; native anchor drag is
+prevented; scroll-snap is off during a drag; edge auto-scroll); `moveView.ts` (the optimistic
+move as an OVERRIDE over the mirror's view — dropping it is the rollback — and every sentence);
+`crmApi.ts` (`move` / `note` requests, a `requestId` per gesture, every status mapped, the
+server's sentence kept; a client timeout on a move says to refresh before retrying);
+`Leads.tsx` (one move in flight at a time — a second gesture refused with "Wait for the current
+move to finish"; the banner and an `aria-live` region; the detail's own reads re-run after every
+write; the note box keeps its text on failure); `Board.tsx` (cards are a link plus the control).
+CSS appended. e2e mock: `ghl_notes`, `ghl_custom_fields`, the detail columns, a faithful default
+for `move` / `note` and a `crmWrite` script. Docs: SCHEMA §3 + §8, SECURITY §12, TESTING §8,
+RUNBOOK §1d, TASKS.
+**Decided (Part A, before code — full text `docs/MEMORY.md` this entry and the session's
+plan):** (1) *Write path* — as above; `client.ts` stays GET-only and the security suite asserts
+`write.ts` is the only writer. (2) *GoHighLevel FIRST, mirror second*: the mirror is a copy;
+if the second half fails after GHL succeeded the reply still says moved, the record says
+`mirror_failed`, the next sync overwrites by hash; no state shows a stage the CRM lacks except
+the optimistic instant, reverted on any failure. (3) *Optimistic with rollback*: the client is
+on a phone and a round trip is 0.7–1.5 s; the card moves on drop, "Saving…", back in words on
+failure; ONE move in flight at a time, which is also what makes a double-drop / double-tap one
+move. (4) *Notes write through* to GHL as contact notes with the author's email in the body
+(GHL cannot name our accounts), mirrored locally; **lost either way, stated:** notes written
+directly in GHL are not shown in the app (nothing reads them back yet); a note whose mirror
+insert failed is in GHL and shown from the reply but absent after a reload. Cap 5,000. (5) *Who
+can move*: every active member — the Team page is the permission model; the write record and
+audit row name the person. (6) *Audit*: `ghl_writes` + `audit_log` as above. Also: last write
+wins, deliberately and visibly (the reply carries the real previous stage; the screen says
+"Someone else had moved this lead to X since your screen loaded"); the write sent ONCE with a
+re-read on any uncertain answer (rule 8); a replayed request id answered from the record (rule
+9); no drag library (dnd-kit and pragmatic-drag-and-drop considered — a first UI dependency for
+one list-to-list move); a native select as the menu.
+**Tests:** unit `write.test.ts` 17 · `moves.test.ts` 29 · `page-writes.test.ts` 11 ·
+`writeStore.test.ts` 8 · `tests/unit/web/moves.test.ts` 21; integration
+`tests/integration/ghl-writes.test.ts` (stack: 9 — the mirror row from the answer, the write
+record, the audit row with ids only, replay with no second PUT / audit row, noop, timeout not
+landed → row byte-identical, timeout landed → found by the re-read, deleted → marked, another
+pipeline → zero writes, a stage GHL refuses, a note under RLS, a second finish 55006);
+security `ghl.test.ts` (+1 static: the one write module / pipeline id / no DELETE; the stack
+half now covers eight tables, six functions, and a session unable to claim a write, mark a row
+or insert a note); browser `tests/e2e/moves.spec.ts` 26 × 3 widths. **Numbers (local, 24 Sep):**
+typecheck clean · lint clean · `vitest run --coverage` **1,523 passed, 134 skipped (14
+stack-backed files, no Docker) in 79 files** (was 1,432 / 125 / 73), coverage **89.82% lines /
+86.26% branches / 91.69% functions / 88.62% statements** (was 93.95 / 88.44 — `drag.ts` is
+DOM-only and covered by the browser suite alone, stated in TESTING §8) · `web:check` 0 hits ·
+`functions:bundle` four functions · browser (installed Chrome): **447 passed, 0 failed, 0 skipped in 10.3 min** (the full run; `moves.spec.ts` 26 × 3 widths, and three part-3 `leads.spec.ts` tests updated for the real detail and the card's new control — re-run 84 passed); screenshots `lead-detail`, `lead-move-menu`, `lead-move-failed`, `lead-note-added` at 375 / 768 / 1280 under `docs/assets/milestone-4/`; `leads-board-*` and `leads-panel-1280` re-rendered because every card now carries the move control; every other re-rendered screenshot reverted as parts 2 and 3 did.
+**Not verified:** the stack half (`ghl-writes.test.ts`, the new `ghl.test.ts` and
+`schema.test.ts` assertions) ran nowhere but in the author's head — no Docker here and the
+Supabase MCP was down, so the migration was not even replayed in a rolled-back transaction as
+parts 1–3's were; **CI is the evidence, and the first run is the test of the migration**. The
+live project has NOT been touched by this part beyond the GHL probe (no migration applied, no
+deploy). Touch drag (the 300 ms hold) is unverified on a real phone: the Playwright projects
+drive a mouse. The redeploy of `crm` after Part 3 is unverified (above). Whether GHL's "Stage
+Notifications" workflow emailed Ross about the test lead's moves is unknown.
+**Not covered, and why:** "the network drops mid-write" on the SERVER side (between the PUT
+landing and the finish) is covered by the store-failure unit test (`mirrored: false`) rather
+than a real disconnect; a note's uncertain outcome is not re-read (no id to look for — stated in
+`moves.ts`); a real second person is simulated by scripting the mirror, not by two sessions.
+**Surprised by:** (1) the PUT reply carries the contact's name and email inside the
+opportunity — the schema strips it, and the tests assert no email reaches a result or a log
+line. (2) The stage refusal's `code` sits past the 500-character body snippet http.ts keeps, so
+it is matched tolerantly (prefix, or the message's opening words). (3) An `<a>` is natively
+draggable: Chrome started an HTML5 drag on the card's link and cancelled the pointer events —
+found by the browser suite, fixed with `draggable={false}` and a `dragstart` preventDefault.
+(4) Scroll-snap fights edge auto-scroll on a phone board (every step snaps back); it is
+switched off for the duration of a drag. (5) Chrome reports the reduced-motion transition
+duration as `1e-05s`, not `0.01ms`.
+**Data — test data LEFT in the client's account, deliberately:** contact `Kglw9sSb0SI8tg1Lukh7`
+(ZZ-TEST …, tag `fundd-app-test`, five notes prefixed `[Fundd app test]`) and opportunity
+`bxsEZfR8ghLL19YAL31t` in the Finance Pipeline, stage Qualified. Delete both from GHL after
+review and Refresh. Nothing else in the account was read or changed; the 12 Sep findings stand.
+**Would build differently:** fixed decision 1 (no dialog) is right; fixed decision 2 (both
+drag and menu) — on a phone the drag is a compromise (hold, then the board auto-scrolls) and the
+menu is what he will use; I would consider hiding drag below 768 if the client's own phone
+run in part 5 shows it in the way. Notes read back from GoHighLevel (a `notes` read action)
+would make the "latest update" complete and is a small addition once part 4 is signed off.
+**Next:** reviewer reads this → push → CI (the first run of the migration and the three stack
+suites) → `supabase db push` + `functions:bundle` + `supabase functions deploy crm` + `vercel
+deploy --prod` (RUNBOOK §1d) → delete the two test records in GHL → M4 part 5.
 
 ### 2026-09-14 — [M4 part 3 · Pipeline board + leads list] Every lead on screen — working tree, NOT committed
 

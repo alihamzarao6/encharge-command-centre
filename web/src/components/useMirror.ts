@@ -50,6 +50,8 @@ export interface Mirror<TView> {
   readonly banner: Banner;
   readonly setBanner: (banner: Banner) => void;
   readonly retry: () => void;
+  /** Part 4: a silent re-read after a write — no skeleton, whatever is on screen stays. */
+  readonly reload: () => Promise<void>;
   readonly refreshing: boolean;
   readonly refresh: () => void;
   /** Milliseconds until Refresh may be pressed again; 0 when it may. */
@@ -68,6 +70,8 @@ const COUNTDOWN_MS = 1_000;
 export function refreshBanner(outcome: CrmOutcome): Banner {
   if (outcome.kind === 'ok') {
     const { reply } = outcome;
+    // A move or a note never reaches this banner; the refresh is the only sync action.
+    if (reply.action !== 'sync') return null;
     if (reply.status === 'partial') {
       return {
         tone: 'warn',
@@ -211,6 +215,7 @@ export function useMirror<TInput, TView extends MirrorViewBase>(
     banner,
     setBanner,
     retry,
+    reload: load,
     refreshing,
     refresh: () => {
       void refresh();

@@ -1,0 +1,10 @@
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "stageId must be one of the following values: 51c98561-cd26-49a9-a001-97536c31dd0a,3a47fe3c-57d1-41d4-bc89-20241eb978f4,f2393065-3038-4fba-bdf1-8c39b7b18183,5d215f52-d09d-45c8-a192-a2555ce46317,8727dd26-4e4d-4faf-b198-14e181c12e9e,924f9bfc-3156-4440-a624-3eb10f506c6c,dea94c3a-84d0-40e4-a722-6ff3db4c8af9,2c356add-69e4-458e-b940-a7aaa9947159,9cef8b67-1171-4347-9275-36e1055a97aa,2ee75d16-1407-43cf-811e-957e0e2adc3a",
+  "code": "OPPORTUNITY_STAGE_ID_INVALID",
+  "arguments": {
+    "stageIds": "51c98561-cd26-49a9-a001-97536c31dd0a,3a47fe3c-57d1-41d4-bc89-20241eb978f4,f2393065-3038-4fba-bdf1-8c39b7b18183,5d215f52-d09d-45c8-a192-a2555ce46317,8727dd26-4e4d-4faf-b198-14e181c12e9e,924f9bfc-3156-4440-a624-3eb10f506c6c,dea94c3a-84d0-40e4-a722-6ff3db4c8af9,2c356add-69e4-458e-b940-a7aaa9947159,9cef8b67-1171-4347-9275-36e1055a97aa,2ee75d16-1407-43cf-811e-957e0e2adc3a"
+  },
+  "traceId": "38da1562-3343-4e66-b0cd-382caaf816cf"
+}

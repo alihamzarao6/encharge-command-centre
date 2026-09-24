@@ -124,6 +124,8 @@ function makeHarness(
     // No run has ever started: the cooldown (part 3) never applies in this harness. The
     // cooldown's own tests build their harness with a run row.
     latestRun: () => Promise.resolve(ok(null)),
+    move: () => Promise.reject(new Error('move is not part of this harness')),
+    note: () => Promise.reject(new Error('note is not part of this harness')),
     log: createLogger({
       level: 'debug',
       sink: (line) => {
@@ -366,6 +368,8 @@ describe('the cooldown, enforced server-side', () => {
     const deps: CrmPageDeps = {
       ...h.deps,
       latestRun: () => Promise.resolve(ok(lastRun)),
+      move: () => Promise.reject(new Error('move is not part of this harness')),
+      note: () => Promise.reject(new Error('note is not part of this harness')),
       now: () => NOW,
       ...extra,
     };
@@ -439,6 +443,8 @@ describe('the cooldown, enforced server-side', () => {
   it('the last run cannot be read → 503, retryable, and no sync: the limit fails closed', async () => {
     const h = withLastRun(null, {
       latestRun: () => Promise.resolve(err(new NetworkError('database unreachable'))),
+      move: () => Promise.reject(new Error('move is not part of this harness')),
+      note: () => Promise.reject(new Error('note is not part of this harness')),
     });
     const result = await call(h, 'staff-token');
     expect(result.status).toBe(503);

@@ -341,6 +341,37 @@ server-side"): every case asserts the sync was NOT started, so the suite fails w
 check in `page.ts`; the pure half is `tests/unit/crm/cooldown.test.ts`. `overview.spec.ts`
 now expects Refresh to wait out the cooldown after a run finishes.
 
+*Milestone 4 part 4 (24 Sep 2026):* the `checks` job gains the write path's unit suites —
+`tests/unit/crm/ghl/write.test.ts` (the write client against the responses recorded from the
+live probe, `tests/fixtures/ghl/write-*.json`: one PUT per write, 429 waited and capped, the
+typed refusals, the loud 401, the `contact` sub-object never in a result or a log line),
+`moves.test.ts` (the orchestration with fakes: every Part C case — the write failing, the data
+moving underneath, idempotency by request id and by target, the order of calls),
+`page-writes.test.ts` (the two actions on the wire: 401/403/503 before anything runs, the
+400s, every refusal and failure to its status and its sentence), `writeStore.test.ts` (the
+three RPCs), and `tests/unit/web/moves.test.ts` (the optimistic move over a built view, every
+sentence, the request/answer shapes, the lead detail line by line). The `integration` job
+gains `tests/integration/ghl-writes.test.ts` — the real write client, store and database
+functions with GoHighLevel scripted: the mirror row from the answer, the write record, the
+audit row with ids only, the same request id answered from the record with no second PUT and no
+second audit row, a timeout that did not land leaving the row byte-identical, one that landed
+found by the re-read, deleted (marked removed), another pipeline (zero writes), a note read
+back under RLS by a member and by nobody else, and a second finish refused. The `security`
+job's `ghl.test.ts` covers the two new tables and three functions, and statically that
+`write.ts` is the only module sending a write verb to GoHighLevel. The `browser` job gains
+`tests/e2e/moves.spec.ts` (the detail; a move by menu on the detail and on a card; a move by
+drag, with the ghost, the highlighted column, a drop back into its own column and one outside
+every column writing nothing, Escape, a second gesture while one is saving refused in words,
+keyboard-only, the live region, reduced motion; every failure putting the card back in words;
+deleted / stage gone / moved by someone else / a stale mirror; notes: saved and listed, empty
+and over-long refused before sending, a failed save keeping the text, two authors at once;
+screenshots `lead-detail`, `lead-move-menu`, `lead-move-failed`, `lead-note-added` at the
+three widths). The e2e mock answers `move` and `note` faithfully by default (the mirror
+changes as the server's would) and takes a `crmWrite` script for the failure cases; the two
+viewport-conditional `test.skip` calls in `overview.spec.ts` were replaced by tests that assert
+the right shape at every width, so the browser job reports **zero skipped**. `drag.ts` (Pointer
+Events, DOM) is covered by the browser suite only — the unit suite has no DOM.
+
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →
 `supabase db reset --local` (the from-zero replay proof, migrations + seed, on every push) →

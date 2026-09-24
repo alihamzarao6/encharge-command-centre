@@ -221,6 +221,29 @@ Notes:
   environment variable. `npm run crm -- sync` (developer-only) is not gated. If the endpoint
   answers `503 COOLDOWN_UNKNOWN`, it could not read the last run row and refused rather than
   waived the limit — check the database, then try again.
+- **Part 4 (24 Sep) adds a migration and changes the `crm` function again — both must ship
+  together, migration first:**
+
+  ```bash
+  supabase db push                 # 20260924010000 — ghl_writes, ghl_notes, three write functions
+  npm run functions:bundle && supabase functions deploy crm --no-verify-jwt
+  npm run web:build && npm run web:check && vercel deploy --prod
+  ```
+
+  The function needs no new secret: the moves use the same `GHL_PRIVATE_INTEGRATION_TOKEN`
+  (the token carries the `opportunities` and `contacts` write scopes — SECURITY §12). A
+  deployed function without the migration answers every move and note `503 STORE` ("could
+  not record the change") and writes nothing to GoHighLevel — by design, the record is
+  claimed before the CRM is called. **"GoHighLevel rejected our access key, so the lead was
+  not moved. The connection needs reauthorising"** on a move is the dead-token sentence for
+  the write path; same fix as above. A move that answers "didn't confirm the move, and we
+  couldn't check" left a `ghl_writes` row with `status = 'unknown'`; the next Refresh
+  reconciles the stage from GoHighLevel by hash, and `select * from ghl_writes order by
+  started_at desc` is where a disputed move is explained (who, from, to, when, the
+  GoHighLevel status). **Test data in the client's account from the 24 Sep live probe:**
+  contact `Kglw9sSb0SI8tg1Lukh7` ("ZZ-TEST Fundd app write test (delete me)", tag
+  `fundd-app-test`, five notes) and opportunity `bxsEZfR8ghLL19YAL31t` in the Finance
+  Pipeline — delete both from GoHighLevel once part 4 is reviewed, then Refresh.
 
 ### Adding a person — what the admin actually does
 

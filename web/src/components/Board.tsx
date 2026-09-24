@@ -4,17 +4,32 @@
  * newest first. The board scrolls sideways inside its own box and each column scrolls its
  * own cards; the page never scrolls.
  *
- * DRAG-READY, NOTHING DRAGS. Each column's list carries `data-stage-id` and
- * `data-drop-target`, each card `data-opportunity-id`, and React keys are the GoHighLevel
- * ids — so part 4 can add the drag, the plain "move to stage" control the phone and the
- * keyboard need, and the write to GoHighLevel behind both, without changing the shapes here.
- * There is deliberately no control on a card that could change a stage in this part.
+ * PART 4: A CARD MOVES. Two ways, neither a fallback (fixed decision 2): drag a card into
+ * another column (web/src/lib/drag.ts — Pointer Events, no library; a mouse drags after 6px,
+ * a finger after a 300 ms hold so the board can still be swiped), or pick a stage from the
+ * "Move to" control on the card (MoveMenu — keyboard, screen reader and the iOS picker). The
+ * drop or the pick is the confirmation (D81). Both call one `onMove`; the screen (Leads.tsx)
+ * moves the card at once, sends the write, and puts it back in words if it fails.
+ *
+ * While ONE move is saving the board refuses a second: the saving card is marked and its
+ * control disabled, every other card's drag is refused with a sentence, and a card dropped
+ * back into its own column or outside every column is no move at all. The column a drag is
+ * over is highlighted by the drag helper (`board__col--over`), never by React state.
  *
  * A stage is distinguishable without colour: its number and its name are in the heading, and
  * a removed or unknown stage says so in words.
  */
-import { useState, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactElement,
+} from 'react';
 
+import { attachDrag } from '../lib/drag.js';
+import type { StageOption } from '../lib/leadDetailView.js';
 import {
   PAGE_SIZE,
   filterLeads,
@@ -24,6 +39,12 @@ import {
 } from '../lib/leadsView.js';
 import { formatCount } from '../lib/overviewView.js';
 import { leadsPath } from '../lib/routes.js';
+import { MoveMenu } from './MoveMenu.js';
+
+export interface MoveInFlight {
+  readonly opportunityId: string;
+  readonly toStageId: string;
+}
 
 interface Props {
   readonly columns: readonly StageColumn[];
@@ -31,6 +52,19 @@ interface Props {
   readonly total: number;
   readonly onOpen: (opportunityId: string) => void;
   readonly onClear: () => void;
+  /** Part 4: the live stages for the move control; empty when moves are not possible. */
+  readonly stageOptions: readonly StageOption[];
+  /** Part 4: a drop or a pick. `fromStageId` is the stage the card was shown in. */
+  readonly onMove: (
+    opportunityId: string,
+    fromStageId: string,
+    toStageId: string,
+    via: 'drag' | 'menu',
+  ) => void;
+  /** The one move saving right now, or null. */
+  readonly moving: MoveInFlight | null;
+  /** A gesture refused because a move is in flight; the screen says so. */
+  readonly onBusy: () => void;
 }
 
 /** A plain link (Back, middle-click and "copy address" all work); a left click stays in-app. */
@@ -49,34 +83,116 @@ export function leadLinkProps(
   };
 }
 
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+interface CardProps {
+  readonly lead: Lead;
+  readonly onOpen: (opportunityId: string) => void;
+  readonly stageOptions: readonly StageOption[];
+  readonly onMove: Props['onMove'];
+  readonly saving: boolean;
+  readonly locked: boolean;
+  readonly onBusy: () => void;
+}
+
 export function LeadCard({
   lead,
   onOpen,
-}: {
-  readonly lead: Lead;
-  readonly onOpen: (opportunityId: string) => void;
-}): ReactElement {
+  stageOptions,
+  onMove,
+  saving,
+  locked,
+  onBusy,
+}: CardProps): ReactElement {
   const noDetails = lead.email === null && lead.phone === null;
+  const ref = useRef<HTMLDivElement>(null);
+  // The handlers change on every render; the drag helper reads the latest through a ref so
+  // it is attached once per card, not once per render.
+  const latest = useRef({ onMove, onBusy, locked, stageId: lead.stageId });
+  latest.current = { onMove, onBusy, locked, stageId: lead.stageId };
+
+  useEffect(() => {
+    const card = ref.current;
+    if (card === null || stageOptions.length === 0) return;
+    return attachDrag(card, {
+      opportunityId: lead.opportunityId,
+      enabled: () => {
+        if (latest.current.locked) {
+          latest.current.onBusy();
+          return false;
+        }
+        return true;
+      },
+      reducedMotion: prefersReducedMotion,
+      handlers: {
+        onDragStart: () => undefined,
+        onDragOver: () => undefined,
+        onDragCancel: () => undefined,
+        onDrop: (id, stageId) => {
+          // Outside every column, or back where it came from: no move, no request.
+          if (stageId === null || stageId === latest.current.stageId) return;
+          latest.current.onMove(id, latest.current.stageId, stageId, 'drag');
+        },
+      },
+    });
+  }, [lead.opportunityId, stageOptions.length]);
+
   return (
-    <a className="lead-card" {...leadLinkProps(lead.opportunityId, onOpen)}>
-      <span className="lead-card__name">{lead.name}</span>
-      <span className="lead-card__meta muted">
-        <span className="lead-card__when">{lead.arrived}</span>
-        {lead.loanBalance !== null && (
-          <>
-            <span aria-hidden="true"> · </span>
-            <span className="lead-card__balance">
-              <span className="sr-only">loan balance </span>
-              {lead.loanBalance}
-            </span>
-          </>
+    <div
+      ref={ref}
+      className={`lead-card${saving ? ' lead-card--saving' : ''}`}
+      aria-busy={saving}
+      data-saving={saving ? 'true' : undefined}
+    >
+      <a
+        className="lead-card__link"
+        draggable={false}
+        {...leadLinkProps(lead.opportunityId, onOpen)}
+      >
+        <span className="lead-card__name">{lead.name}</span>
+        <span className="lead-card__meta muted">
+          <span className="lead-card__when">{lead.arrived}</span>
+          {lead.loanBalance !== null && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <span className="lead-card__balance">
+                <span className="sr-only">loan balance </span>
+                {lead.loanBalance}
+              </span>
+            </>
+          )}
+        </span>
+        {!lead.contactKnown && <span className="lead-card__flag">contact details not synced</span>}
+        {lead.contactKnown && noDetails && (
+          <span className="lead-card__flag">no phone or email on file</span>
         )}
-      </span>
-      {!lead.contactKnown && <span className="lead-card__flag">contact details not synced</span>}
-      {lead.contactKnown && noDetails && (
-        <span className="lead-card__flag">no phone or email on file</span>
+      </a>
+      {stageOptions.length > 0 && (
+        <div className="lead-card__foot">
+          <MoveMenu
+            compact
+            name={lead.name}
+            stageId={lead.stageId}
+            options={stageOptions}
+            disabled={locked}
+            onMove={(to) => {
+              onMove(lead.opportunityId, lead.stageId, to, 'menu');
+            }}
+          />
+          {saving && (
+            <span className="lead-card__saving" role="status">
+              Saving…
+            </span>
+          )}
+        </div>
       )}
-    </a>
+    </div>
   );
 }
 
@@ -84,10 +200,18 @@ function Column({
   column,
   filter,
   onOpen,
+  stageOptions,
+  onMove,
+  moving,
+  onBusy,
 }: {
   readonly column: StageColumn;
   readonly filter: LeadFilter;
   readonly onOpen: (opportunityId: string) => void;
+  readonly stageOptions: readonly StageOption[];
+  readonly onMove: Props['onMove'];
+  readonly moving: MoveInFlight | null;
+  readonly onBusy: () => void;
 }): ReactElement {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const filtering = filter.query.trim() !== '' || filter.stageId !== null;
@@ -127,7 +251,15 @@ function Column({
             className="board__item"
             data-opportunity-id={lead.opportunityId}
           >
-            <LeadCard lead={lead} onOpen={onOpen} />
+            <LeadCard
+              lead={lead}
+              onOpen={onOpen}
+              stageOptions={stageOptions}
+              onMove={onMove}
+              saving={moving?.opportunityId === lead.opportunityId}
+              locked={moving !== null}
+              onBusy={onBusy}
+            />
           </li>
         ))}
       </ol>
@@ -149,7 +281,17 @@ function Column({
   );
 }
 
-export function Board({ columns, filter, total, onOpen, onClear }: Props): ReactElement {
+export function Board({
+  columns,
+  filter,
+  total,
+  onOpen,
+  onClear,
+  stageOptions,
+  onMove,
+  moving,
+  onBusy,
+}: Props): ReactElement {
   const filtering = filter.query.trim() !== '' || filter.stageId !== null;
   const matching = filtering
     ? columns.reduce((n, c) => n + filterLeads(c.leads, filter).length, 0)
@@ -178,14 +320,23 @@ export function Board({ columns, filter, total, onOpen, onClear }: Props): React
         </p>
       )}
       <div
-        className="board"
+        className={`board${moving !== null ? ' board--busy' : ''}`}
         role="region"
         aria-label="Pipeline board"
         tabIndex={0}
         onKeyDown={onKey}
       >
         {columns.map((column) => (
-          <Column key={column.stageId} column={column} filter={filter} onOpen={onOpen} />
+          <Column
+            key={column.stageId}
+            column={column}
+            filter={filter}
+            onOpen={onOpen}
+            stageOptions={stageOptions}
+            onMove={onMove}
+            moving={moving}
+            onBusy={onBusy}
+          />
         ))}
       </div>
     </div>

@@ -1,0 +1,8 @@
+{
+  "message": [
+    "body should not be empty"
+  ],
+  "error": "Unprocessable Entity",
+  "statusCode": 422,
+  "traceId": "332c6371-84fa-4b17-963d-507e49cd5bad"
+}

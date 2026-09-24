@@ -1,0 +1,6 @@
+{
+  "statusCode": 404,
+  "error": "Not Found",
+  "message": "Opportunity not found",
+  "code": "OPPORTUNITY_NOT_FOUND"
+}

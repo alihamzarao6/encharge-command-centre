@@ -1,0 +1,36 @@
+{
+  "opportunity": {
+    "id": "bxsEZfR8ghLL19YAL31t",
+    "name": "ZZ TEST — Fundd app write test (delete me)",
+    "monetaryValue": 0,
+    "pipelineId": "M4unnMKBy0TgwCwOA6wS",
+    "pipelineStageId": "f2393065-3038-4fba-bdf1-8c39b7b18183",
+    "status": "open",
+    "lastStatusChangeAt": "2026-09-24T00:57:30.215Z",
+    "lastStageChangeAt": "2026-09-24T00:57:31.351Z",
+    "createdAt": "2026-09-24T00:57:30.215Z",
+    "updatedAt": "2026-09-24T00:57:31.356Z",
+    "contactId": "Kglw9sSb0SI8tg1Lukh7",
+    "isAttribute": false,
+    "internalSource": {
+      "type": "CREATED",
+      "id": "6aac976d854559cdaf92a272",
+      "apiVersion": "2021-07-28",
+      "channel": "OAUTH",
+      "source": "INTEGRATION"
+    },
+    "locationId": "tgw5Q3BnoZoSsVOnRUxB",
+    "lastActionDate": "2026-09-24T00:57:31.351Z",
+    "followers": [],
+    "contact": {
+      "id": "Kglw9sSb0SI8tg1Lukh7",
+      "name": "ZZ-TEST Fundd app write test (delete me)",
+      "email": "fundd-app-write-test@example.com",
+      "tags": [
+        "fundd-app-test"
+      ],
+      "followers": []
+    }
+  },
+  "traceId": "3a26d3d0-e25c-4c19-88af-6cf46f8a809d"
+}

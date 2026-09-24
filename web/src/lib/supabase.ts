@@ -15,13 +15,14 @@ import { webConfig } from './env.js';
 // app expects a row type to come from.
 import type { ConversationListRow } from './conversationsView.js';
 import type { MemoryChunkRow, MemoryFactRow } from './memoryView.js';
-import type { GhlContactDetailRow, GhlFieldMapRow } from './leadsView.js';
 import type {
-  GhlOpportunityRow,
-  GhlPipelineRow,
-  GhlStageRow,
-  GhlSyncRunRow,
-} from './overviewView.js';
+  GhlContactFullRow,
+  GhlCustomFieldRow,
+  GhlNoteRow,
+  GhlOpportunityDetailRow,
+} from './leadDetailView.js';
+import type { GhlFieldMapRow } from './leadsView.js';
+import type { GhlPipelineRow, GhlStageRow, GhlSyncRunRow } from './overviewView.js';
 import type { AppUserRow } from './usersView.js';
 
 export type { AppUserRow, ConversationListRow, MemoryChunkRow, MemoryFactRow };
@@ -91,18 +92,35 @@ export type WebDatabase = {
         Update: Partial<GhlStageRow>;
         Relationships: [];
       };
+      // Part 4 widened the Row to every column the lead detail reads; the overview and the
+      // leads screen still select their subsets.
       ghl_opportunities: {
-        Row: GhlOpportunityRow;
-        Insert: Partial<GhlOpportunityRow>;
-        Update: Partial<GhlOpportunityRow>;
+        Row: GhlOpportunityDetailRow;
+        Insert: Partial<GhlOpportunityDetailRow>;
+        Update: Partial<GhlOpportunityDetailRow>;
         Relationships: [];
       };
       // Part 3 selects the contact's email, phone and form answers as well as the name the
       // overview selects; one Row type covers both selects.
       ghl_contacts: {
-        Row: GhlContactDetailRow;
-        Insert: Partial<GhlContactDetailRow>;
-        Update: Partial<GhlContactDetailRow>;
+        Row: GhlContactFullRow;
+        Insert: Partial<GhlContactFullRow>;
+        Update: Partial<GhlContactFullRow>;
+        Relationships: [];
+      };
+      // Part 4: the labels for a contact's custom-field ids, and the notes this app wrote
+      // through to GoHighLevel (migration 20260924010000). SELECT for active staff only; every
+      // write goes through the crm endpoint.
+      ghl_custom_fields: {
+        Row: GhlCustomFieldRow;
+        Insert: Partial<GhlCustomFieldRow>;
+        Update: Partial<GhlCustomFieldRow>;
+        Relationships: [];
+      };
+      ghl_notes: {
+        Row: GhlNoteRow;
+        Insert: Partial<GhlNoteRow>;
+        Update: Partial<GhlNoteRow>;
         Relationships: [];
       };
       // Seeded configuration (migration 20260824010400, seed.sql): which GoHighLevel

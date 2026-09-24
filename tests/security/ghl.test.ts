@@ -6,6 +6,9 @@
  *     rule tests/security/secrets.test.ts enforces for Anthropic and voyage-key.test.ts
  *     for Voyage);
  *   - the client module issues GETs and nothing else — no write verb anywhere in it;
+ *   - part 4: exactly ONE module writes to GoHighLevel (write.ts), every stage write it sends
+ *     carries the configured pipeline id, and no other module under src/ builds a PUT / POST
+ *     / PATCH / DELETE to the GoHighLevel origin;
  *   - no real `pit-` token shape in any source, script or fixture;
  *   - nothing under web/src mentions the GHL client or its token.
  *
@@ -15,7 +18,10 @@
  *   - an allowlisted session reads the mirror, an outsider reads nothing;
  *   - a session cannot insert, update or delete a mirrored row or a run;
  *   - the three sync functions are executable by service_role only, from the catalog and
- *     behaviourally through PostgREST.
+ *     behaviourally through PostgREST;
+ *   - part 4: the two write tables (ghl_writes, ghl_notes) have the same posture, the three
+ *     write functions are service_role only, and a session cannot insert a write record or
+ *     a note through PostgREST.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -63,6 +69,24 @@ describe('the GoHighLevel token has exactly one reader', () => {
     expect(source).not.toMatch(/body:\s*JSON\.stringify/);
   });
 
+  it('part 4: write.ts is the one module that sends a write verb to GoHighLevel, always with the pipeline id', () => {
+    const writeVerb = /['"](PUT|POST|PATCH|DELETE)['"]/;
+    const ghlPath = /\/opportunities\/|\/contacts\//;
+    const writers = srcFiles.filter((f) => {
+      if (f.endsWith('/src/lib/crm/ghl/write.ts')) return false;
+      const source = readFileSync(f, 'utf8');
+      // A module that names a GoHighLevel resource path AND sends a write verb.
+      return ghlPath.test(source) && writeVerb.test(source);
+    });
+    expect(writers.map((f) => f.slice(f.indexOf('src/')))).toEqual([]);
+    const write = readFileSync(join(REPO_ROOT, 'src', 'lib', 'crm', 'ghl', 'write.ts'), 'utf8');
+    // The stage write names the configured pipeline, never a pipeline from the request.
+    expect(write).toMatch(/pipelineId:\s*config\.pipelineId/);
+    expect(write).not.toMatch(/pipelineId:\s*(request|body|input)\./);
+    // No DELETE anywhere: nothing in this system removes a record from the client's CRM.
+    expect(write).not.toMatch(/['"]DELETE['"]/);
+  });
+
   it('nothing under web/src mentions the GHL client, its token or its origin', () => {
     const offenders = webFiles.filter((f) =>
       /crm\/ghl|GHL_PRIVATE_INTEGRATION_TOKEN|leadconnectorhq/.test(readFileSync(f, 'utf8')),
@@ -96,10 +120,12 @@ const PIPELINE = `SECTEST-${RUN}`;
 const GHL_TABLES = [
   'ghl_contacts',
   'ghl_custom_fields',
+  'ghl_notes',
   'ghl_opportunities',
   'ghl_pipelines',
   'ghl_stages',
   'ghl_sync_runs',
+  'ghl_writes',
 ];
 
 const cfg = env ?? {
@@ -168,6 +194,10 @@ describe.skipIf(env === null)('GHL mirror RLS (requires a running Supabase stack
   }, 60_000);
 
   afterAll(async () => {
+    await db.query(`delete from public.ghl_notes where opportunity_ghl_id like $1`, [
+      `${PIPELINE}%`,
+    ]);
+    await db.query(`delete from public.ghl_writes where pipeline_ghl_id = $1`, [PIPELINE]);
     await db.query(`delete from public.ghl_opportunities where pipeline_ghl_id = $1`, [PIPELINE]);
     await db.query(`delete from public.ghl_stages where pipeline_ghl_id = $1`, [PIPELINE]);
     await db.query(`delete from public.ghl_sync_runs where pipeline_ghl_id = $1`, [PIPELINE]);
@@ -179,7 +209,7 @@ describe.skipIf(env === null)('GHL mirror RLS (requires a running Supabase stack
     await db.end();
   }, 60_000);
 
-  it('the six tables exist with RLS enabled AND forced', async () => {
+  it('the eight tables exist with RLS enabled AND forced', async () => {
     const res = await db.query<{ relname: string; rls: boolean; force: boolean }>(
       `select c.relname, c.relrowsecurity as rls, c.relforcerowsecurity as force
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -245,17 +275,20 @@ describe.skipIf(env === null)('GHL mirror RLS (requires a running Supabase stack
     expect(runs.rows[0]?.n).toBe('0');
   });
 
-  it('the three sync functions are executable by service_role only — catalog and behaviour', async () => {
+  it('the three sync functions and the three write functions are executable by service_role only — catalog and behaviour', async () => {
     const privileges = await db.query<{ fn: string; role: string; can: boolean }>(
       `select fn, role, has_function_privilege(role, fn, 'execute') as can
        from (values
          ('public.begin_ghl_sync_run(text,text,uuid,integer)'),
          ('public.apply_ghl_snapshot(uuid,jsonb)'),
-         ('public.finish_ghl_sync_run(uuid,text,text,text,jsonb,jsonb)')
+         ('public.finish_ghl_sync_run(uuid,text,text,text,jsonb,jsonb)'),
+         ('public.begin_ghl_write(uuid,uuid,text,text,text,text,text,text)'),
+         ('public.finish_ghl_write(uuid,text,integer,text,integer,text,jsonb,jsonb)'),
+         ('public.mark_ghl_opportunity_removed(text)')
        ) f(fn)
        cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)`,
     );
-    expect(privileges.rows).toHaveLength(9);
+    expect(privileges.rows).toHaveLength(18);
     for (const row of privileges.rows) {
       expect(row.can, `${row.role} on ${row.fn}`).toBe(row.role === 'service_role');
     }
@@ -271,6 +304,44 @@ describe.skipIf(env === null)('GHL mirror RLS (requires a running Supabase stack
       [PIPELINE],
     );
     expect(landed.rows[0]?.n).toBe('0');
+    // Part 4: a session cannot claim a write record, mark a row removed, or insert a note.
+    const claim = await staff.client.rpc('begin_ghl_write', {
+      p_request_id: crypto.randomUUID(),
+      p_actor: staff.id,
+      p_kind: 'stage_move',
+      p_pipeline_ghl_id: PIPELINE,
+      p_opportunity_ghl_id: `${PIPELINE}-opp`,
+      p_contact_ghl_id: null,
+      p_screen_stage_ghl_id: null,
+      p_to_stage_ghl_id: `${PIPELINE}-stage`,
+    });
+    expect(claim.error).not.toBeNull();
+    const mark = await staff.client.rpc('mark_ghl_opportunity_removed', {
+      p_ghl_id: `${PIPELINE}-opp`,
+    });
+    expect(mark.error).not.toBeNull();
+    const writeRow = await staff.client.from('ghl_writes').insert({
+      request_id: crypto.randomUUID(),
+      actor: staff.id,
+      kind: 'note',
+      pipeline_ghl_id: PIPELINE,
+      opportunity_ghl_id: `${PIPELINE}-opp`,
+    });
+    expect(writeRow.error).not.toBeNull();
+    const noteRow = await staff.client.from('ghl_notes').insert({
+      ghl_id: `${PIPELINE}-note`,
+      contact_ghl_id: 'c',
+      opportunity_ghl_id: `${PIPELINE}-opp`,
+      body: 'sneak',
+    });
+    expect(noteRow.error).not.toBeNull();
+    const nothing = await db.query<{ w: string; n: string; r: string }>(
+      `select (select count(*) from public.ghl_writes where pipeline_ghl_id = $1) as w,
+              (select count(*) from public.ghl_notes where opportunity_ghl_id = $2) as n,
+              (select count(*) from public.ghl_opportunities where ghl_id = $2 and removed_at is not null) as r`,
+      [PIPELINE, `${PIPELINE}-opp`],
+    );
+    expect(nothing.rows[0]).toEqual({ w: '0', n: '0', r: '0' });
   });
 
   it('no policy on a GHL table grants anything but SELECT, and only to authenticated', async () => {
