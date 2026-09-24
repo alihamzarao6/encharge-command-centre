@@ -134,7 +134,14 @@ const scriptedFetch: FetchLike = (url, init) => {
     }
     if (world.putBehaviour === 'hang' || world.putBehaviour === 'hang-but-land') {
       if (world.putBehaviour === 'hang-but-land') world.stageId = body.pipelineStageId;
-      return new Promise(() => undefined);
+      // A hang that honours the abort signal, as real fetch does: http.ts times the request
+      // out through AbortController, so a promise that ignores the signal would never settle
+      // (that is exactly what timed the first CI run out).
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'));
+        });
+      });
     }
     if (body.pipelineId !== PIPELINE)
       throw new Error('a write named a pipeline other than the configured one');
