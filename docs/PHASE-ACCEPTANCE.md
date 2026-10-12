@@ -799,7 +799,7 @@ The figure shown to the person before a scan is read is $0.027 a page (an estima
 before measuring; measured $0.013–$0.023), and the cap reserves $0.077 a page as the worst
 case. A 50-page scan is about $1.14 at the measured dense-page rate: 23% of the $5 daily cap.
 
-### Part 2 — Reading a web page from a link · probed, decided and BUILT 12 Oct 2026 — in the working tree, NOT committed, NOT deployed, awaiting review
+### Part 2 — Reading a web page from a link · probed, decided, BUILT and reviewed 12 Oct 2026 — committed on branch `m5-part-2` (`c75be2c`), NOT pushed, NOT deployed, CI not yet run
 
 *The brief asked for a probe before any decision, "from the Supabase Edge runtime, not from
 your laptop and not from CI". This section is that probe, in full, and then what was built
