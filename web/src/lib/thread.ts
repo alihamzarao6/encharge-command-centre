@@ -40,6 +40,14 @@ export interface ThreadMessage {
    */
   readonly status: 'saved' | 'sending' | 'streaming' | 'failed';
   readonly error?: ChatFailure;
+  /**
+   * When the server saved it (Milestone 5 part 1) — what places a message among the files
+   * attached to the conversation. Absent on a message that was only just sent: it belongs
+   * after everything attached so far, which is where it is shown.
+   */
+  readonly createdAt?: string;
+  /** The reply stopped at the length limit and is not the whole answer. */
+  readonly truncated?: true;
 }
 
 export interface ThreadState {
@@ -79,6 +87,12 @@ export interface ThreadStore {
   readonly open: (conversationId: string | null) => Promise<void>;
   /** Reopen after the page came back, and work out what happened to a turn in flight. */
   readonly restore: (conversationId: string, pending: PendingDraft | null) => Promise<void>;
+  /**
+   * Milestone 5 part 1: attaching a file to a NEW conversation opens it on the server before
+   * any message exists. The thread moves onto it — keeping what is on screen — so the first
+   * message goes to the conversation that holds the file.
+   */
+  readonly adoptConversation: (conversationId: string) => void;
   /** Take a draft for a conversation that never reached the server. */
   readonly adoptDraft: (text: string) => void;
   readonly setDraft: (text: string) => void;
@@ -263,6 +277,7 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
             role: 'assistant',
             content: outcome.reply,
             status: 'saved',
+            ...(outcome.truncated === true ? { truncated: true as const } : {}),
           },
         ],
       }));
@@ -304,6 +319,14 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
     },
     open,
     restore,
+    adoptConversation: (conversationId) => {
+      if (state.activeId !== null) return;
+      saveOpenConversation(deps.storage, conversationId);
+      // The draft typed into "New conversation" moves with it.
+      saveDraft(deps.storage, conversationId, state.draft);
+      saveDraft(deps.storage, null, '');
+      set({ activeId: conversationId, initialised: true });
+    },
     adoptDraft: (text) => {
       set({ draft: text, initialised: true });
     },

@@ -5,6 +5,12 @@
  * script. Nothing leaves the machine; the app cannot tell the difference because the URLs and
  * shapes are the real ones.
  *
+ * Milestone 5 part 1 added the files Edge Function and the `conversation_files` read. The
+ * default is faithful to src/lib/files/page.ts on what the interface depends on: an upload is
+ * claimed, takes pages, and becomes a file only when every declared page has arrived; the same
+ * request id resumes; the same content is the same attachment. A page image it is sent is
+ * checked to be a JPEG and measured, so a test can assert what actually left the browser.
+ *
  * PostgREST is READ-ONLY here, as it is in production: any non-GET is recorded in
  * `postgrestWrites` and answered 403 / 42501, so a test can assert that the interface changes
  * memory only through the verified server path.
@@ -38,6 +44,64 @@ export interface ScriptedMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+}
+
+/** A row of `conversation_files`, as PostgREST returns the columns the interface selects. */
+export interface ScriptedFile {
+  id: string;
+  conversation_id: string;
+  uploaded_by: string;
+  name: string | null;
+  kind: string;
+  byte_size: number;
+  page_count: number;
+  vision_pages: number;
+  status: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface FilesScript {
+  /**
+   * Called per POST /functions/v1/files, before the faithful default. Return a status and
+   * body to answer with it, 'abort' to drop the connection, or undefined to let the default
+   * answer.
+   */
+  respond: (
+    body: Record<string, unknown>,
+    call: number,
+  ) => { status: number; body: unknown } | 'abort' | undefined;
+}
+
+/** One page image the browser sent to be read: proof of what left the device. */
+export interface SentPageImage {
+  fileId: string;
+  pageNo: number;
+  label: string;
+  width: number;
+  height: number;
+  base64Chars: number;
+}
+
+/** Width and height of a JPEG, read from its frame header. 0×0 when it is not one. */
+export function jpegSize(base64: string): { width: number; height: number } {
+  const bytes = Buffer.from(base64, 'base64');
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return { width: 0, height: 0 };
+  let at = 2;
+  while (at + 9 < bytes.length) {
+    if (bytes[at] !== 0xff) {
+      at += 1;
+      continue;
+    }
+    const marker = bytes[at + 1] ?? 0;
+    const length = bytes.readUInt16BE(at + 2);
+    // SOF0–SOF15, except the three that are not frame headers (DHT, JPG, DAC).
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: bytes.readUInt16BE(at + 5), width: bytes.readUInt16BE(at + 7) };
+    }
+    at += 2 + length;
+  }
+  return { width: 0, height: 0 };
 }
 
 export interface ChatScript {
@@ -246,6 +310,15 @@ export interface MockOptions {
   chunks?: ScriptedChunk[];
   /** Force one status/body from the memory endpoint instead of the faithful default. */
   memoryFailure?: { status: number; body: unknown };
+  /** Milestone 5 part 1: files already attached to conversations. */
+  files?: ScriptedFile[];
+  filesScript?: FilesScript;
+  /** Every call to the files endpoint waits this long first — a slow connection. */
+  filesDelayMs?: number;
+  /** What the estimate reports as already spent today. */
+  spentTodayUsd?: number;
+  /** Every chat reply waits this long first, so a test can act while a question is in flight. */
+  chatDelayMs?: number;
 }
 
 export interface MockState {
@@ -282,6 +355,13 @@ export interface MockState {
   ghlUnauthorized: boolean;
   ghlFailing: boolean;
   ghlDelayMs: number;
+  /** Every POST to /functions/v1/files — the only way a file is attached or removed. */
+  readonly fileCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  /** The `conversation_files` rows; a test may change them mid-way. */
+  readonly files: ScriptedFile[];
+  /** Every page image that reached the endpoint. */
+  readonly pageImages: SentPageImage[];
+  filesDelayMs: number;
 }
 
 /**
@@ -464,7 +544,28 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     ghlUnauthorized: options.ghlUnauthorized === true,
     ghlFailing: options.ghlFailing === true,
     ghlDelayMs: options.ghlDelayMs ?? 0,
+    fileCalls: [],
+    files: [...(options.files ?? [])],
+    pageImages: [],
+    filesDelayMs: options.filesDelayMs ?? 0,
   };
+  /** Uploads claimed and not yet finished, by file id. */
+  const pendingFiles = new Map<
+    string,
+    {
+      requestId: string;
+      conversationId: string;
+      contentHash: string;
+      name: string;
+      kind: string;
+      byteSize: number;
+      expected: number;
+      stored: Set<number>;
+      vision: number;
+    }
+  >();
+  let fileCall = 0;
+  let fileSeq = 0;
   let chatCall = 0;
   let crmCall = 0;
   let crmWriteCall = 0;
@@ -1130,9 +1231,252 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     }
 
     // ---- the chat Edge Function ----
+    // ---- conversation_files (Milestone 5 part 1): name, kind, size — never the text ----
+    if (path === '/rest/v1/conversation_files') {
+      const match = /conversation_id=eq\.([^&]+)/.exec(url.search);
+      const id = match?.[1] ?? '';
+      await json(
+        route,
+        200,
+        state.files.filter(
+          (f) => f.conversation_id === id && (f.status === 'ready' || f.status === 'removed'),
+        ),
+      );
+      return;
+    }
+
+    // ---- the files Edge Function (Milestone 5 part 1) ----
+    if (path === '/functions/v1/files' && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.fileCalls.push({ body, authorization: request.headers()['authorization'] ?? null });
+      fileCall += 1;
+      if (state.filesDelayMs > 0) await new Promise((r) => setTimeout(r, state.filesDelayMs));
+      const scripted = options.filesScript?.respond(body, fileCall);
+      if (scripted === 'abort') {
+        await route.abort();
+        return;
+      }
+      if (scripted !== undefined) {
+        await json(route, scripted.status, scripted.body);
+        return;
+      }
+      const action = asText(body['action']);
+      const fileId = asText(body['fileId']);
+      const view = (f: ScriptedFile): Record<string, unknown> => ({
+        id: f.id,
+        conversationId: f.conversation_id,
+        uploadedBy: f.uploaded_by,
+        name: f.name,
+        kind: f.kind,
+        byteSize: f.byte_size,
+        pageCount: f.page_count,
+        charCount: 0,
+        visionPages: f.vision_pages,
+        status: f.status,
+        createdAt: f.created_at,
+        expiresAt: f.expires_at,
+      });
+      const notFound = {
+        error: {
+          code: 'NOT_FOUND',
+          message: 'That file or conversation is no longer available.',
+          retryable: false,
+        },
+      };
+      if (action === 'estimate') {
+        const pages = Number(body['visionPages']);
+        await json(route, 200, {
+          action: 'estimate',
+          pages,
+          perPageUsd: 0.027132,
+          estimateUsd: Math.round(pages * 0.027132 * 1e6) / 1e6,
+          dailyCapUsd: 5,
+          spentTodayUsd: options.spentTodayUsd ?? 0,
+          affordable: true,
+        });
+        return;
+      }
+      if (action === 'begin') {
+        const requestId = asText(body['requestId']);
+        const conversationId = asText(body['conversationId']) || CONV_ID;
+        const replay = [...pendingFiles.entries()].find(([, p]) => p.requestId === requestId);
+        if (replay !== undefined) {
+          await json(route, 200, {
+            action: 'begin',
+            fileId: replay[0],
+            conversationId: replay[1].conversationId,
+            status: 'reading',
+            duplicate: false,
+            pagesStored: [...replay[1].stored].sort((a, b) => a - b),
+            file: null,
+          });
+          return;
+        }
+        const hash = asText(body['contentHash']);
+        const same = state.files.find(
+          (f) =>
+            f.conversation_id === conversationId &&
+            f.status === 'ready' &&
+            (f as ScriptedFile & { content_hash?: string }).content_hash === hash,
+        );
+        if (same !== undefined) {
+          await json(route, 200, {
+            action: 'begin',
+            fileId: same.id,
+            conversationId,
+            status: 'ready',
+            duplicate: true,
+            pagesStored: [],
+            file: view(same),
+          });
+          return;
+        }
+        fileSeq += 1;
+        const id = `f1000000-0000-4000-8000-${String(fileSeq).padStart(12, '0')}`;
+        pendingFiles.set(id, {
+          requestId,
+          conversationId,
+          contentHash: hash,
+          name: asText(body['name']),
+          kind: asText(body['kind']),
+          byteSize: Number(body['byteSize']),
+          expected: Number(body['totalPages']),
+          stored: new Set(),
+          vision: 0,
+        });
+        if (!state.conversations.some((c) => c.id === conversationId)) {
+          state.conversations.unshift({
+            id: conversationId,
+            title: null,
+            last_active_at: new Date().toISOString(),
+            scope: 'workspace',
+            deleted_at: null,
+          });
+        }
+        await json(route, 200, {
+          action: 'begin',
+          fileId: id,
+          conversationId,
+          status: 'reading',
+          duplicate: false,
+          pagesStored: [],
+          file: null,
+        });
+        return;
+      }
+      if (action === 'append' || action === 'read_page') {
+        const pending = pendingFiles.get(fileId);
+        if (pending === undefined) {
+          await json(route, 404, notFound);
+          return;
+        }
+        if (action === 'append') {
+          const pages = (body['pages'] ?? []) as { pageNo: number }[];
+          for (const page of pages) pending.stored.add(page.pageNo);
+          await json(route, 200, { action: 'append', fileId, stored: pending.stored.size });
+          return;
+        }
+        const image = asText(body['imageBase64']);
+        const pageNo = Number(body['pageNo']);
+        const size = jpegSize(image);
+        if (!image.startsWith('/9j/') || size.width === 0) {
+          await json(route, 400, {
+            error: {
+              code: 'BAD_REQUEST',
+              message: 'imageBase64 must be a JPEG.',
+              retryable: false,
+            },
+          });
+          return;
+        }
+        const replayed = pending.stored.has(pageNo);
+        if (!replayed) {
+          state.pageImages.push({
+            fileId,
+            pageNo,
+            label: asText(body['label']),
+            width: size.width,
+            height: size.height,
+            base64Chars: image.length,
+          });
+          pending.stored.add(pageNo);
+          pending.vision += 1;
+        }
+        await json(route, 200, {
+          action: 'read_page',
+          fileId,
+          pageNo,
+          pageKind: replayed ? null : 'document',
+          legibility: 'full',
+          chars: 400,
+          replayed,
+        });
+        return;
+      }
+      if (action === 'finish') {
+        const pending = pendingFiles.get(fileId);
+        if (pending === undefined) {
+          await json(route, 404, notFound);
+          return;
+        }
+        if (pending.stored.size !== pending.expected) {
+          await json(route, 409, {
+            error: {
+              code: 'INCOMPLETE',
+              message: 'Not every page of this file arrived, so it was not attached. Try again.',
+              retryable: true,
+            },
+          });
+          return;
+        }
+        const now = Date.now();
+        const row: ScriptedFile & { content_hash: string } = {
+          id: fileId,
+          conversation_id: pending.conversationId,
+          uploaded_by: USER_ID,
+          name: pending.name,
+          kind: pending.kind,
+          byte_size: pending.byteSize,
+          page_count: pending.expected,
+          vision_pages: pending.vision,
+          status: 'ready',
+          created_at: new Date(now).toISOString(),
+          expires_at: new Date(now + 30 * 86_400_000).toISOString(),
+          content_hash: pending.contentHash,
+        };
+        state.files.push(row);
+        pendingFiles.delete(fileId);
+        await json(route, 200, { action: 'finish', duplicate: false, file: view(row) });
+        return;
+      }
+      if (action === 'remove') {
+        const row = state.files.find((f) => f.id === fileId);
+        const had = pendingFiles.delete(fileId);
+        if (row?.status === 'ready') {
+          row.status = 'removed';
+          row.name = null;
+          await json(route, 200, { action: 'remove', fileId, removed: true });
+          return;
+        }
+        await json(route, 200, { action: 'remove', fileId, removed: had });
+        return;
+      }
+      if (action === 'refused') {
+        await json(route, 200, { action: 'refused', logged: true });
+        return;
+      }
+      await json(route, 400, {
+        error: { code: 'BAD_REQUEST', message: 'Invalid request: action.', retryable: false },
+      });
+      return;
+    }
+
     if (path === '/functions/v1/chat' && method === 'POST') {
       const body = request.postDataJSON() as { message: string; conversationId?: string };
       state.chatCalls.push({ ...body, authorization: request.headers()['authorization'] ?? null });
+      if ((options.chatDelayMs ?? 0) > 0) {
+        await new Promise((r) => setTimeout(r, options.chatDelayMs));
+      }
       const script = options.chat ?? {
         respond: (input, call) => ({
           status: 200,

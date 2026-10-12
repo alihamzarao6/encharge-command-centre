@@ -398,7 +398,8 @@ describe('the idle rule and the sweep', () => {
     const original = h.deps.claude.complete.bind(h.deps.claude);
     let prompt = '';
     h.deps.claude.complete = (request) => {
-      prompt = request.messages[0]?.content ?? '';
+      const first = request.messages[0]?.content;
+      prompt = typeof first === 'string' ? first : '';
       return original(request);
     };
     await summariseConversation(h.deps, CONVERSATION, { freshMessages: 2 });

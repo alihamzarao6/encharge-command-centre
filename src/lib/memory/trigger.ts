@@ -83,7 +83,18 @@ export interface TurnSavedEvent {
 
 export type AfterTurnHook = (event: TurnSavedEvent) => Promise<void>;
 
-function toTranscript(messages: readonly OrdinalMessage[]): TranscriptMessage[] {
+/**
+ * What the summariser is shown in place of a turn that was answered from an attached file
+ * (Milestone 5 part 1, D89). A summary is workspace memory — it reaches the whole team and is
+ * replayed for months — so a figure read off somebody's payslip must never get into one. The
+ * message keeps its place in the transcript, so the ranges still tile; its words do not.
+ */
+export const DOCUMENT_TURN_PLACEHOLDER = {
+  user: '[The user asked about a file they had attached. The question is not kept in memory.]',
+  assistant: '[The assistant answered from the attached file. The answer is not kept in memory.]',
+} as const;
+
+export function toTranscript(messages: readonly OrdinalMessage[]): TranscriptMessage[] {
   const out: TranscriptMessage[] = [];
   for (const m of messages) {
     if (
@@ -91,7 +102,11 @@ function toTranscript(messages: readonly OrdinalMessage[]): TranscriptMessage[] 
       m.content !== null &&
       m.content.trim() !== ''
     ) {
-      out.push({ ordinal: m.ordinal, role: m.role, content: m.content });
+      out.push({
+        ordinal: m.ordinal,
+        role: m.role,
+        content: m.documentContext === true ? DOCUMENT_TURN_PLACEHOLDER[m.role] : m.content,
+      });
     }
   }
   return out;

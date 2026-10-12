@@ -22,6 +22,7 @@ import type { Session } from '@supabase/supabase-js';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -29,6 +30,14 @@ import {
 } from 'react';
 
 import { streamTurn } from '../lib/chatApi.js';
+import { extractInBrowser, hashInBrowser } from '../lib/files/lazy.js';
+import {
+  CONVERSATION_FILE_COLUMNS,
+  callFiles,
+  toAttachedFiles,
+  type AttachedFile,
+} from '../lib/filesApi.js';
+import { createUploadsStore } from '../lib/uploads.js';
 import type { PendingDraft } from '../lib/draft.js';
 import { webConfig } from '../lib/env.js';
 import {
@@ -48,6 +57,7 @@ import { Leads } from './Leads.js';
 import { Memory } from './Memory.js';
 import { Overview } from './Overview.js';
 import { ThreadContext } from './ThreadContext.js';
+import { UploadsContext } from './UploadsContext.js';
 import { Users } from './Users.js';
 
 export type { SectionId };
@@ -112,7 +122,23 @@ async function loadMessages(conversationId: string): Promise<readonly ThreadMess
       role: row.role === 'assistant' ? 'assistant' : 'user',
       content: row.content ?? '',
       status: 'saved',
+      createdAt: row.created_at,
     }));
+}
+
+/**
+ * The files attached to a conversation, read under RLS as the signed-in person: name, kind,
+ * size, page count. Never the text — no session can read that (migration 20261012010000).
+ */
+async function loadFiles(conversationId: string): Promise<readonly AttachedFile[] | null> {
+  const { data, error } = await supabase
+    .from('conversation_files')
+    .select(CONVERSATION_FILE_COLUMNS)
+    .eq('conversation_id', conversationId)
+    .in('status', ['ready', 'removed'])
+    .order('created_at', { ascending: true })
+    .limit(200);
+  return error === null ? toAttachedFiles(data) : null;
 }
 
 export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): ReactElement {
@@ -157,6 +183,43 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
     }),
   );
   const thread = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+
+  // Milestone 5 part 1: the files of the conversation on screen. Built once, beside the
+  // thread's store and for the same reason — an upload in progress must survive a change of
+  // screen, and the page and the panel must show the same one.
+  const [uploads] = useState(() =>
+    createUploadsStore({
+      extract: extractInBrowser,
+      hash: hashInBrowser,
+      call: async (request, signal) => {
+        const { data } = await supabase.auth.getSession();
+        return callFiles(
+          {
+            filesUrl: webConfig.filesUrl,
+            anonKey: webConfig.anonKey,
+            fetch: fetch.bind(globalThis),
+          },
+          data.session?.access_token ?? latestSession.current.access_token,
+          request,
+          signal,
+        );
+      },
+      loadFiles,
+      newRequestId: () => crypto.randomUUID(),
+      now: () => performance.now(),
+      adoptConversation: store.adoptConversation,
+      onSessionExpired: () => latestExpired.current(null),
+    }),
+  );
+  const uploadsState = useSyncExternalStore(uploads.subscribe, uploads.getState, uploads.getState);
+  // The uploads follow the thread: another conversation, another set of files.
+  useEffect(() => {
+    uploads.setConversation(thread.activeId);
+  }, [uploads, thread.activeId]);
+  const uploadsValue = useMemo(
+    () => ({ store: uploads, actor: { userId: staff.user_id, isAdmin: staff.is_admin } }),
+    [uploads, staff.user_id, staff.is_admin],
+  );
 
   // The bar and the section agree: an unknown path is rewritten to the section it landed
   // on, and Back / Forward move the section without a reload.
@@ -219,116 +282,129 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
 
   return (
     <ThreadContext.Provider value={store}>
-      <div className={`shell${panelShown ? ' shell--panel' : ''}`}>
-        <header className="topbar">
-          <div className="brand">
-            <span className="brand__mark" aria-hidden="true">
-              F
-            </span>
-            <div>
-              <div className="brand__name">Fundd</div>
-              <div className="brand__sub">Command Centre</div>
+      <UploadsContext.Provider value={uploadsValue}>
+        {/* One live region for both surfaces: "reading…", "attached", "not attached, because…".
+            aria-live without role="status": it is announced the same, and it is always in the
+            page, so it must not become a second "status" beside the one each screen shows. */}
+        <div
+          className="sr-only"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="upload-announcer"
+        >
+          {uploadsState.announcement}
+        </div>
+        <div className={`shell${panelShown ? ' shell--panel' : ''}`}>
+          <header className="topbar">
+            <div className="brand">
+              <span className="brand__mark" aria-hidden="true">
+                F
+              </span>
+              <div>
+                <div className="brand__name">Fundd</div>
+                <div className="brand__sub">Command Centre</div>
+              </div>
             </div>
-          </div>
-          <div className="topbar__user">
-            {section !== 'assistant' && (
+            <div className="topbar__user">
+              {section !== 'assistant' && (
+                <button
+                  ref={askButton}
+                  className={`button button--small topbar__ask${panelShown ? ' topbar__ask--open' : ''}`}
+                  type="button"
+                  aria-expanded={panelShown}
+                  {...(panelShown ? { 'aria-controls': 'assistant-panel' } : {})}
+                  onClick={() => {
+                    setPanelOpen((open) => !open);
+                  }}
+                >
+                  <span aria-hidden="true">💬</span> Ask
+                  {replyWaiting && (
+                    <>
+                      <span className="topbar__dot" aria-hidden="true" />
+                      <span className="sr-only"> — a reply is waiting</span>
+                    </>
+                  )}
+                </button>
+              )}
+              <span className="topbar__email" title={staff.email}>
+                {staff.email}
+              </span>
               <button
-                ref={askButton}
-                className={`button button--small topbar__ask${panelShown ? ' topbar__ask--open' : ''}`}
+                className="button button--ghost"
                 type="button"
-                aria-expanded={panelShown}
-                {...(panelShown ? { 'aria-controls': 'assistant-panel' } : {})}
                 onClick={() => {
-                  setPanelOpen((open) => !open);
+                  void onSignOut();
                 }}
               >
-                <span aria-hidden="true">💬</span> Ask
-                {replyWaiting && (
-                  <>
-                    <span className="topbar__dot" aria-hidden="true" />
-                    <span className="sr-only"> — a reply is waiting</span>
-                  </>
-                )}
+                Sign out
               </button>
+            </div>
+          </header>
+
+          <nav className="nav" aria-label="Sections">
+            {SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`nav__item${s.id === section ? ' nav__item--active' : ''}`}
+                aria-current={s.id === section ? 'page' : undefined}
+                onClick={() => {
+                  goTo(s.id);
+                }}
+              >
+                <span className="nav__icon" aria-hidden="true">
+                  {ICONS[s.id]}
+                </span>
+                <span className="nav__label">{s.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <main className="main">
+            {section === 'overview' && (
+              <Overview session={session} onSessionExpired={() => onSessionExpired(null)} />
             )}
-            <span className="topbar__email" title={staff.email}>
-              {staff.email}
-            </span>
-            <button
-              className="button button--ghost"
-              type="button"
-              onClick={() => {
-                void onSignOut();
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        </header>
+            {section === 'leads' && (
+              <Leads
+                session={session}
+                route={leadsRoute}
+                onNavigate={go}
+                onSessionExpired={() => onSessionExpired(null)}
+              />
+            )}
+            {section === 'assistant' && (
+              <Assistant
+                session={session}
+                staff={staff}
+                openConversationId={pendingConversationId}
+                onSessionExpired={onSessionExpired}
+              />
+            )}
+            {section === 'memory' && (
+              <Memory
+                session={session}
+                staff={staff}
+                onOpenConversation={openConversation}
+                onSessionExpired={() => onSessionExpired(null)}
+              />
+            )}
+            {section === 'team' && (
+              <Users
+                session={session}
+                staff={staff}
+                onSessionExpired={() => onSessionExpired(null)}
+              />
+            )}
+          </main>
 
-        <nav className="nav" aria-label="Sections">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`nav__item${s.id === section ? ' nav__item--active' : ''}`}
-              aria-current={s.id === section ? 'page' : undefined}
-              onClick={() => {
-                goTo(s.id);
-              }}
-            >
-              <span className="nav__icon" aria-hidden="true">
-                {ICONS[s.id]}
-              </span>
-              <span className="nav__label">{s.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <main className="main">
-          {section === 'overview' && (
-            <Overview session={session} onSessionExpired={() => onSessionExpired(null)} />
+          {panelShown && (
+            <>
+              <div className="panel-backdrop" aria-hidden="true" onClick={closePanel} />
+              <AssistantPanel onClose={closePanel} onOpenFullPage={openFullPage} />
+            </>
           )}
-          {section === 'leads' && (
-            <Leads
-              session={session}
-              route={leadsRoute}
-              onNavigate={go}
-              onSessionExpired={() => onSessionExpired(null)}
-            />
-          )}
-          {section === 'assistant' && (
-            <Assistant
-              session={session}
-              staff={staff}
-              openConversationId={pendingConversationId}
-              onSessionExpired={onSessionExpired}
-            />
-          )}
-          {section === 'memory' && (
-            <Memory
-              session={session}
-              staff={staff}
-              onOpenConversation={openConversation}
-              onSessionExpired={() => onSessionExpired(null)}
-            />
-          )}
-          {section === 'team' && (
-            <Users
-              session={session}
-              staff={staff}
-              onSessionExpired={() => onSessionExpired(null)}
-            />
-          )}
-        </main>
-
-        {panelShown && (
-          <>
-            <div className="panel-backdrop" aria-hidden="true" onClick={closePanel} />
-            <AssistantPanel onClose={closePanel} onOpenFullPage={openFullPage} />
-          </>
-        )}
-      </div>
+        </div>
+      </UploadsContext.Provider>
     </ThreadContext.Provider>
   );
 }

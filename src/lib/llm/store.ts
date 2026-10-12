@@ -207,6 +207,9 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
           conversation_id: input.conversation.id,
           user_id: input.conversation.userId,
           scope: input.conversation.scope,
+          // Only ever written as true: the column defaults to false, and an ordinary turn's
+          // insert stays exactly what it was before files existed.
+          ...(input.documentContext === true ? { document_context: true } : {}),
         };
         const userInsert = await client
           .from('messages')

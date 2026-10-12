@@ -21,6 +21,13 @@
  * memory this turn" — never to no reply. History is uncached input; the voice prefix stays
  * the cached part.
  *
+ * Milestone 5 part 1 added step 4c: the files attached to the conversation. Their text goes
+ * in the USER turn, wrapped and labelled as data, as the first message of the request (so a
+ * document that fits is a stable, cacheable prefix); the rules for reading them are ours and
+ * go in the system prompt (src/lib/files/rules.ts). Unlike memory, a failure here REFUSES the
+ * turn: the person asked about a file, and an answer written without it would be a guess
+ * presented as a reading.
+ *
  * An empty reply is an error, not a turn. Part 5 found Sonnet 5 spending the whole output
  * budget on adaptive thinking and returning no text (D39); the metered call is recorded by
  * client.ts, but nothing is saved to `messages` and the caller is told, so the interface
@@ -29,12 +36,19 @@
 import { ensureError, type AppError, type Result } from '../errors.js';
 import type { Logger } from '../logger.js';
 import { verifyStaffAccess, type StaffIdentity, type VerifyDeps } from '../auth/verify.js';
-import type { ClaudeClient, Completion, CompletionRequest, LlmError } from './client.js';
+import type {
+  ChatMessage,
+  ClaudeClient,
+  Completion,
+  CompletionRequest,
+  LlmError,
+} from './client.js';
 import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
 import { titleFromFirstMessage } from '../memory/naming.js';
 import { SHARED_MEMORY_SCOPE } from '../memory/privacy.js';
 import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
+import type { DocumentTurnSummary, TurnDocumentContext, TurnDocuments } from '../files/context.js';
 
 export interface ConversationRow {
   readonly id: string;
@@ -66,6 +80,11 @@ export const DEFAULT_HISTORY_BOUNDS: HistoryBounds = { maxMessages: 20, maxChars
 export interface AppendTurnInput {
   readonly conversation: ConversationRow;
   readonly userContent: string;
+  /**
+   * The turn was answered with an attached file in front of the model. Recorded on both
+   * rows so the shared-memory summariser leaves the turn out (D89).
+   */
+  readonly documentContext?: boolean;
   readonly assistant: {
     readonly content: string;
     readonly model: string;
@@ -100,8 +119,14 @@ export interface ChatDeps {
   readonly claude: ClaudeClient;
   readonly conversations: ConversationStore;
   readonly log: Logger;
-  /** The system prompt; the argument is the recalled-memory block for below the breakpoint. */
-  readonly systemBlocks?: (belowBreakpoint?: string) => readonly SystemBlock[];
+  /**
+   * The system prompt. `belowBreakpoint` is the recalled-memory block; `documentRules` is
+   * the fixed block of rules for reading attached files, sent only when there is one.
+   */
+  readonly systemBlocks?: (
+    belowBreakpoint?: string,
+    documentRules?: string,
+  ) => readonly SystemBlock[];
   readonly maxMessageChars?: number;
   readonly history?: HistoryBounds;
   /**
@@ -112,6 +137,12 @@ export interface ChatDeps {
    * the turn goes without memory, not without a reply. Absent = no memory (no Voyage key).
    */
   readonly memory?: TurnMemory;
+  /**
+   * Milestone 5 part 1: the files attached to this conversation, as the block of text the
+   * model reads them from. ON the reply's path, and — unlike memory — a failure refuses the
+   * turn. Absent = the endpoint does not read files.
+   */
+  readonly documents?: TurnDocuments;
   /**
    * Stage 3 memory: runs after a turn is in `messages`, OFF the reply's path. It is
    * awaited by nobody here — its promise goes to `waitUntil` — and whatever it does or
@@ -162,6 +193,11 @@ export interface ChatReply {
   readonly costUsd: number;
   /** What memory added to this turn — ids, similarities and sizes, never text. Absent when memory is off. */
   readonly memory?: RecallSummary;
+  /**
+   * Which attached files the answer was written from, and how much of each — ids, modes and
+   * page counts, never text. Absent when no file was in front of the model.
+   */
+  readonly documents?: DocumentTurnSummary;
 }
 
 export type ChatErrorStatus = 400 | 401 | 402 | 403 | 404 | 422 | 429 | 500 | 502 | 503 | 504;
@@ -228,6 +264,14 @@ function failure(
     },
   };
 }
+
+/** The conversation has files and they could not be read: nothing is sent, nothing is spent. */
+const DOCUMENTS_UNAVAILABLE = failure(
+  503,
+  'DOCUMENTS_UNAVAILABLE',
+  'The files attached to this conversation could not be loaded, so nothing was sent. Try again.',
+  true,
+);
 
 /** Infrastructure failure: we could not decide. Never a 403. */
 function unavailable(error: AppError): ChatTurnResult {
@@ -307,6 +351,8 @@ interface PreparedTurn {
   readonly message: string;
   /** Null when memory is off. A degraded recall is still an outcome, never a refusal. */
   readonly recall: RecallOutcome | null;
+  /** Null when the endpoint does not read files, or the conversation is brand new. */
+  readonly documents: TurnDocumentContext | null;
 }
 
 type Prepared =
@@ -314,10 +360,24 @@ type Prepared =
   | { readonly ok: false; readonly result: ChatTurnResult };
 
 function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
+  const documents = prepared.documents;
+  const turn: ChatMessage[] = [...prepared.history, { role: 'user', content: prepared.message }];
   return {
     route: 'default',
-    system: (deps.systemBlocks ?? buildSystemBlocks)(prepared.recall?.belowBreakpoint ?? undefined),
-    messages: [...prepared.history, { role: 'user', content: prepared.message }],
+    system: (deps.systemBlocks ?? buildSystemBlocks)(
+      prepared.recall?.belowBreakpoint ?? undefined,
+      documents?.rules ?? undefined,
+    ),
+    // The documents lead the conversation as a user message of their own: a file that goes
+    // in whole is then the same bytes at the same place on every turn, which is what lets
+    // it be cached, and it reads the way long context reads best — before the question.
+    messages:
+      documents?.block == null
+        ? turn
+        : [
+            { role: 'user', content: [{ type: 'text', text: documents.block, cache: true }] },
+            ...turn,
+          ],
     operation: 'chat.turn',
     userId: prepared.user.userId,
     conversationId: prepared.conversation.id,
@@ -445,7 +505,39 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
     }
   }
 
-  return { ok: true, value: { user, conversation, history, message, recall } };
+  // 4c. The files attached to this conversation (Milestone 5 part 1). Whoever may post here
+  //     may read them (D86) — that was settled in step 3. A brand-new conversation has none.
+  //     If they cannot be loaded the turn is refused: answering "what does the payslip say"
+  //     without the payslip is exactly the guess this feature must never make.
+  let documents: TurnDocumentContext | null = null;
+  if (deps.documents !== undefined && requestedConversationId !== null) {
+    const previousUser = [...history].reverse().find((m) => m.role === 'user');
+    let loaded: Awaited<ReturnType<TurnDocuments['load']>> | null = null;
+    try {
+      loaded = await deps.documents.load({
+        conversationId: conversation.id,
+        message,
+        previousUserMessage: previousUser?.content ?? null,
+      });
+    } catch (caught: unknown) {
+      // The error's name only: whatever threw may be holding document text.
+      log.error('attached files threw while loading', {
+        conversationId: conversation.id,
+        errorName: caught instanceof Error ? caught.name : typeof caught,
+      });
+    }
+    if (loaded === null) return refuse(DOCUMENTS_UNAVAILABLE);
+    if (!loaded.ok) {
+      log.error('attached files could not be loaded', {
+        conversationId: conversation.id,
+        error: loaded.error,
+      });
+      return refuse(DOCUMENTS_UNAVAILABLE);
+    }
+    documents = loaded.value;
+  }
+
+  return { ok: true, value: { user, conversation, history, message, recall, documents } };
 }
 
 /**
@@ -501,9 +593,13 @@ async function finishTurn(
     );
   }
 
+  // Null unless a file's text was actually in the request.
+  const documentSummary = prepared.documents?.block == null ? null : prepared.documents.summary;
+  const answeredFromFile = documentSummary !== null;
   const appended = await deps.conversations.appendTurn({
     conversation,
     userContent: message,
+    ...(answeredFromFile ? { documentContext: true } : {}),
     assistant: {
       content: reply.text,
       model: reply.model,
@@ -563,6 +659,7 @@ async function finishTurn(
       usage: reply.usage,
       costUsd: reply.costUsd,
       ...(recall === null ? {} : { memory: recall.summary }),
+      ...(documentSummary === null ? {} : { documents: documentSummary }),
     },
   };
 }

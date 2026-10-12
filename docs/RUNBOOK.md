@@ -245,6 +245,80 @@ Notes:
   `fundd-app-test`, five notes) and opportunity `bxsEZfR8ghLL19YAL31t` in the Finance
   Pipeline — delete both from GoHighLevel once part 4 is reviewed, then Refresh.
 
+### 1e. Deploying file reading (Milestone 5 part 1)
+
+A **fifth** Edge Function, `files`; a changed `chat`; one migration; and the first scheduled
+job in the database. Order matters — the migration first, the functions second, the web app
+last. In order, from the repo root:
+
+**Step 0 — enable `pg_cron` on the live project.** Dashboard → Database → Extensions →
+`pg_cron` → enable. The migration also says `create extension if not exists pg_cron`, so on a
+project where the extension is available to migrations it installs itself; doing it by hand
+first means the push cannot stop at that line. This is what keeps the 30-day retention
+promise (D85): without the job, text read out of clients' documents is never purged and
+nothing on screen would say so. Do not skip the check in step 2.
+
+```bash
+supabase db push                 # 20261012010000 — conversation_files, conversation_file_pages,
+                                 # messages.document_context, five functions, the cron job
+```
+
+**Step 2 — confirm the purge is scheduled** (SQL editor, or `psql`):
+
+```sql
+select jobname, schedule, active, command from cron.job where jobname = 'purge-conversation-files';
+-- one row: 17 3 * * * | true | select public.purge_conversation_files()
+```
+
+No row means retention is not being enforced: fix that before the web app goes out. After the
+first night, `select status, start_time, return_message from cron.job_run_details where jobid
+= (select jobid from cron.job where jobname = 'purge-conversation-files') order by start_time
+desc limit 5;` shows it ran.
+
+```bash
+npm run functions:bundle         # writes all FIVE supabase/functions/{chat,memory,admin,crm,files}/index.ts
+supabase functions deploy files --no-verify-jwt
+supabase functions deploy chat --no-verify-jwt     # changed: a turn now loads the conversation's files
+npm run web:build && npm run web:check && vercel deploy --prod
+```
+
+Notes:
+
+- **No new secret.** `files` reads a scanned page with the same `ANTHROPIC_API_KEY` and is
+  held by the same two spend caps as `chat`; it needs `CHAT_ALLOWED_ORIGIN` and the
+  platform-injected `SUPABASE_*` values like the other four. The four `FILES_*` settings have
+  defaults (`.env.example`); set them only to change one, and on **both** `files` and `chat`.
+- **Why the order.** `chat` and the memory summariser read `messages.document_context`; a
+  `chat` deployed before the migration fails those reads. A web app deployed before `files`
+  shows "Something went wrong on our side. Nothing was attached." on every attach.
+- **The web build now carries the PDF reader's own data files** under `web/dist/pdfjs/`
+  (character maps, fonts, image decoders — about 6 MB, fetched only when a PDF needs one).
+  They must be served from the app's own address. After the deploy, attach a typed PDF and
+  ask what it says; then attach `tests/fixtures/files/non-latin.pdf` and ask for the Chinese
+  line. If the first fails, the reader's worker did not load; if only the second does, the
+  `pdfjs/` folder was not published.
+- **The original file is never uploaded.** It is read in the browser; only the text (and, for
+  a photo or a scan, one page image at a time, which is not kept) leaves the device. There is
+  no storage bucket for this feature and nothing to configure in Storage.
+- **"Why did his upload fail?"** — `supabase functions logs files` (or the dashboard). Every
+  upload logs who, what kind, how big, how many pages, how long, and how it ended, as
+  `file upload started / finished / failed / refused`, `file page read` and `file removed`.
+  A refusal carries the reason code (`password_pdf`, `too_large`, `no_text`, …). There is no
+  file name and no text in any of those lines, by design: ask him for the time and the size.
+  To see what the readers get out of a file he sends you, on your own machine:
+  `npm run files -- extract <file>` (no network, no database).
+- **"It read the scan wrongly."** A page read from an image is a transcription by the model
+  and the assistant is told to say so. `npm run files -- read <page.jpg>` shows what the
+  model returns for one page and what it cost. A typed PDF is parsed, not transcribed; if
+  the text is wrong there, the PDF's own text layer is wrong (`extract` shows it).
+- **Removing everything for one client now, not in 30 days:** he removes the file in the
+  conversation (text, name and hash are destroyed at once), or deletes the conversation
+  (its files go with it, completely). To purge on demand: `select * from
+  public.purge_conversation_files();` — it only ever removes what is already past its date
+  or was never finished.
+- **Changing the 30 days:** `FILES_RETENTION_DAYS` on `files`. It applies to files attached
+  after the change; existing rows keep the date they were given.
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.

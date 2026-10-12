@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# Invented test documents are compared byte for byte (sizes, hashes, encodings, line endings).
+tests/fixtures/files/** -text

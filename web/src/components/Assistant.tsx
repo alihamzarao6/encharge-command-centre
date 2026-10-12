@@ -56,6 +56,7 @@ import { Composer } from './Composer.js';
 import { ConversationList, type AdminPrivateRow } from './ConversationList.js';
 import { Thread, type LocalMessage } from './Thread.js';
 import { useThreadState, useThreadStore } from './ThreadContext.js';
+import { useAttachments } from './UploadsContext.js';
 
 interface Props {
   readonly session: Session;
@@ -86,6 +87,7 @@ export function Assistant({
   const store = useThreadStore();
   const thread = useThreadState();
   const { activeId, messages, threadState, sending, waiting, draft } = thread;
+  const attachments = useAttachments();
 
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
   /**
@@ -376,7 +378,11 @@ export function Assistant({
           void openPrivate(id);
         }}
       />
-      <section className="thread-pane" aria-label="Assistant conversation">
+      <section
+        className={`thread-pane${attachments.dragging && adminReading === null ? ' is-dropping' : ''}`}
+        aria-label="Assistant conversation"
+        {...(adminReading === null ? attachments.dropHandlers : {})}
+      >
         <div className="thread-pane__bar">
           <button
             className="button button--ghost thread-pane__menu"
@@ -549,6 +555,23 @@ export function Assistant({
           waiting={adminReading === null && waiting}
           onRetry={store.retry}
           onDiscard={store.discard}
+          {...(adminReading === null
+            ? {
+                attachments: {
+                  files: attachments.state.files,
+                  uploads: attachments.state.uploads,
+                  actor: attachments.actor,
+                  removing: attachments.state.removing,
+                  notice: attachments.state.notice,
+                  onRemove: (fileId: string) => {
+                    void attachments.store.remove(fileId);
+                  },
+                  onConfirm: attachments.store.confirm,
+                  onCancel: attachments.store.cancel,
+                  onRetry: attachments.store.retry,
+                },
+              }
+            : {})}
         />
         {adminReading === null && (
           <Composer
@@ -558,6 +581,8 @@ export function Assistant({
             onSend={() => {
               void store.send(draft, null);
             }}
+            onAttach={attachments.attach}
+            sendBlockedNote={attachments.sendBlockedNote}
           />
         )}
       </section>

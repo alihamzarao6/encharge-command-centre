@@ -28,6 +28,14 @@ export interface VoiceSystemOptions {
    * invalidate the cached prefix. Empty or whitespace-only is omitted entirely.
    */
   readonly belowBreakpoint?: string;
+  /**
+   * Milestone 5 part 1 (D87): the fixed rules for reading attached documents, sent only on a
+   * turn in a conversation that has a file. OUR words, so they belong in the system prompt —
+   * the documents themselves never do. Placed after the cached prefix (whose text, version
+   * and hash are untouched) and before `belowBreakpoint`, because it never changes and
+   * recalled memory does.
+   */
+  readonly documentRules?: string;
 }
 
 function renderSection(section: VoiceSection): string {
@@ -57,6 +65,10 @@ export function voicePromptHash(): string {
 
 export function buildVoiceSystemBlocks(options: VoiceSystemOptions = {}): readonly SystemBlock[] {
   const blocks: SystemBlock[] = [{ text: buildVoicePrefix(), cache: true }];
+  const documentRules = options.documentRules?.trim() ?? '';
+  if (documentRules !== '') {
+    blocks.push({ text: documentRules, cache: false });
+  }
   const below = options.belowBreakpoint?.trim() ?? '';
   if (below !== '') {
     // Bounded so a runaway memory block cannot quietly swamp the request (and the cap).

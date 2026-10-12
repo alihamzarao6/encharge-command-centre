@@ -14,6 +14,7 @@ import { webConfig } from './env.js';
 // logic is unit-testable under Node. Re-exported here because this is where the rest of the
 // app expects a row type to come from.
 import type { ConversationListRow } from './conversationsView.js';
+import type { ConversationFileRow } from './filesApi.js';
 import type { MemoryChunkRow, MemoryFactRow } from './memoryView.js';
 import type {
   GhlContactFullRow,
@@ -63,6 +64,15 @@ export type WebDatabase = {
         Row: MessageRow;
         Insert: Partial<MessageRow>;
         Update: Partial<MessageRow>;
+        Relationships: [];
+      };
+      // Milestone 5 part 1: the files attached to a conversation — name, kind, size, page
+      // count. Readable by whoever can read the conversation (migration 20261012010000). The
+      // TEXT read out of a file is in another table that no browser session can read at all.
+      conversation_files: {
+        Row: ConversationFileRow;
+        Insert: Partial<ConversationFileRow>;
+        Update: Partial<ConversationFileRow>;
         Relationships: [];
       };
       memory_facts: {

@@ -18,6 +18,7 @@ import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react'
 import { Composer } from './Composer.js';
 import { Thread } from './Thread.js';
 import { useThreadState, useThreadStore } from './ThreadContext.js';
+import { useAttachments } from './UploadsContext.js';
 
 interface Props {
   readonly onClose: () => void;
@@ -28,6 +29,7 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
   const store = useThreadStore();
   const state = useThreadState();
   const panel = useRef<HTMLElement>(null);
+  const attachments = useAttachments();
 
   // Whatever arrived is now on screen.
   useEffect(() => {
@@ -44,11 +46,12 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
   return (
     <aside
       id="assistant-panel"
-      className="panel"
+      className={`panel${attachments.dragging ? ' is-dropping' : ''}`}
       aria-label="Assistant"
       ref={panel}
       tabIndex={-1}
       onKeyDown={onKeyDown}
+      {...attachments.dropHandlers}
     >
       <div className="panel__bar">
         <h2 className="panel__title">Assistant</h2>
@@ -88,6 +91,19 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
         waiting={state.waiting}
         onRetry={store.retry}
         onDiscard={store.discard}
+        attachments={{
+          files: attachments.state.files,
+          uploads: attachments.state.uploads,
+          actor: attachments.actor,
+          removing: attachments.state.removing,
+          notice: attachments.state.notice,
+          onRemove: (fileId) => {
+            void attachments.store.remove(fileId);
+          },
+          onConfirm: attachments.store.confirm,
+          onCancel: attachments.store.cancel,
+          onRetry: attachments.store.retry,
+        }}
         testId="panel-thread"
       />
       <Composer
@@ -99,6 +115,8 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
         }}
         inputId="panel-composer"
         autoFocus
+        onAttach={attachments.attach}
+        sendBlockedNote={attachments.sendBlockedNote}
       />
     </aside>
   );

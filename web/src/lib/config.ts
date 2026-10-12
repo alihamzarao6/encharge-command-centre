@@ -15,6 +15,8 @@ export interface WebConfig {
   readonly adminUrl: string;
   /** Milestone 4 part 2: the overview's refresh endpoint. The mirror is read under RLS. */
   readonly crmUrl: string;
+  /** Milestone 5 part 1: attaching a file. The list of a conversation's files is read under RLS. */
+  readonly filesUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -32,5 +34,6 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
     memoryUrl: `${supabaseUrl}/functions/v1/memory`,
     adminUrl: `${supabaseUrl}/functions/v1/admin`,
     crmUrl: `${supabaseUrl}/functions/v1/crm`,
+    filesUrl: `${supabaseUrl}/functions/v1/files`,
   };
 }

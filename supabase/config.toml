@@ -476,3 +476,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/crm/index.ts"
 import_map = "./functions/crm/deno.json"
+
+# Milestone 5 part 1: attaching a file to a conversation. The browser reads the file itself
+# and sends text (or one page image at a time); this function stores the text and has the
+# model read page images. verify_jwt is off for the same reason as the others: the library
+# verifies the caller against the allowlist itself and answers 401 / 403 in its own words.
+[functions.files]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/files/index.ts"
+import_map = "./functions/files/deno.json"

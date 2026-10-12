@@ -85,6 +85,9 @@ type MessagesRow = {
   input_tokens: number | null;
   output_tokens: number | null;
   created_at: string;
+  // Milestone 5 part 1 (migration 20261012010000): the turn was answered from an attached
+  // file, and the memory summariser leaves it out.
+  document_context: boolean;
 };
 
 // Stage 3 part 1: memory_chunks (src/lib/memory/chunks.ts). The vector travels as its
@@ -158,6 +161,7 @@ export type Database = {
         Row: MessagesRow;
         Insert: Pick<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'> &
           Partial<Omit<MessagesRow, 'conversation_id' | 'user_id' | 'scope' | 'role'>>;
+        // (document_context is optional on insert: the column defaults to false.)
         Update: Partial<MessagesRow>;
         Relationships: [];
       };

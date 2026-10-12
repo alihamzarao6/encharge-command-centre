@@ -37,6 +37,8 @@ import { supabaseFactStore } from '../memory/facts.js';
 import { supabaseMemoryPageStore, type MemoryPageDeps } from '../memory/page.js';
 import { recallForTurn, supabaseChunkSearch, type RecallDeps } from '../memory/retrieve.js';
 import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
+import { loadFilesConfig } from '../files/config.js';
+import { createChatDocuments } from '../files/wiring.js';
 import type { ChatDeps, TurnMemory } from './chat.js';
 import { createClaudeClient, type ClaudeClient } from './client.js';
 import { loadLlmConfig } from './config.js';
@@ -79,6 +81,10 @@ export function createChatDeps(
   if (!supabase.ok) return supabase;
   const llm = loadLlmConfig(env);
   if (!llm.ok) return llm;
+  // Milestone 5 part 1: a malformed FILES_* value is a CONFIG error here too — the chat is
+  // what reads attached files, and a wrong budget must not be guessed at.
+  const files = loadFilesConfig(env);
+  if (!files.ok) return files;
 
   const service = createServiceClient(supabase.value);
   const http = createHttpClient({
@@ -113,6 +119,7 @@ export function createChatDeps(
     conversations: supabaseConversationStore(service),
     log,
     history: llm.value.history,
+    documents: createChatDocuments(supabase.value, files.value),
     ...(afterTurn === undefined ? {} : { afterTurn }),
     ...(memory === undefined ? {} : { memory }),
     ...(waitUntil === undefined ? {} : { waitUntil }),

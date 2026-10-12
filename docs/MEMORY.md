@@ -19,11 +19,11 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug) for *what* is built — the B2B outbound lead-research engine is **out of scope**, see D23. **The 1 Sep 2026 milestones document for *how it is delivered and paid*: eight milestones, 2,000 USD total (D77)** — the six-stage map (D26, D27) is superseded |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
-| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is in the working tree, NOT committed, with a new migration `20260924010000_ghl_writes.sql` not yet applied and the `crm` function not yet redeployed. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
+| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is committed and pushed (`15db99d` + `8c29221`; CI run 35954883737 green on `8c29221`, all three jobs, zero skipped) and deployed (the live web bundle names `8c29221` as its build commit — read from the bundle 12 Oct; the reviewer confirms migration `20260924010000_ghl_writes.sql` and the `crm` redeploy separately, it could not be checked from this machine). Part 5 (phone and laptop) and the client's sign-off are still OPEN. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data). Milestone 5 part 1 — reading files and documents — was started on 12 Oct on the reviewer's instruction with Milestone 4 unsigned (12 Oct entry; D83–D92).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
-| Next task | **Review of "Milestone 4, Part 3 — Pipeline board and leads list" (14 Sep entry) → push → CI (first run of `tests/integration/leads.test.ts` on a stack) → redeploy `crm` (the cooldown) + the web app (RUNBOOK §1d).** Then the next brief: lead detail and moving a lead (Part 4) |
+| Next task | **Review of "Milestone 5, Part 1 — Reading files and documents" (12 Oct entry) → commit → push → CI (the first run of `tests/integration/files.test.ts`, `tests/security/files.test.ts` and migration `20261012010000` from zero, pg_cron included) → deploy in the order RUNBOOK §1e gives: enable pg_cron, `db push`, confirm the cron job, `files` + `chat`, then the web app.** Milestone 4 part 5 (phone and laptop) and its sign-off are still owed. Then Milestone 5 part 2 (website reading) |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Last regression run | **Local, 12 Oct (M5 part 1, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped (16 stack-backed files, no Docker) in 95 files**, coverage **91.19% lines / 87.56% branches / 91.76% functions / 90.16% statements** · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (`files.spec.ts` 93 + the 447 existing) · production build 566.98 kB JS + 32.10 kB CSS, `web:check` 0 hits · `functions:bundle` five functions. **CI not run — nothing is pushed.** *(Previous:* CI run 35954883737 (`8c29221`, 24 Sep), all three jobs green, zero skipped: unit 1,507 · integration 102 · security 48 · browser 447.*)* Earlier runs, newest first: **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
 | Known broken | **M4 part 2 is LIVE (13 Sep):** part-1 migration applied to the live project (through the Supabase MCP because the CLI/management token in `.env` answers 401; applied verbatim, then the version row was corrected from the MCP's `20260913061442` to `20260912010000` in the SQL editor — `list_migrations` now matches the repo, 18 of 18); `crm` v1 deployed (MCP); the four `GHL_*` secrets set by the reviewer in the dashboard; **first Refresh from the app succeeded** — run row `success`, trigger `api`, 13 requests, 10 opportunities, 10 contacts, 15 definitions, 6,050 ms — and the overview shows 10 open / 7 Appointment Booked / 2 New Lead / 1 Contacted, equal to `npm run crm -- read` taken the same minute (PHASE-ACCEPTANCE M4 item 3, first evidence). The `.env` management token needs replacing before the next CLI deploy. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -116,6 +116,16 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D80** | **The FUNDD funnel is live on `ross.fundd.com.au` (as of 7 Sep 2026), a subdomain the client obtained from his aggregator group, and email now sends from `send.fundd.com.au`. The old `info.enchargecapital.com` address serves a different funnel entirely. Supersedes the domain clause of D30; the lead path itself (Facebook ad video → landing page → form → Discovery Session booking) stands** | D30 said no custom domain would be pointed at the funnel because `fundd.com.au` belongs to the aggregator group; the client has since obtained the `ross.` subdomain from that group, so the constraint behind the clause is gone. **Anything that hardcodes or assumes `sites.leadconnectorhq.com` or `info.enchargecapital.com` for the funnel is wrong.** Checked 12 Sep: nothing in `src/`, `supabase/`, `web/` or the tests carries either address — the only `leadconnectorhq` hits are the GHL API base `services.leadconnectorhq.com` (`.env.example`, GHL-AUDIT), a different host and unchanged. `src/lib/voice/rules.ts` and `VOICE.md` cite D30 for the *path*, which is unchanged — no edit. **Not verified here — open:** whether the Refi Pixel install and the Conversions API `Lead` event (D31) survived the domain move | 7 Sep (recorded 12 Sep) |
 | **D81** | **D9 is NARROWED, not replaced. Two-turn confirmation applies to tool calls the ASSISTANT makes on its own initiative — and still stands for those. It does NOT apply to a direct action the user takes in the interface: when the client drags a lead from one stage to the next, that click IS the confirmation.** No dialog on a stage change | D9 (08 Aug) was written against an AI writing to a live CRM unconfirmed. A person moving a card is not that: the intent is in the gesture, and a dialog on every stage change would make the board unusable. What a user-initiated write still owes, from rules that already exist: idempotent and keyed on the GHL opportunity ID (rule 9); never blindly retried after a timeout (rule 8); recorded in `audit_log` with the person as actor; a refused or failed write shown in words with the board put back, never swallowed (rule 7). D71's reading of D9 — a standing rule that binds the day an assistant-initiated write tool exists — is unchanged | 12 Sep |
 | **D82** | **Explicitly out of scope, and stated to the client in writing:** a drag-and-drop dashboard *builder* · agent software that carries out work on its own · the Quickli lending calculator (no open API — partner access only) · the client's separate finance CRM (same reason) | Quickli and the finance CRM are closed to us by their vendors, not by this project. The first two draw the line around Milestones 4 and 6: a fixed screen the client uses rather than composes, and an assistant that answers and drafts rather than acts unattended (D9/D81 govern the writes it may make). Check every "can it also…" against this list before it becomes a task (R8). The 08 Aug "separate finance CRM — price separately when raised" line in §4 is now settled by this | recorded 12 Sep |
+| **D83** | **Milestone 5 part 1 reads these files, decided by what the bytes ARE, never by the extension:** PDF (text layer, and scanned pages through vision), Word `.docx`/`.docm`, Excel `.xlsx`/`.xlsm` (macros never run), CSV/TSV, plain text, JPEG/PNG/WebP/GIF, and HEIC only where the device can decode it. **Refused, each with its own sentence:** legacy `.doc`/`.xls`/`.ppt`, `.pptx`, password-protected PDF or Office files, every archive, SVG/HTML, executables, audio/video, unknown binary, a zero-byte file, anything over a limit | The realistic set for a mortgage broker is payslips, statements, rate sheets, lender policy PDFs, spreadsheets and phone photos. A refusal that names the reason and the way out ("save it as .xlsx") is the difference between a feature and a silent failure. Content sniffing is what makes "a file whose extension lies" a non-event | 12 Oct |
+| **D84** | **Extract and discard. Extraction runs in the BROWSER; the original file is never stored by us anywhere, and for typed formats it never leaves the device. What is kept is the extracted text, the file name and a hash, in Postgres under RLS. There is no storage bucket, so there is no URL to guess** | Supabase Edge Functions allow 2 s of CPU per request and a 300-page PDF needs more (probe: 846,121 characters in 2.1 s on a laptop), and there is no other server. The constraint and the privacy rule point the same way: "nothing is stored that does not need to be" is easiest to keep when the bytes were never sent. The browser is not trusted for this — an authenticated person lying about a file's text is the same as typing it, and the server treats the text as untrusted data either way. Dependencies: `pdfjs-dist` (Apache-2.0) and `fflate` (MIT), loaded only when a file is attached; Word and Excel are read by our own small reader because `xlsx` on npm is still 0.18.5 with known vulnerabilities | 12 Oct |
+| **D85** | **A file's extracted text lives 30 days from upload, then is purged by a daily `pg_cron` job (`purge_conversation_files`). Sooner on Remove or when the conversation is deleted. An upload that never finished is purged after 15 minutes. What the assistant already SAID about a file stays in the thread until the conversation is deleted** | These are third parties' payslips and statements. Thirty days covers a loan application's working life; a purge that depends on somebody using the app is not a retention guarantee, hence a scheduled job (pg_cron must be enabled on the live project — RUNBOOK §1e). Removal leaves a tombstone with no name and no text, the pattern D50 set for chunks | 12 Oct |
+| **D86** | **A file follows its conversation: anyone who can see the conversation can see the file and its answers. No uploader-only lock, no "make private" step.** RLS stays on both tables as the floor — a private conversation's file is unreadable by another account, proven by a test that fails without the policy — and the page text has NO browser read path at all (deny-all; only the server reads it) | The reviewer's decision on 12 Oct, overriding the uploader-only proposal: the client's staff already work the same client files in the CRM, so locking a file to one person would be stricter than the business is and would get in the way. The ownership columns ride the same parent-sync triggers as `messages`, so making a conversation private makes its files private in the same statement | 12 Oct |
+| **D87** | **Document text reaches the model in the USER turn, wrapped and labelled as data (SECURITY §3 layer 1). The rules ABOUT documents are ours and sit in the system prompt, in a static block below the voice's cache breakpoint, sent only when a file is attached. That block carves one thing out of `boundary.no-lender-claims`: reading back what an attached document says — figures, lender names, policy wording — attributed to the document. `boundary.no-credit-advice` stands. The cached voice prefix, its version and its fixtures are untouched** | Without the carve-out "what does this lender policy PDF say" is refused by a rule written for published copy. It cannot live in the user turn: an instruction there that loosens a system rule is exactly what an injected document would write. Approved by the reviewer 12 Oct as a carve-out of a client-sourced rule | 12 Oct |
+| **D88** | **Up to 48,000 characters of document text per turn (`FILES_CONTEXT_MAX_CHARS`). A file that fits goes in whole; a larger one goes in as its most relevant pages, ranked by keyword in code, and the model is told which pages of how many it is seeing. No embeddings, no summary pass** | Whole-document is the honest mode — a top-3-chunks answer to "what do the deposits add up to" is silently wrong. Embeddings were rejected on D69: the Voyage account's rate limit already degrades memory and a 140k-token policy would not embed under it. A summary pass charges for every large upload whether or not anyone asks. Worst case as the cap counts it: 16,000 tokens × $3/M = $0.048 a turn | 12 Oct |
+| **D89** | **A turn answered with a file in context is kept OUT of the shared-memory summariser** (`messages.document_context`; the summariser sees a placeholder, not the words) | D62/D64 send every conversation's summary to the whole team's memory, where it is replayed for months. A payslip figure quoted in a reply would otherwise outlive the file and reach people who never saw it. An explicit "remember that…" still works — that is the person's own act (D43) | 12 Oct |
+| **D90** | **A photo or scanned page is read ONCE by Claude vision, transcribed, and the image discarded. Up to 50 such pages per file. From two pages up the person is told how many pages will be read and roughly what that costs against today's cap, and continues or stops. A cap, timeout or dropped connection mid-file leaves NOTHING attached and says how far it got; Retry resumes** | The reviewer raised the limit from 10 to 50 on 12 Oct: a bank statement runs 15–30 pages and ten would refuse the first real document. Not beyond 50 — at about 2.7 cents a page that is already a third of the daily cap, and it is where a phone browser starts to struggle. Never a half-read file presented as a whole one | 12 Oct |
+| **D91** | **Client documents reach Anthropic — the extracted text on every question, a page image once for photos and scans. Not a blocker and not ours to gate: the client handles that side himself. No warning or consent wording in the product** | Reviewer's instruction, 12 Oct. On the record: no new third party is introduced (no OCR vendor, no document service); Anthropic's published position is that API content is not used for training and inference runs "global" or "us" — there is no Australian region | 12 Oct |
+| **D92** | **A spreadsheet is passed as labelled tables — real row numbers, column letters, every sheet, merged ranges noted, formula cells showing the sheet's own stored result — plus count / sum / min / max per numeric column computed in CODE** | A sheet is not prose, and a model adding up a long column is unreliable. Totals come from code or from the sheet's own formulas; anything else the assistant adds up itself it is told to say so. Formulas are never recalculated | 12 Oct |
 
 ---
 
@@ -132,6 +142,162 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-12 — [M5 part 1 review] Table rows with empty cells: a defect, fixed before commit
+
+**Review outcome (12 Oct):** Part 1 approved as built — retention, visibility, the memory
+exclusion, the cost question from two scan pages, the 50-page limit, and the three judgement
+calls (single photos, Remove ownership, the 768–899 layout). One fix first, below. Then
+commit, push, CI, deploy per RUNBOOK §1e.
+
+**The defect.** I had filed it under "would have built differently"; the reviewer called it
+what it is. A typed PDF row with empty cells collapsed: `Tool allowance<tab>55.00` put an
+Amount in the Hours column. On a lender rate sheet that pairs a rate with the wrong LVR band,
+and the client is a licensed credit broker who will quote the number. Part 2's plan flagged
+the same hazard independently.
+
+**Did:** `linesFromItems` (`web/src/lib/files/pdf.ts`) now remembers the widest rows on a
+page as the table's columns (their left AND right edges, since figures are often flush
+right). A row with fewer cells is restored by position when every cell lines up with exactly
+one column, in order — otherwise it is prefixed `[columns uncertain]` and left as it was.
+`DOCUMENT_RULES` (now `2026-10-12.3`) says a value from such a row is never stated under a
+heading: quote the row, say its columns could not be read, tell the user to check the
+original. New fixture `rate-sheet-gaps.pdf`. Tests on the payslip fixture that produced the
+bug, on the full rate sheet (untouched: 68 rows of five cells, none marked) and on the gapped
+one; eight unit cases for the placement itself.
+
+**Surprised by:** restoring empty cells as bare tabs was **not enough**. Asked live for the
+fee on a row with two restored empty cells, the model lost count of the tabs and said the
+fee was blank. Restored empty cells are now written `(blank)`, and the rules say what that
+means. Live afterwards: E4 (uncertain) quoted raw with "check the original"; D3's fee $300;
+C2's comparison rate reported as empty; the payslip's tool allowance has no hours and an
+amount of 55.00. The prompt-injection probes were re-recorded because the rules changed
+(still none obeyed; about $0.05).
+
+**Accepted limits, recorded on the reviewer's instruction — no action now:**
+- *The live injection run has no discriminating power* (the control also declined). The
+  wrapper is proven mechanically, not behaviourally; SECURITY §3 now says so in those words.
+- *Keyword matching misses synonyms* ("self-employed" against "sole trader"). It matters:
+  lender policies are his main use. A candidate for reopening with embeddings once the
+  embedding account is off its rate limit (the reviewer is sorting that).
+- *A file belongs to one conversation*, so the same policy document attached again is read,
+  and for a scan paid for, again. **Known limitation for a later part**, not a fix now.
+- Left alone as their own small tasks: the 768 px header clipping, the price table
+  overstating Sonnet, the web bundle exposing the commit author.
+- Typed-PDF rows are only as good as the PDF's geometry: a row is checked when it has FEWER
+  cells than the table. A row with the right number of cells in the wrong places is not
+  detected.
+
+**Tests after the fix (local):** typecheck and lint clean · unit **1,919 passed, 162 skipped** (stack suites), coverage 91.24% lines / 87.57% branches · browser **540 passed, 0 failed, 0 skipped** · build checks 0 hits. One unit run made while the browser suite was competing for the CPU had a single failure that two clean reruns did not reproduce; the test was not identified.
+
+**Found while checking deploy access:** the Supabase CLI authenticates again, and `supabase migration list --linked` shows `20260924010000` applied on the live project — the part 4 migration is confirmed; only `20261012010000` is pending.
+
+**Next:** commit → push → CI → deploy (RUNBOOK §1e).
+
+### 2026-10-12 — [M5 part 1 · Reading files and documents] He can send it a file and ask what is in it — working tree, NOT committed
+
+**Preconditions confirmed first:** `main` equals `origin/main` at `8c29221`; Milestone 4 part 4
+is in `15db99d` + `8c29221`; CI run 35954883737 on `8c29221` is green on all three jobs (unit
+1,507 · integration 102 · security 48 · browser 447, zero skipped); the live web bundle names
+`8c29221` as its build commit. **Not confirmed from this machine:** that migration
+`20260924010000` is applied to the live database and that `crm` was redeployed (a read of the
+production database with the service key was refused by the session's permission layer and was
+not attempted another way; the reviewer is confirming it separately). Milestone 4 part 5 and
+its sign-off are open; this part was started on the reviewer's instruction (rule 5 noted, not
+waived by me). Nothing was staged at the start and nothing is staged now.
+
+**Did:** *The readers, in the browser* (`web/src/lib/files/`): one `FileExtractor` interface;
+PDF text layer (pdf.js, scripting / XFA / eval off, its script sandbox not shipped), Word and
+Excel read as zipped XML with an own tokenizer (no entity expansion, macros never run, zip
+bombs and nested archives refused), CSV / TSV / text with delimiter and encoding detection,
+photos decoded, turned upright from EXIF, scaled to 2,048 px and re-encoded (which drops the
+metadata). The kind is decided on the bytes; the extension only tells CSV from text.
+Spreadsheets become labelled tables with real row numbers, column letters, stored formula
+results and **column totals computed in code** (D92). *The server* (`src/lib/files/`): the
+`files` Edge Function (`estimate · begin · append · read_page · finish · remove · refused`), a
+supabase-js store over five database functions, the document block a turn carries
+(`context.ts`: whole when it fits 48,000 characters, otherwise the pages that match the
+question by BM25, saying which of how many), the rules block (`rules.ts`), and the
+transcription of a page image by the model behind a validated envelope (`vision.ts`).
+*The chat* loads the conversation's files on every turn, sends them as a user message of
+their own with a cache breakpoint, refuses the turn (503, nothing sent, nothing spent) if they
+cannot be loaded, and flags both rows of the turn so the memory summariser gets placeholders
+(D89). *The interface:* an attach button (and drag-and-drop) on the Assistant page and the
+docked panel, uploads one at a time with a real progress bar and a live region, the question
+before a scan is read, the file in the thread where it was attached with name, size, how long
+it is kept and Remove, a line with no name where a removed file was. *The database:* migration
+`20261012010000` — `conversation_files`, `conversation_file_pages` (RLS forced, **no policy**),
+`messages.document_context`, three triggers, five `service_role`-only functions, and the
+`purge-conversation-files` pg_cron job. *Tools:* `npm run files -- extract | read | ask |
+record`. *Docs:* SCHEMA §4, SECURITY §3 and §11, TESTING §2 and §4, RUNBOOK §1e (pg_cron is
+step 0), PHASE-ACCEPTANCE Milestone 5 part 1, `.env.example`.
+
+**Decided (D83–D92, §2; the reviewer approved Part A on 12 Oct and changed three things):**
+files follow the conversation's visibility with no uploader-only lock (his call, simpler than
+I proposed); the scanned-page limit is 50, not 10, with the pages-and-cost question first (his
+call); no consent wording in the product — what reaches Anthropic is his to manage with his
+clients (D91). Mine, to be judged at review: the question is asked from **2** scanned pages up
+(a single photo is read without it); Remove belongs to the uploader or an administrator;
+`begin` is the one call a Stop does not abort (below); at 768–899 px the attach button takes
+its own line above the message box, because the thread there is 288 px wide and the button
+would have cost a third of the box.
+
+**Surprised by — found by this part's own tests, all fixed with a failing test first:**
+1. *Stop pressed while the upload was being claimed told the server nothing* (there was no
+   file id yet), leaving a claimed upload until the 15-minute sweep. The browser suite caught
+   it. The claim is now waited for and then dropped; a duplicate is never removed by a stop
+   (`uploads.test.ts`, five tests).
+2. *My always-present `role="status"` announcer broke 36 existing browser tests* that expect
+   one status region. It is now a plain `aria-live` region. The existing suites were not
+   edited.
+3. *Expiry was compared as text* (`expires_at > now().toISOString()`), which is wrong the
+   moment the database writes an offset other than `Z`. Now compared as instants.
+4. *The injection judge read "nothing was sent" as a claim that something was sent.* Negations
+   are now excluded.
+5. *pdf.js silently dropped CJK text* without its character maps; the build now ships its data
+   files under `/pdfjs/` on the app's own origin.
+
+**Tests:** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped
+in 95 files (16 stack-backed files skip: no Docker)**, coverage **91.19% lines / 87.56%
+branches / 91.76% functions / 90.16% statements** (`src/lib/files` 96.97% / 90.85%;
+`web/src/lib/files` 90.77% / 88.9%, where `browser.ts` and `lazy.ts` are 0% under Node and are
+exercised in Chrome) · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (the
+447 existing + `files.spec.ts` 31 × 3) · production build 566.98 kB JS (159.93 gzip; was
+539.64 / 150.75), 32.10 kB CSS, lazy chunks 28.88 kB readers + 430.88 kB pdf.js + 1,264 kB
+pdf worker, `web:check` 0 hits · `functions:bundle` five functions. **New and CI-only:**
+`tests/integration/files.test.ts` (16) and `tests/security/files.test.ts` (12) — written,
+typechecked, and their SQL replayed against a throwaway local PostgreSQL 17 with the expected
+result at every step, **but never run against a Supabase stack. CI has not run: nothing is
+pushed.**
+
+**Measured live (12 Oct, about $0.28 in total, the repo's $3 / $15 price table):** PHASE-
+ACCEPTANCE Milestone 5 part 1 has the table. In short: a typed file costs nothing to read; a
+photographed payslip $0.0126 to read (Haiku $0.0028) with every figure right; a dense scanned
+statement page $0.0227 (Haiku $0.0044), 72 of 72 fields right on both; a question on a
+one-page payslip $0.006 then $0.0024 for a follow-up; a question on the 300-page policy
+$0.095 (61 pages sent, the right page and figure, and the reply said it had seen only part).
+Three hostile documents and one hostile photograph: none obeyed. **The unprotected control
+did not obey either** — the recordings show what the model did, not that the wrapper is what
+stopped it.
+
+**Not verified, and why:** the two stack suites and the migration's pg_cron section (no
+Docker; CI's from-zero replay is the first real run) · that pg_cron installs from a migration
+on the live project (RUNBOOK §1e step 0 and step 2) · the pdf.js worker, WASM and data files
+as served by Vercel (only by `vite preview` here) · a real iPhone or Android phone, the iOS
+file picker, HEIC from a real camera roll, a touch drag · a real screen reader (the live
+region and the roles are asserted; nobody listened to it) · a real 20-minute scan upload
+against the Edge Function's limits · the live database and the `crm` deploy from part 4.
+
+**Noticed, not changed (not this part's):** at 768 px with a conversation open, the bar above
+the thread loses its title and clips "+ New" — it is in the committed stage-3 screenshots ·
+the price table charges Sonnet at $3 / $15 where list is now $2 / $10 (left alone on
+instruction; every cost above is therefore high by a third) · the live web bundle inlines
+Vercel's system variables, so the commit author and message are public in it
+(`resolveWebConfig(import.meta.env)` is handed the whole object).
+
+**Next:** review of this part → commit → push → CI (the first run of the two stack suites and
+of the migration from zero) → deploy in the order RUNBOOK §1e gives. Then Part 2 (website
+reading).
 
 ### 2026-09-24 — [M4 part 4 · Lead detail, stage moves and notes] The first writes to GoHighLevel — working tree, NOT committed
 

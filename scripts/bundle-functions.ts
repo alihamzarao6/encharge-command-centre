@@ -31,6 +31,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'admin', entry: 'src/functions/admin/index.ts' },
   // Milestone 4 part 2: the overview's "refresh from GoHighLevel" endpoint.
   { name: 'crm', entry: 'src/functions/crm/index.ts' },
+  // Milestone 5 part 1: attaching a file to a conversation.
+  { name: 'files', entry: 'src/functions/files/index.ts' },
 ];
 
 const BANNER = [

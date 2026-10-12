@@ -75,14 +75,29 @@ export function estimateInputTokens(chars: number): number {
   return Math.ceil(Math.max(0, chars) / 3);
 }
 
-/** Worst case for the cap check: every input token uncached, every output token used. */
+/**
+ * The most one image can be billed as (Milestone 5 part 1). An image costs
+ * ⌈width / 28⌉ × ⌈height / 28⌉ visual tokens, and the API scales anything larger down to its
+ * model's ceiling first: 4,784 on the high-resolution tier (Claude 4.7 and later, which
+ * includes Sonnet 5), 1,568 on the standard tier (Haiku 4.5). The cap check cannot trust a
+ * browser's word for an image's size, so every image is counted at the higher ceiling
+ * whichever model reads it — the direction that errs towards refusing.
+ * Source: platform.claude.com/docs/en/build-with-claude/vision (read 12 Oct 2026).
+ */
+export const IMAGE_WORST_CASE_TOKENS = 4_784;
+
+/**
+ * Worst case for the cap check: every input token uncached, every output token used.
+ * `extraInputTokens` is input that is not text — images, counted by the caller.
+ */
 export function estimateWorstCaseUsd(
   pricing: ModelPricing,
   inputChars: number,
   maxOutputTokens: number,
+  extraInputTokens = 0,
 ): number {
   return costUsd(pricing, {
-    inputTokens: estimateInputTokens(inputChars),
+    inputTokens: estimateInputTokens(inputChars) + Math.max(0, extraInputTokens),
     outputTokens: maxOutputTokens,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,

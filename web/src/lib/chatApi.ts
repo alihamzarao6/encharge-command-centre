@@ -23,6 +23,11 @@ export interface ChatSuccess {
   readonly userMessageId: string;
   readonly assistantMessageId: string;
   readonly reply: string;
+  /**
+   * Milestone 5 part 1: the reply stopped at the length limit, so it is not the whole answer.
+   * Only ever present as `true`; the interface says so under the reply.
+   */
+  readonly truncated?: true;
 }
 
 export type ChatFailureKind =
@@ -115,6 +120,7 @@ function readSuccess(body: unknown): ChatSuccess | null {
       userMessageId: body['userMessageId'],
       assistantMessageId: body['assistantMessageId'],
       reply: body['reply'],
+      ...(body['stopReason'] === 'max_tokens' ? { truncated: true as const } : {}),
     };
   }
   return null;

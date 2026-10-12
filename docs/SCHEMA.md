@@ -434,6 +434,10 @@ created_at`
 `user_id` and `scope` are denormalised from the conversation so the RLS policy is a column
 check, not a join. A trigger keeps them equal to the parent's.
 
+*(12 Oct 2026, Milestone 5 part 1: `document_context boolean not null default false` added —
+true on both rows of a turn answered with an attached file in front of the model; see
+"conversation_files" below.)*
+
 ### memory_chunks — semantic memory (written from Stage 3 part 1, FND-300)
 `id · conversation_id FK · user_id not null · scope not null · summary not null ·
 embedding vector(1024) · turn_range int4range not null · created_at`
@@ -583,6 +587,59 @@ each hold a live `writing:tone`, both handed to the model on every turn.)* Writt
 23 Aug by the two-value `scope` + `user_id` above; see the reasoning at the top of §4. *The
 first draft of 23 Aug had `default 'user'`; corrected the same day to `default 'workspace'`
 because the client was told memory is shared.*
+
+### conversation_files, conversation_file_pages — attached files (Milestone 5 part 1, 12 Oct 2026)
+
+A file belongs to **one conversation** (D83). **The original file is never stored** — not in a
+table, not in a bucket; there is no Storage bucket for this feature and so no object URL
+(D84). The browser reads the file; what is kept is the **text** it read, page by page, plus
+the file's name, size, kind and a SHA-256 of the original (so the same file sent twice is
+recognised). Migration `20261012010000_conversation_files.sql`.
+
+| Table | Key | Holds |
+|---|---|---|
+| `conversation_files` | `id` | `conversation_id` FK **on delete cascade** · `user_id` + `scope` (the CONVERSATION's author and scope, denormalised and kept equal to the parent by the same trigger `messages` uses) · `uploaded_by` · `request_id` (uuid, unique — one per upload gesture; the idempotency key) · `name` (a sanitised label, ≤ 120 chars) · `kind (pdf\|docx\|xlsx\|csv\|text\|image)` · `byte_size` (of the original, as the browser measured it) · `content_hash` · `expected_pages` · `vision_pages` · `page_count` · `char_count` · `confidence` (the lowest page confidence) · `status (reading\|ready\|removed)` · `created_at · ready_at · expires_at` (30 days after upload, D85) · `removed_at · removed_by · removed_reason (user\|expired)` |
+| `conversation_file_pages` | `(file_id, page_no)` | `label` ("Page 7", `Sheet "Rates"`) · `content` (≤ 64,000 chars) · **provenance, all NOT NULL (rule 12):** `extraction_method (pdf_text_layer\|claude_vision\|docx_xml\|xlsx_xml\|csv_parse\|plain_text)` · `confidence` (1.00 for a parse; 0.90 / 0.60 / 0.00 for a page read by vision that was fully / partly / not legible) · `legibility (full\|partial\|none)` · `extracted_at` — the source is the upload itself (`file_id` → hash, uploader, time; there is no URL) · `letter_count` (letters and digits of any script, counted by the server; what "is there anything readable" is decided on) |
+
+Also `messages.document_context boolean not null default false`: true on both rows of a turn
+that was answered with a file in front of the model. The shared-memory summariser replaces
+such a message with a placeholder, so a figure read off a payslip never reaches workspace
+memory (D89).
+
+**Status.** `reading` — pages still arriving; invisible to every session and to the model.
+`ready` — every declared page is stored; what a turn loads. `removed` — a tombstone: the text
+is deleted and `name` and `content_hash` are null, enforced by
+`conversation_files_tombstone_check`, so the thread can say "a file was here" and nothing can
+say which. One `ready` row per `(conversation_id, content_hash)` (partial unique index).
+
+**Who reads what (D86).** `conversation_files`: one SELECT policy — `status <> 'reading' and
+(scope = 'workspace' or user_id = auth.uid()) and is_active_staff()` — i.e. whoever can read
+the conversation. `conversation_file_pages`: RLS enabled and forced with **no policy at all**;
+no browser session reads the text, whoever it belongs to. Only the server does
+(`service_role`), to put it in front of the model. Both proven in
+`tests/security/files.test.ts`, each clause shown to matter by removing it inside a
+rolled-back transaction.
+
+**Triggers.** `conversation_files_sync_ownership` (child takes owner and scope from its
+conversation); `conversations_cascade_files_ownership` (making a conversation private makes
+its files private in the same statement); `conversations_purge_files` (a soft-deleted
+conversation's files are deleted outright — rows, text, names).
+
+**Five `service_role`-only functions.** `begin_conversation_file` claims an upload under a
+lock on its conversation: idempotent on `request_id` (a retry resumes and is told which pages
+are already stored), returns the `ready` row for the same content, deletes abandoned attempts,
+raises `FL001` past ten live files and `02000` for a missing or deleted conversation.
+`append_conversation_file_pages` upserts pages while `reading` (`FL002` not reading, `FL003`
+page outside what was declared). `finish_conversation_file` makes the file `ready` only when
+**every** declared page is stored, in one transaction with its `audit_log` row
+(`FILE_ATTACHED`: ids and counts, never the name or a word of the text) — `FL004` pages
+missing, `FL005` nothing readable, `FL006` too long. `remove_conversation_file` deletes an
+unfinished upload outright or turns a ready file into a tombstone (`FILE_REMOVED` /
+`FILE_EXPIRED`). `purge_conversation_files` deletes uploads unfinished after 15 minutes and
+tombstones files past `expires_at`; **pg_cron runs it daily at 03:17 UTC** (job
+`purge-conversation-files`, created by the migration; RUNBOOK §1e). A turn also ignores a file
+past its date, so the promise holds in the hours before the job runs. Code:
+`src/lib/files/` (store · page · context · vision), `web/src/lib/files/` (the readers).
 
 ### tasks
 `id · title not null · description · assignee · due_date ·

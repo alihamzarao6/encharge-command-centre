@@ -757,6 +757,48 @@ Website reading, a stage of its own under the six-stage map, sits here (D77).*
   lead-research engine (D23, CLAUDE.md rule 15): nothing here researches organisations or
   people. What it does cover is agreed at kickoff.
 
+### Part 1 — Reading files and documents · built 12 Oct 2026, NOT committed, awaiting review
+
+*Decisions D83–D92 (`MEMORY.md` §2). The starting point above said "stored and read under the
+same provenance and untrusted-input rules as a web page; which formats, where they live and
+how they are cleaned is defined at kickoff". This is that definition, as tested.*
+
+| # | Criterion | How it is proven | 12 Oct |
+|---|---|---|---|
+| F1 | PDF (typed), Word `.docx`, Excel `.xlsx`/`.xlsm`, CSV/TSV, plain text, and photos (JPEG, PNG, WebP, GIF; HEIC where the device can open it) are read. Everything else is refused **with a sentence saying why**, decided on the file's bytes, not its extension | `tests/unit/web/files-*.test.ts` over 38 invented fixtures; `tests/e2e/files.spec.ts` in real Chrome with the real PDF reader | ✅ |
+| F2 | A scanned PDF or a photo is read by the model, **only after** the person has been told how many pages and roughly what it costs against today's budget, and has said yes. Never more than 50 pages. A single photo is read without the question | `uploads.test.ts`, `page.test.ts`, e2e "a scan asks first" | ✅ |
+| F3 | The original file is **never stored**. The text is kept 30 days, then destroyed by a scheduled job; at once on removal; completely when the conversation is deleted | migration `20261012010000`; `tests/integration/files.test.ts` (CI) incl. `cron.job` exists; `store.test.ts` "no bucket" | ✅ locally · stack suites run in CI only |
+| F4 | A file is visible to whoever can see its conversation and to nobody else; the text is readable by no browser session at all. **The cross-user test fails when each clause of the policy is removed** | `tests/security/files.test.ts` (CI); the same SQL replayed on a local PostgreSQL 17 on 12 Oct with the expected result at every step | ✅ replayed locally · CI is the proof |
+| F5 | The assistant answers from the file. A document longer than the per-turn budget goes as the pages matching the question **and the reply is told it has seen only part**. If nothing could be read, it says so and does not guess from the name | `context.test.ts`, `chat-documents.test.ts`; live: 300-page policy → correct page and figure, and "I've only seen 61 of the file's 300 pages" | ✅ |
+| F6 | **Prompt injection:** a document's text is data. It is in the user turn inside a wrapper it cannot forge, never in the system prompt, in a request with no tools. The wrapper test fails without the tag rewrite | `context.test.ts` ("WITHOUT the defang the same document breaks out"), `chat-documents.test.ts`; live recordings held by `injection-live.test.ts` | ✅ |
+| F7 | Spend: a page read counts against the same daily and monthly cap as a turn, checked **before** the request. Cap reached mid-document → told plainly, nothing attached, no half file | `chat-documents.test.ts` (image priced at worst case before the call), `page.test.ts`, integration "with the budget spent" | ✅ |
+| F8 | An upload is all or nothing and idempotent: interrupted → nothing attached and Try again resumes without paying for a page twice; the same file twice → one attachment; stopped part-way → the server is told to drop it | `uploads.test.ts`, e2e "progress, and what happens when it stops", integration | ✅ |
+| F9 | **No file content, and no file name, in any log line, error or trace.** Each upload is logged: who, kind, size, pages, extraction time, outcome | canary tests in `page.test.ts`, `store.test.ts`, `chat-documents.test.ts`; integration log assertion | ✅ |
+| F10 | 375 / 768 / 1280: no horizontal scroll, inputs ≥ 16 px, attach reachable by keyboard, progress announced to a screen reader, long names contained, reduced motion respected | `tests/e2e/files.spec.ts` × 3 widths (93 tests); screenshots in `docs/assets/milestone-5/` | ✅ 540 of 540 browser tests |
+| F12 | **A table value is never stated under the wrong heading.** A typed-PDF row with empty cells keeps each value in its column (`(blank)` where empty); a row whose columns cannot be settled is marked and quoted raw, never read as a labelled value | `files-pdf.test.ts` on `payslip-text-layer.pdf`, `rate-sheet-tables.pdf`, `rate-sheet-gaps.pdf`; live: uncertain row quoted with "check the original" | ✅ (added in review, 12 Oct) |
+| F11 | `npm run typecheck && npm run lint && npm run test:regress` green; CI green with zero skipped | see the 12 Oct entry in `MEMORY.md` for the counts | ✅ locally (stack suites skipped: no Docker) · **CI not run — nothing is pushed** |
+
+**Measured, not estimated (12 Oct, live, the repo's price table of $3 / $15 per million
+tokens — list price is now $2 / $10, so real cost is about a third lower):**
+
+| What | Tokens in / out | Cost |
+|---|---|---|
+| Reading a typed PDF, Word, Excel, CSV or text file | none — parsed in the browser | $0 |
+| One phone photo of a payslip, Sonnet | 3,042 / 230 | $0.0126 |
+| The same photo, Haiku (`FILES_VISION_ROUTE=fast`) | 1,867 / 184 | $0.0028 |
+| One dense scanned statement page (18 rows, 96 dpi, JPEG q55), Sonnet | 4,267 / 662 | $0.0227 |
+| The same page, Haiku | 1,867 / 508 | $0.0044 |
+| First question on a one-page payslip | 23 + 1,122 cache-write + 3,017 cache-read / 53 | $0.0060 |
+| A follow-up on the same payslip (file cached) | 23 + 4,139 cache-read / 70 | $0.0024 |
+| First question on a 300-page policy (61 pages sent, 48,775 chars) | 20 + 24,575 cache-write / 131 | $0.0951 |
+| The same question again (same pages, cached) | 20 + 27,592 cache-read / 122 | $0.0102 |
+
+Accuracy on the same run: both models returned every figure on the payslip photo correctly,
+and all 18 rows of the scanned statement (72 of 72 fields) matched the generator's values.
+The figure shown to the person before a scan is read is $0.027 a page (an estimate chosen
+before measuring; measured $0.013–$0.023), and the cap reserves $0.077 a page as the worst
+case. A 50-page scan is about $1.14 at the measured dense-page rate: 23% of the $5 daily cap.
+
 ---
 
 ## Milestone 6 — Talking to it, and your day · 350

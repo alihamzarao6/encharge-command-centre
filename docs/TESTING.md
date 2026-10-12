@@ -51,6 +51,11 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `llm/spend`, `llm/pricing`, `llm/config`, `llm/response` | Cap arithmetic at the boundary, UTC windows, list-price cost to 6 dp, unpriced model refused, caps required, Zod response parse. **Shipped 25 Aug** |
 | `voice/conformance` | Every check proven on text that must pass AND text that must fail (a check that cannot fail is not a check); part labels are not numbers; `Note:` lines are not copy. **Shipped 25 Aug** — `tests/unit/voice/checks.test.ts` |
 | `voice/prompt`, `voice/rules` | Every rule has a source and a unique id; every rule text is in the assembled prefix verbatim; every rule id is in `docs/VOICE.md`; prefix ≥ 1,024 tokens for caching; hash deterministic; below-breakpoint block uncached and bounded. **Shipped 25 Aug** |
+| `files/text`, `files/context`, `files/select`, `files/rules` | Names and text stripped of hiding places (bidi, zero-width, tag block, controls) while every visible script survives; a document cannot forge its wrapper — **and breaks out when the tag rewrite is removed**; the block is whole or an excerpt that says so; the cached voice prefix is byte-identical with and without document rules. **Shipped 12 Oct** — `tests/unit/files/` |
+| `files/page`, `files/store`, `files/vision` | Every action of the files endpoint: who may attach, read and remove; every refusal a sentence; replays answered from the record; a canary in the text and in the file name appears in **no** log line or error; the adapter's arguments, columns and error codes equal the migration's (read from the SQL, because this machine has no stack). **Shipped 12 Oct** |
+| `files/probe` | The terminal's request equals the chat handler's own; a reply that IS the planted word or claims an email was sent is obedience, one that mentions and refuses it is not; `tests/unit/files/injection-live.test.ts` holds the recorded live replies to that and fails when the request built today is no longer the one recorded. **Shipped 12 Oct** |
+| `web/lib/files/*` (the readers) | Each format against invented fixtures (`tests/fixtures/files/`, regenerate with `make_fixtures.py`): rows and columns intact, formula results and code-computed totals, dates, hidden sheets, macros not run, zip bombs and nested archives refused, password / truncated / empty / wrong-extension files, non-Latin and right-to-left text. Run under Node with the real pdf.js; the canvas half (`browser.ts`) runs in real Chrome in `tests/e2e/files.spec.ts`. **Shipped 12 Oct** — `tests/unit/web/files-*.test.ts` |
+| `web/lib/uploads` | The queue: one file at a time; the question before a scan; resume from the page it stopped at; stop while the claim is in flight tells the server to drop it; a duplicate is never removed by a stop. **Shipped 12 Oct** |
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
 | `memory/facts` | Supersede logic, current-facts query, scope isolation |
@@ -205,6 +210,17 @@ Coverage required:
   conversation is invisible to `match_memory_chunks` and its range cannot be re-claimed; a
   second delete reports `already` and writes no second audit row; renaming a deleted
   conversation is refused; and no message text reaches `audit_log` or any log line
+- **Attached files (Milestone 5 part 1, `tests/integration/files.test.ts`, 16 tests):** the
+  real endpoint and a real chat turn against the stack with only the Anthropic call scripted —
+  a typed file stored as text with provenance on every page and the audit row carrying no
+  name; a scanned page charged to `api_usage` once and replayed for free; the cap at zero
+  stores nothing; the document reaches the model wrapped in the user turn and both rows of
+  the turn are flagged so the summariser gets placeholders; an incomplete upload cannot be
+  finished and is invisible meanwhile; ten files then a refusal; the tombstone; expiry before
+  and after the purge; privacy following the conversation through a real session; a deleted
+  conversation's files gone outright; and the `purge-conversation-files` cron job exists.
+  `tests/security/files.test.ts` (12 tests) is the cross-user suite, with each clause of the
+  policy removed inside a rolled-back transaction to show the read then succeeds
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL

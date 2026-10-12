@@ -45,6 +45,7 @@ import { readSse } from '../sse.js';
 import type { LlmConfig, ThinkingMode } from './config.js';
 import { ModelRefusalError, RateLimitedError, SpendCapError, type SpendWindow } from './errors.js';
 import {
+  IMAGE_WORST_CASE_TOKENS,
   costUsd,
   estimateInputTokens,
   estimateWorstCaseUsd,
@@ -63,9 +64,31 @@ import {
   type StreamState,
 } from './stream.js';
 
+/** The image types the Messages API accepts. HEIC and friends are converted before they get here. */
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+/**
+ * One piece of a message (Milestone 5 part 1). A plain string is still the ordinary case;
+ * blocks exist for two things: a page IMAGE to be read (src/lib/files/vision.ts), and a long
+ * text block that should carry its own cache breakpoint (the attached-documents block).
+ */
+export type ContentBlock =
+  | {
+      readonly type: 'text';
+      readonly text: string;
+      /** Put a cache breakpoint after this block. */
+      readonly cache?: boolean;
+    }
+  | {
+      readonly type: 'image';
+      readonly mediaType: ImageMediaType;
+      /** Base64, no `data:` prefix. Never logged, never recorded. */
+      readonly data: string;
+    };
+
 export interface ChatMessage {
   readonly role: 'user' | 'assistant';
-  readonly content: string;
+  readonly content: string | readonly ContentBlock[];
 }
 
 export type ModelRoute = 'default' | 'fast';
@@ -192,8 +215,42 @@ interface RequestBody {
     readonly text: string;
     readonly cache_control?: { readonly type: 'ephemeral' };
   }[];
-  readonly messages: readonly ChatMessage[];
+  readonly messages: readonly WireMessage[];
   readonly stream?: true;
+}
+
+type WireBlock =
+  | {
+      readonly type: 'text';
+      readonly text: string;
+      readonly cache_control?: { readonly type: 'ephemeral' };
+    }
+  | {
+      readonly type: 'image';
+      readonly source: {
+        readonly type: 'base64';
+        readonly media_type: ImageMediaType;
+        readonly data: string;
+      };
+    };
+
+interface WireMessage {
+  readonly role: 'user' | 'assistant';
+  readonly content: string | readonly WireBlock[];
+}
+
+function wireContent(content: ChatMessage['content']): WireMessage['content'] {
+  if (typeof content === 'string') return content;
+  return content.map((block): WireBlock =>
+    block.type === 'text'
+      ? block.cache === true
+        ? { type: 'text', text: block.text, cache_control: { type: 'ephemeral' } }
+        : { type: 'text', text: block.text }
+      : {
+          type: 'image',
+          source: { type: 'base64', media_type: block.mediaType, data: block.data },
+        },
+  );
 }
 
 export function buildRequestBody(
@@ -213,19 +270,35 @@ export function buildRequestBody(
         ? { type: 'text', text: block.text, cache_control: { type: 'ephemeral' } }
         : { type: 'text', text: block.text },
     ),
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: messages.map((m) => ({ role: m.role, content: wireContent(m.content) })),
     ...(stream ? { stream: true as const } : {}),
   };
 }
 
+function contentChars(content: ChatMessage['content']): number {
+  if (typeof content === 'string') return content.length;
+  return content.reduce((n, block) => n + (block.type === 'text' ? block.text.length : 0), 0);
+}
+
+/** Characters of TEXT in the request. Images are counted separately, in tokens. */
 export function inputChars(
   system: readonly SystemBlock[],
   messages: readonly ChatMessage[],
 ): number {
   return (
     system.reduce((n, b) => n + b.text.length, 0) +
-    messages.reduce((n, m) => n + m.content.length, 0)
+    messages.reduce((n, m) => n + contentChars(m.content), 0)
   );
+}
+
+/** How many images the request carries. Each is priced at its worst case by the cap. */
+export function imageCount(messages: readonly ChatMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    if (typeof message.content === 'string') continue;
+    for (const block of message.content) if (block.type === 'image') count += 1;
+  }
+  return count;
 }
 
 /** Logs only; the webhook/email alerter is a Stage 6 monitoring deliverable. */
@@ -307,7 +380,10 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
     }
 
     const chars = inputChars(request.system, request.messages);
-    const estimateUsd = estimateWorstCaseUsd(pricing, chars, maxTokens);
+    // An image is not characters. Each one is counted at the most the API can bill for it,
+    // so a page to be read is checked against the cap as pessimistically as text is.
+    const imageTokens = imageCount(request.messages) * IMAGE_WORST_CASE_TOKENS;
+    const estimateUsd = estimateWorstCaseUsd(pricing, chars, maxTokens, imageTokens);
 
     const spent = await readSpent();
     if (!spent.ok) {
@@ -350,7 +426,7 @@ export function createClaudeClient(deps: ClaudeClientDeps): ClaudeClient {
         provider: 'anthropic',
         operation: `${request.operation}:unconfirmed`,
         model,
-        inputTokens: estimateInputTokens(chars),
+        inputTokens: estimateInputTokens(chars) + imageTokens,
         outputTokens: maxTokens,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,

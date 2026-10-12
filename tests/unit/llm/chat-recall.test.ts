@@ -170,7 +170,7 @@ describe('recall in the turn', () => {
     expect(call?.system[0]?.text).not.toContain('memory_facts');
     expect(call?.system[1]).toEqual({ text: OUTCOME.belowBreakpoint, cache: false });
     // The recalled text is system context, never a message the model could mistake for the user.
-    expect(call?.messages.every((msg) => !msg.content.includes('memory_facts'))).toBe(true);
+    expect(JSON.stringify(call?.messages)).not.toContain('memory_facts');
   });
 
   it('nothing recalled → one system block, exactly as before; the summary still rides on the reply', async () => {

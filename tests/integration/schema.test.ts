@@ -29,6 +29,8 @@ const EXPECTED_TABLES = [
   'app_users',
   'audit_log',
   'consumer_leads',
+  'conversation_file_pages',
+  'conversation_files',
   'conversations',
   'crm_sync_log',
   'field_overrides',

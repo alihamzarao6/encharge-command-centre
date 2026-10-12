@@ -28,7 +28,8 @@
     "web:check": "tsx scripts/check-bundle.ts",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "memory": "tsx scripts/memory.ts",
-    "crm": "tsx scripts/crm.ts"
+    "crm": "tsx scripts/crm.ts",
+    "files": "tsx scripts/files.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -43,6 +44,8 @@
     "esbuild": "^0.28.2",
     "eslint": "^10.9.0",
     "eslint-config-prettier": "^10.1.8",
+    "fflate": "^0.8.3",
+    "pdfjs-dist": "^6.4.299",
     "pg": "^8.23.0",
     "prettier": "^3.9.6",
     "react": "^19.2.8",

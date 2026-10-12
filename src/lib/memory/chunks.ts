@@ -37,6 +37,11 @@ export interface OrdinalMessage {
   readonly role: string;
   readonly content: string | null;
   readonly createdAt: Date;
+  /**
+   * Milestone 5 part 1 (D89): this message belongs to a turn answered from an attached file.
+   * The summariser is shown a placeholder in its place, never the words.
+   */
+  readonly documentContext?: boolean;
 }
 
 export interface ChunkInsert {
@@ -182,7 +187,7 @@ export function supabaseChunkStore(client: ServiceClient): ChunkStore {
         // reader of this conversation uses, so a range always names the same rows.
         const { data, error } = await client
           .from('messages')
-          .select('role, content, created_at')
+          .select('role, content, created_at, document_context')
           .eq('conversation_id', conversationId)
           .order('created_at', { ascending: true })
           .order('id', { ascending: true })
@@ -194,6 +199,7 @@ export function supabaseChunkStore(client: ServiceClient): ChunkStore {
             role: row.role,
             content: row.content,
             createdAt: new Date(row.created_at),
+            ...(row.document_context ? { documentContext: true } : {}),
           })),
         );
       } catch (caught: unknown) {
