@@ -600,7 +600,9 @@ describe.skipIf(env === null)('a page read from a link (requires a running Supab
     await clearMinute(author);
     const host = freshHost();
     const url = `https://${host}/rates`;
-    pages.routes.set(url, { body: ratePage() });
+    // A page of its own: the last check below looks for rows by these bytes' hash, and the
+    // page other tests attach must not be what it finds.
+    pages.routes.set(url, { body: ratePage('5.79%', `${TITLE} held to its record`) });
     const fetched = await fetchPage(author, url);
     const base = {
       action: 'begin',
