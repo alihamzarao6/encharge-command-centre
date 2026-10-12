@@ -614,6 +614,9 @@ describe.skipIf(env === null)('a page read from a link (requires a running Supab
       extractMs: 1,
     };
     const expired = { status: 409, error: { code: 'FETCH_EXPIRED', retryable: true } };
+    // The record is there and is this person's, but these are not the bytes it describes:
+    // that is a request that should never have been made, not one to try again.
+    const mismatch = { status: 400, error: { code: 'BAD_REQUEST', retryable: false } };
 
     // A web page with no fetch behind it does not exist.
     const none = await refusedWith(author, { ...base, requestId: crypto.randomUUID() });
@@ -642,7 +645,7 @@ describe.skipIf(env === null)('a page read from a link (requires a running Supab
         fetchId: fetched.meta.fetchId,
         contentHash: 'f'.repeat(64),
       }),
-    ).toMatchObject(expired);
+    ).toMatchObject(mismatch);
     expect(
       await refusedWith(author, {
         ...base,
@@ -650,7 +653,7 @@ describe.skipIf(env === null)('a page read from a link (requires a running Supab
         fetchId: fetched.meta.fetchId,
         byteSize: fetched.bytes.length + 1,
       }),
-    ).toMatchObject(expired);
+    ).toMatchObject(mismatch);
     // Fetched too long ago to stand behind.
     await db.query(
       `update public.web_fetches set fetched_at = now() - interval '16 minutes' where id = $1`,
