@@ -573,7 +573,7 @@ describe.skipIf(env === null)('attached files (requires a running Supabase stack
     expect(sent).toHaveLength(1);
     // The document is in the USER turn, wrapped and labelled; our rules are in the system
     // prompt. A document can never be where an instruction is read from.
-    expect(sent[0]?.firstUserText).toContain('<attached_documents>');
+    expect(sent[0]?.firstUserText).toContain('<attached_documents count="1">');
     expect(sent[0]?.firstUserText).toContain('<untrusted_document');
     expect(sent[0]?.firstUserText).toContain(PAYSLIP_LINE);
     expect(sent[0]?.system).toContain(DOCUMENT_RULES);
