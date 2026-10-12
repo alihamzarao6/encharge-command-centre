@@ -149,6 +149,11 @@ export const ADMIN_PRIVATE_SECTION = {
   /** What a row is called, since the listing deliberately carries no title. */
   rowName: 'A private conversation',
   empty: 'Nobody has made a conversation private.',
+  /** The one line left on screen when the section is folded away: what is in here, and why
+   *  opening it is not a casual thing. */
+  folded: "Other people's, for administrators only. Opening one is recorded.",
+  show: 'Show private conversations',
+  hide: 'Hide private conversations',
 } as const;
 
 /**

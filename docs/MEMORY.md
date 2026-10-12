@@ -150,6 +150,30 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-10-13 — [UI · conversation list] The administrator's "Private conversations" section folds away
+
+**Asked for by the user while testing M5 part 2 on the live app:** on a laptop the section
+took its full height and the list above it was squeezed to one conversation. His approach,
+built as he described it: open by default, a control in its corner to fold it, and folded it
+is one bar at the very bottom that still says what it is.
+
+**Did:** the section's heading is now the control (`aria-expanded`, 44 px, keyboard). Open, it
+takes at most 42% of the list's height (340 px at most) and scrolls inside itself, so the
+conversations above always keep room. Folded, it is the bar — lock, name, how many once
+they have been listed — and one line: "Other people's, for administrators only. Opening one
+is recorded." How it was left is remembered in this browser (`web/src/lib/prefs.ts`,
+`localStorage`, guarded: a convenience, never data). No policy, endpoint or wording of the
+audited read changed; listing is still a separate press of "Show them".
+
+**Surprised by:** the first version squeezed the private ROWS instead — inside a scrolling
+flex column each row shrank to its minimum height and lost its first line, the one that says
+whose it is. Seen in the screenshot, fixed, and the browser test now checks no row is clipped.
+
+**Tests:** `tests/unit/web/prefs.test.ts` (5); `tests/e2e/privacy.spec.ts` gains one test at
+375 / 768 / 1280 (open: several conversations still in view, the section under 43% and
+scrolling; folded: at the bottom, one bar, more conversations in view; survives a reload;
+keyboard). Local: typecheck, lint, unit 2,731, the two conversation specs 84 of 84.
+
 ### 2026-10-12 — [M5 part 2 · shipped] Committed, CI green, deployed in RUNBOOK §1f order
 
 **Go-ahead:** the reviewer's rulings and "commit, push, CI, then deploy in §1f order" arrived

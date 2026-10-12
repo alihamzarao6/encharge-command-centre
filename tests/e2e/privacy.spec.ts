@@ -275,6 +275,124 @@ test.describe('an administrator reading somebody else’s private conversation',
     await expectNoHorizontalScroll(page);
   });
 
+  /** Conversations in view inside the list: wholly within the box it scrolls in. */
+  async function rowsInView(page: Page): Promise<number> {
+    return page.evaluate(() => {
+      const list = document.querySelector('.convos__list');
+      if (list === null) return -1;
+      const box = list.getBoundingClientRect();
+      return Array.from(list.querySelectorAll('.convos__item')).filter((row) => {
+        const r = row.getBoundingClientRect();
+        return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      }).length;
+    });
+  }
+
+  test('the section never squeezes the list above it, and folds away to one bar at the bottom', async ({
+    page,
+  }) => {
+    // The shape that used to leave ONE conversation in view on a laptop: a long list of my
+    // own, and a long list of other people's private ones.
+    const mine = Array.from({ length: 14 }, (_unused, i) => ({
+      id: `c0000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}`,
+      title: `Conversation number ${String(i + 1)}`,
+      last_active_at: `2026-08-${String(27 - i).padStart(2, '0')}T02:00:00Z`,
+    }));
+    const theirs = Array.from({ length: 9 }, (_unused, i) => ({
+      id: `c0000000-0000-4000-8000-0000000002${String(i).padStart(2, '0')}`,
+      authorId: ZOE,
+      authorEmail: 'zoe@fundd.com.au',
+      createdAt: '2026-08-26T01:00:00Z',
+      lastActiveAt: `2026-08-${String(26 - i).padStart(2, '0')}T02:00:00Z`,
+    }));
+    await open(page, { admin: true, conversations: mine, privateConversations: theirs });
+    await openList(page);
+
+    const section = page.getByTestId('private-section');
+    const toggle = section.getByRole('button', { name: /Private conversations/ });
+    // Open the first time, so it is found — with the reason it exists in words.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('each time you do it is recorded')).toBeVisible();
+    await page.getByRole('button', { name: 'Show them' }).click();
+    await expect(section.getByText('zoe — A private conversation').first()).toBeVisible();
+    // Every row keeps both its lines: squeezed to fit, a row loses the one that says whose it is.
+    const clipped = await section.locator('.convos__item--private').evaluateAll(
+      (rows) =>
+        rows.filter((row) => {
+          const box = row.getBoundingClientRect();
+          const title = row.querySelector('.convos__item-title')?.getBoundingClientRect();
+          return title === undefined || title.top < box.top || title.bottom > box.bottom;
+        }).length,
+    );
+    expect(clipped).toBe(0);
+    // How many there are is said on the bar itself.
+    await expect(toggle).toContainText('9');
+
+    // Open, with nine private rows in it, the list above still shows several conversations:
+    // the section scrolls inside itself instead of growing.
+    const whileOpen = await rowsInView(page);
+    expect(whileOpen).toBeGreaterThanOrEqual(2);
+    const shares = await page.evaluate(() => {
+      const aside = document.querySelector('.convos')?.getBoundingClientRect();
+      const admin = document.querySelector('.convos__admin')?.getBoundingClientRect();
+      const body = document.querySelector('.convos__admin-body');
+      return {
+        share: aside && admin ? admin.height / aside.height : 1,
+        scrolls: body !== null && body.scrollHeight > body.clientHeight,
+      };
+    });
+    expect(shares.share).toBeLessThanOrEqual(0.43);
+    expect(shares.scrolls).toBe(true);
+    await expectNoHorizontalScroll(page);
+    await shot(page, 'privacy-admin-open');
+
+    // Folded away: one bar and one line, at the very bottom of the list.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText('each time you do it is recorded')).toHaveCount(0);
+    await expect(section.getByText('zoe — A private conversation')).toHaveCount(0);
+    await expect(section).toContainText(
+      "Other people's, for administrators only. Opening one is recorded.",
+    );
+    const folded = await page.evaluate(() => {
+      const aside = document.querySelector('.convos');
+      const admin = document.querySelector('.convos__admin')?.getBoundingClientRect();
+      const toggleBox = document.querySelector('.convos__admin-toggle')?.getBoundingClientRect();
+      if (aside === null || admin === undefined || toggleBox === undefined) return null;
+      const box = aside.getBoundingClientRect();
+      const padding = parseFloat(getComputedStyle(aside).paddingBottom);
+      return {
+        gapBelow: Math.round(box.bottom - padding - admin.bottom),
+        height: Math.round(admin.height),
+        tap: Math.round(toggleBox.height),
+      };
+    });
+    expect(folded?.gapBelow).toBe(0);
+    expect(folded?.height ?? 999).toBeLessThanOrEqual(110);
+    expect(folded?.tap ?? 0).toBeGreaterThanOrEqual(44);
+    // And the room it gave back went to the list.
+    expect(await rowsInView(page)).toBeGreaterThan(whileOpen);
+    await expectNoHorizontalScroll(page);
+    await shot(page, 'privacy-admin-folded');
+
+    // It stays how it was left: a reload does not open it again.
+    await page.reload();
+    await expect(page.getByRole('button', { name: '+ New', exact: true })).toBeVisible();
+    await openList(page);
+    await expect(
+      page.getByTestId('private-section').getByRole('button', { name: /Private conversations/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
+
+    // Reached and opened again from the keyboard.
+    const again = page
+      .getByTestId('private-section')
+      .getByRole('button', { name: /Private conversations/ });
+    await again.focus();
+    await page.keyboard.press('Enter');
+    await expect(again).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('each time you do it is recorded')).toBeVisible();
+  });
+
   test('opening one reads it ONCE, says it was recorded, and offers no composer', async ({
     page,
   }) => {

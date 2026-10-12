@@ -24,6 +24,8 @@
  */
 import { useState, type ReactElement, type SyntheticEvent } from 'react';
 
+import { browserPrefs, privateSectionOpen, rememberPrivateSection } from '../lib/prefs.js';
+
 import {
   canRemoveMemory,
   canRenameConversation,
@@ -98,6 +100,8 @@ export function ConversationList({
   onOpenPrivate,
 }: Props): ReactElement {
   const [query, setQuery] = useState('');
+  // The administrator's section is open until they fold it away, and stays how they left it.
+  const [adminOpen, setAdminOpen] = useState(() => privateSectionOpen(browserPrefs()));
   const showFilter = conversations.length > CONVERSATION_FILTER_THRESHOLD;
   const shown = showFilter ? filterConversations(conversations, query) : conversations;
 
@@ -180,51 +184,103 @@ export function ConversationList({
           ))}
         </div>
         {actor.isAdmin && (
-          <div className="convos__admin">
-            <h3 className="convos__admin-title">{ADMIN_PRIVATE_SECTION.heading}</h3>
-            <p className="muted convos__note">{ADMIN_PRIVATE_SECTION.hint}</p>
-            {privateState === 'idle' && (
+          <section
+            className={`convos__admin${adminOpen ? '' : ' convos__admin--folded'}`}
+            data-testid="private-section"
+          >
+            {/* The heading is the control: it stays put at the bottom of the list whether the
+                section is open or folded, so it is always where it was last seen. */}
+            <h3 className="convos__admin-heading">
               <button
-                className="button button--small button--block"
                 type="button"
-                onClick={onLoadPrivate}
+                className="convos__admin-toggle"
+                aria-expanded={adminOpen}
+                aria-controls="convos-admin-body"
+                title={adminOpen ? ADMIN_PRIVATE_SECTION.hide : ADMIN_PRIVATE_SECTION.show}
+                onClick={() => {
+                  setAdminOpen(!adminOpen);
+                  rememberPrivateSection(browserPrefs(), !adminOpen);
+                }}
               >
-                Show them
+                <span aria-hidden="true">🔒</span>
+                <span className="convos__admin-title">{ADMIN_PRIVATE_SECTION.heading}</span>
+                {privateState === 'ready' && privateRows.length > 0 && (
+                  <span className="convos__admin-count">{privateRows.length}</span>
+                )}
+                <span className="convos__admin-chevron" aria-hidden="true">
+                  {adminOpen ? '▾' : '▴'}
+                </span>
               </button>
+            </h3>
+            {!adminOpen && (
+              <p className="muted convos__admin-folded">{ADMIN_PRIVATE_SECTION.folded}</p>
             )}
-            {privateState === 'loading' && <p className="muted convos__note">Loading…</p>}
-            {privateState === 'error' && (
-              <p className="error convos__note">
-                Couldn&apos;t load them.{' '}
-                <button className="link" type="button" onClick={onLoadPrivate}>
-                  Try again
-                </button>
-              </p>
+            {adminOpen && (
+              <div id="convos-admin-body" className="convos__admin-body">
+                <AdminPrivateBody
+                  privateRows={privateRows}
+                  privateState={privateState}
+                  onLoadPrivate={onLoadPrivate}
+                  onOpenPrivate={onOpenPrivate}
+                />
+              </div>
             )}
-            {privateState === 'ready' && privateRows.length === 0 && (
-              <p className="muted convos__note">{ADMIN_PRIVATE_SECTION.empty}</p>
-            )}
-            {privateState === 'ready' &&
-              privateRows.map((row) => (
-                <button
-                  key={row.id}
-                  type="button"
-                  className="convos__item convos__item--private"
-                  onClick={() => {
-                    onOpenPrivate(row.id);
-                  }}
-                >
-                  <span className="convos__item-title">
-                    {row.author}
-                    {CONVERSATION_PREFIX_SEPARATOR}
-                    {ADMIN_PRIVATE_SECTION.rowName}
-                  </span>
-                  <span className="convos__item-when">{row.when}</span>
-                </button>
-              ))}
-          </div>
+          </section>
         )}
       </aside>
+    </>
+  );
+}
+
+/** What is inside the administrator's section when it is open. */
+function AdminPrivateBody({
+  privateRows,
+  privateState,
+  onLoadPrivate,
+  onOpenPrivate,
+}: Pick<Props, 'privateRows' | 'privateState' | 'onLoadPrivate' | 'onOpenPrivate'>): ReactElement {
+  return (
+    <>
+      <p className="muted convos__note">{ADMIN_PRIVATE_SECTION.hint}</p>
+      {privateState === 'idle' && (
+        <button
+          className="button button--small button--block"
+          type="button"
+          onClick={onLoadPrivate}
+        >
+          Show them
+        </button>
+      )}
+      {privateState === 'loading' && <p className="muted convos__note">Loading…</p>}
+      {privateState === 'error' && (
+        <p className="error convos__note">
+          Couldn&apos;t load them.{' '}
+          <button className="link" type="button" onClick={onLoadPrivate}>
+            Try again
+          </button>
+        </p>
+      )}
+      {privateState === 'ready' && privateRows.length === 0 && (
+        <p className="muted convos__note">{ADMIN_PRIVATE_SECTION.empty}</p>
+      )}
+      {privateState === 'ready' &&
+        privateRows.map((row) => (
+          <button
+            key={row.id}
+            type="button"
+            className="convos__item convos__item--private"
+            onClick={() => {
+              onOpenPrivate(row.id);
+            }}
+          >
+            <span className="convos__item-title">
+              {row.author}
+              {CONVERSATION_PREFIX_SEPARATOR}
+              {ADMIN_PRIVATE_SECTION.rowName}
+            </span>
+            <span className="convos__item-when">{row.when}</span>
+          </button>
+        ))}
     </>
   );
 }
