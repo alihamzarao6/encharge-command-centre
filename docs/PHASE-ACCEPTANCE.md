@@ -799,7 +799,7 @@ The figure shown to the person before a scan is read is $0.027 a page (an estima
 before measuring; measured $0.013–$0.023), and the cap reserves $0.077 a page as the worst
 case. A 50-page scan is about $1.14 at the measured dense-page rate: 23% of the $5 daily cap.
 
-### Part 2 — Reading a web page from a link · probed, decided, BUILT and reviewed 12 Oct 2026 — committed on branch `m5-part-2` (`c75be2c`), NOT pushed, NOT deployed, CI not yet run
+### Part 2 — Reading a web page from a link · probed, decided, built, reviewed, committed and deployed 12 Oct 2026 (CI run 38268474750 green, zero skipped)
 
 *The brief asked for a probe before any decision, "from the Supabase Edge runtime, not from
 your laptop and not from CI". This section is that probe, in full, and then what was built
@@ -915,7 +915,7 @@ phone (the fetch is server-side and does not depend on the device).
 | W10 | **No page content in a log line, an error message or a trace; an address is logged as its host only** | canaries in the text, title, path and query through every path: `page-fetch.test.ts` "logging", `fetch.test.ts` (the fetcher has no logger), `web-pages.test.ts` (CI) | ✅ |
 | W11 | RLS: no policy was changed. A page's address is visible to whoever can see the conversation and nobody else; the record of fetches is readable by no session, its owner included. **Each fails without its protection** | `tests/security/web-pages.test.ts` (CI); its SQL replayed locally with the expected answer at every step | ✅ replay · CI is its first run |
 | W12 | 375 / 768 / 1280: no horizontal scroll, inputs ≥ 16 px, every new control a 44 px target and reachable by keyboard, progress shown on a slow connection, the read and any refusal announced, a 1,400-character address and a long title contained, reduced motion respected | `tests/e2e/links.spec.ts` × 3 widths (69 tests); screenshots `docs/assets/milestone-5/links-*.png` | ✅ 609 of 609 browser tests, zero skipped |
-| W13 | `npm run typecheck && npm run lint && npm run test:regress` green; CI green with zero skipped | the 12 Oct "M5 part 2 · build" entry in `MEMORY.md` | ✅ local, after review round 1: exit 0 — unit 2,742 passed (187 stack-backed tests skipped, no Docker) · coverage 92.5% lines / 88.94% branches · browser 609 · build checks clean. **CI not run — nothing is pushed** |
+| W13 | `npm run typecheck && npm run lint && npm run test:regress` green; CI green with zero skipped | the 12 Oct "M5 part 2 · build" entry in `MEMORY.md` | ✅ local, after review round 1: exit 0 — unit 2,742 passed (187 stack-backed tests skipped, no Docker) · coverage 92.5% lines / 88.94% branches · browser 609 · build checks clean. **CI run 38268474750 on `main` (`f320ba9`): unit 2,726 · integration 133 · security 70 · browser 609, zero skipped** |
 
 **Every case in the brief's Part C, and where it is tested.**
 
