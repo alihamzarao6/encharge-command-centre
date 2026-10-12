@@ -251,6 +251,8 @@ A **fifth** Edge Function, `files`; a changed `chat`; one migration; and the fir
 job in the database. Order matters — the migration first, the functions second, the web app
 last. In order, from the repo root:
 
+*(12 Oct 2026: done. The migration installed `pg_cron` itself on this project and the job was confirmed with the query in step 2. **Vercel deploys on every push to `main`**, so pushing first puts the web app out before its backend — for a change like this one, run the database and function steps BEFORE pushing, or push to a branch.)*
+
 **Step 0 — enable `pg_cron` on the live project.** Dashboard → Database → Extensions →
 `pg_cron` → enable. The migration also says `create extension if not exists pg_cron`, so on a
 project where the extension is available to migrations it installs itself; doing it by hand
