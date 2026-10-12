@@ -55,6 +55,12 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `files/page`, `files/store`, `files/vision` | Every action of the files endpoint: who may attach, read and remove; every refusal a sentence; replays answered from the record; a canary in the text and in the file name appears in **no** log line or error; the adapter's arguments, columns and error codes equal the migration's (read from the SQL, because this machine has no stack). **Shipped 12 Oct** |
 | `files/probe` | The terminal's request equals the chat handler's own; a reply that IS the planted word or claims an email was sent is obedience, one that mentions and refuses it is not; `tests/unit/files/injection-live.test.ts` holds the recorded live replies to that and fails when the request built today is no longer the one recorded. **Shipped 12 Oct** |
 | `web/lib/files/*` (the readers) | Each format against invented fixtures (`tests/fixtures/files/`, regenerate with `make_fixtures.py`): rows and columns intact, formula results and code-computed totals, dates, hidden sheets, macros not run, zip bombs and nested archives refused, password / truncated / empty / wrong-extension files, non-Latin and right-to-left text. Run under Node with the real pdf.js; the canvas half (`browser.ts`) runs in real Chrome in `tests/e2e/files.spec.ts`. **Shipped 12 Oct** — `tests/unit/web/files-*.test.ts` |
+| `pages/guard` | **The SSRF guard, on its own (SECURITY §10).** Table-driven over every form an address can take: scheme, port, credentials, every encoding of a number (decimal, hex, octal, short, IPv6, mapped, NAT64, 6to4), single-label and internal names, and every reserved range in both families — with the metadata address named. No network. **Shipped 12 Oct** — `tests/unit/pages/guard.test.ts` (171) |
+| `pages/robots` | RFC 9309: groups, longest match, `*` and `$`, our own token before `*`; a disallow addressed to an AI assistant acting for a user applies to us; no file means allowed, a failing file means not read. **Shipped 12 Oct** — `tests/unit/pages/robots.test.ts` (57) |
+| `pages/fetch` | The guarded fetch with every dependency injected: the guard on every hop, loops, the hop cap, timeouts, one retry on transport failure only, the per-host breaker, status → reason, the size cap on the stream. **Each SSRF case is run again with the guard replaced by one that passes everything and must then reach `fetch`** — the tests fail without the protection. One block uses a real HTTP server the test starts on loopback (a 60 MB compression bomb, an endless body, a body that stops arriving). **Shipped 12 Oct** — `tests/unit/pages/fetch.test.ts` (118) |
+| `files/page` (`fetch_page`), `files/context` (pages), `llm/chat` (links) | The endpoint's new action: who may read, every refusal a sentence, the per-person limit and the per-site gap, **one id opens one page once**, an attachment held to the server's record of the fetch (none, a stranger's, other bytes, too old), re-read replaces or refreshes; canaries in the text, the title, the path and the query appear in no log line or error. The page reaches the model in the same wrapper with `source` and `read` written by us; a hostile title cannot leave it; the link rule is sent when a message has a link and never otherwise. **Shipped 12 Oct** — **The fallback's canary:** the page that fades itself in, from its bytes to the request — its hidden instruction once, inside the wrapper, its forged tags rewritten, nothing of it in the system prompt, no tools — and the same page breaking out when the rewrite is taken away. **Shipped 12 Oct** — `tests/unit/files/page-fetch.test.ts` (67), `context-web.test.ts` (41), `tests/unit/llm/chat-pages.test.ts` (17) |
+| `web/lib/files/html*` (the page reader) | 23 invented pages (`tests/fixtures/web/`), one per case: tables with spans and empty cells, tabs and accordions, script-filled figures marked and counted, a paywall (declared and undeclared), login, bot challenge, consent wall, cookie banner over content, mostly navigation, picture-only, `<meta refresh>` and script redirects, non-Latin and right-to-left text, encodings, broken markup. **Hidden-markup injection: 59 canaries — hidden blocks, and text hidden inside a visible sentence, table or tab — none comes out, and a naive tag-stripper would pass at least 25. A second page, `injection-revealed.html`, is in the exact shape the reader's one fallback triggers on (nothing visible, everything behind `opacity:0`): 20 canaries hidden any other way still do not come out, and the instruction hidden by opacity — which that fallback does read — is followed to the request in the wrapper suites.** A page nested past the depth the reader tracks is refused. **Shipped 12 Oct** — `tests/unit/web/files-html.test.ts` (262) |
+| `web/lib/links`, `filesView` (pages), `uploads` (links), `filesApi.fetchPage` | Link detection (only a link, in a sentence, several, punctuation, very long, refused forms said in the server's words); the strip's five states; the ask-once wording; read time by the reader's own calendar; the queue's link flow — fetch → read → begin with the receipt → finish, the same link twice is one read, a second link waits, Stop, Try again under a new id, an expired receipt starts over; the fetch call checks length and SHA-256 and never sends the address anywhere but our endpoint. **Shipped 12 Oct** — `tests/unit/web/links.test.ts` (48), `uploads-links.test.ts` (36) |
 | `web/lib/uploads` | The queue: one file at a time; the question before a scan; resume from the page it stopped at; stop while the claim is in flight tells the server to drop it; a duplicate is never removed by a stop. **Shipped 12 Oct** |
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
@@ -221,6 +227,29 @@ Coverage required:
   conversation's files gone outright; and the `purge-conversation-files` cron job exists.
   `tests/security/files.test.ts` (12 tests) is the cross-user suite, with each clause of the
   policy removed inside a rolled-back transaction to show the read then succeeds
+- **Pages read from a link (Milestone 5 part 2, `tests/integration/web-pages.test.ts`, 15
+  tests):** the real endpoint, the real HTML reader and a real chat turn against the stack,
+  with the fetch to the site and the Anthropic call scripted — a page stored with the
+  SERVER's address, site and read time and kept one day (a PDF from a link: thirty); an
+  attachment refused without a matching record of the fetch; one id opens one page once; the
+  per-person limit and the per-site gap decided by the database (the gap tested with an hour
+  required, so no clock decides it); a changed page replaces the older copy and an unchanged
+  one is refreshed; figures a script fills in counted by the database; a page that fades
+  itself in stored as read as sent, its hidden instruction in front of the model only as
+  data; the page in front of
+  the model wrapped, labelled with site and read time, the rules in the system prompt, no
+  tool; an unread link gets the link rule and no fetch; the tombstone names no address (and
+  cannot be given one back); the purge removes a page past its day and fetch records past
+  theirs; a session sees a page through its conversation and nothing of `web_fetches`; no
+  log line carries the page, its title, its path or its query.
+  `tests/security/web-pages.test.ts` (10 tests): the address of a page in a private
+  conversation is unreadable by a colleague however it is asked for; the fetch records
+  answer every session with nothing, their owner included; nothing can be forged from a
+  session; and each protection is removed inside a rolled-back transaction to show the read
+  then succeeds — including that *any* policy on `web_fetches` makes it readable.
+  **Neither has run on this machine (no Docker): CI is their first execution.** Their SQL —
+  every statement the migration makes and every fixture the security suite inserts — was
+  replayed on a local PostgreSQL 17 (85 assertions) before commit
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL
@@ -387,6 +416,23 @@ changes as the server's would) and takes a `crmWrite` script for the failure cas
 viewport-conditional `test.skip` calls in `overview.spec.ts` were replaced by tests that assert
 the right shape at every width, so the browser job reports **zero skipped**. `drag.ts` (Pointer
 Events, DOM) is covered by the browser suite only — the unit suite has no DOM.
+
+*Milestone 5 part 2 (12 Oct 2026):* the `browser` job gains `tests/e2e/links.spec.ts` (23
+tests × 3 widths): a link in a sentence offered and nothing fetched until he presses; a
+message that is only a link; the question asked once on Send, both answers; a link he did
+not mean to be read; several links; the keyboard; addresses that will not be opened, each
+with its sentence; a login page and a paywall refused and announced; a page read in part; a
+page that hides instructions in its markup; a page that fades itself in, read as sent and
+saying so on screen; a PDF at a link read by pdf.js; read again
+(changed, and unchanged); remove; a slow page with its progress, the blocked Send and Stop;
+reduced motion; a 1,400-character address and a long title in three scripts; tap targets and
+16px inputs; the docked panel. **Every test routes the fixtures' own host and asserts the
+browser made zero requests to it** — the page is fetched by the (scripted) server and read
+as bytes. The e2e mock answers `fetch_page` as the function does (bytes in the body, what it
+measured in `x-page-meta`), holds `begin` to its record of the fetch, and replaces an older
+read at `finish`. Screenshots `links-*` at the three widths under `docs/assets/milestone-5/`.
+The integration job gains `tests/integration/web-pages.test.ts` and
+`tests/security/web-pages.test.ts`, and replays migration `20261012020000` from zero.
 
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →

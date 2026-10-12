@@ -37,7 +37,11 @@ describe('createFilesPageDeps', () => {
       retentionDays: 30,
       visionRoute: 'default',
       visionMaxTokens: 4096,
+      pageRetentionDays: 1,
+      pageUserAgent:
+        'FunddCommandCentre/1.0 (+https://fundd.com.au; reads one page when a signed-in user pastes its link)',
     });
+    expect(typeof deps.pages.read).toBe('function');
     // A page image is read by the default model, and priced as that model.
     expect(deps.vision).toMatchObject({ route: 'default', maxTokens: 4096 });
     expect(deps.visionPricing).toEqual(DEFAULT_PRICING['claude-sonnet-5']);

@@ -207,6 +207,131 @@ reason code and their Postgres message is dropped. `tests/unit/files/page.test.t
 path with a canary in the text and in the name and asserts neither appears in any log line or
 error; `tests/integration/files.test.ts` does the same against the real stack.
 
+### A page read from a link (Milestone 5 part 2, 12 Oct 2026) — the same wrapper, a wider door
+
+An attached file was at least chosen by the client. A web page is written by anyone, changed
+whenever they like, and is the one input in this product that an outsider can prepare in
+advance and wait for him to paste. Nothing new was built to hold it: **a page goes through the
+same wrapper, the same rewrite and the same no-tools request as a file.** What part 2 adds is
+what a page can do that a file cannot.
+
+- **The same wrapper, not a second one.** A page's text is a `conversation_file_pages` row
+  like any other and reaches the model inside the same `<attached_documents>` /
+  `<untrusted_document …>` block, built by the same `buildDocumentBlock`, with the same
+  `defang`. `DOCUMENT_RULES` is byte for byte what part 1 shipped (version `2026-10-12.3`),
+  so part 1's recorded fixtures still hold. Two blocks are appended to it in the system
+  prompt, never in the user turn: `webPageRules` (when the conversation has, or had, a page)
+  and `UNREAD_LINK_RULES` (when a message in the turn contains a link).
+- **What the page cannot write.** The opening tag of a page's block carries `source="…"` and
+  `read="…"`. Both come from the server's own record of the fetch (`web_fetches`), copied at
+  `begin`; the browser cannot supply them and the page cannot either. The title is the
+  page's own words: it is cleaned to text (`sanitiseTitle`), passed through `defang`, and
+  shown through React as text. `tests/unit/files/context-web.test.ts` builds a page whose
+  title closes the wrapper and announces itself as the system, and asserts the request still
+  has one wrapper, the hostile text inside it, and nothing of it in the system prompt.
+- **Hidden text — what is dropped, what is read, and why.** The reader
+  (`web/src/lib/files/html.ts`) emits **the text of elements only**. It never emits an
+  attribute (`alt`, `title`, `aria-label`, `placeholder`, `value`, `data-*`, `href`,
+  `content`), a comment, or the content of `script`, `style`, `template`, `noscript`,
+  `iframe`, `object`, `svg`, `textarea`, `select` or `head`. It drops text the markup
+  itself declares hidden: the `hidden` attribute, `aria-hidden="true"`, and an inline style
+  of `display:none`, `visibility:hidden`, opacity under a tenth (a browser treats a negative
+  as zero), zero size or font size, clipping, or a position off the screen.
+  **Hidden is decided for each piece of text, not for the block it sits in:** a hidden span
+  in the middle of a visible sentence is dropped and the sentence closes up; a hidden cell or
+  row is not in its table and no figure moves to another column; a hidden tab names no panel.
+  `tests/fixtures/web/injection-hidden.html` carries one instruction in each of 59 such
+  places; `tests/unit/web/files-html.test.ts` asserts none of the 59 comes out, **and that
+  a naive tag-stripper would have passed at least 25 of them** — the test fails without the
+  reader. **Text hidden only by a CSS class is read** (the reviewer's decision, 12 Oct):
+  hiding by class cannot be judged without a browser engine, and on the real pages measured
+  it is where a lender puts the labels of its rate tables. It arrives inside the wrapper like
+  everything else. That is the honest limit: *the reader narrows what an attacker can hide;
+  the wrapper is what makes hidden text harmless.*
+- **A hole in that layer, found in review and closed before commit (12 Oct).** As first
+  built, hidden was decided per block, by whatever the block's FIRST text sat in. The first
+  44 canaries were all hidden blocks, and passed. A hidden span after visible words in the
+  same paragraph — the commonest shape an injected instruction takes — was read; so was a
+  hidden cell or row in a visible table; and a hidden span at the start of a paragraph hid
+  the whole visible paragraph. The tests were written first: 36 failed against that reader —
+  among them 11 of the 13 new hidden-inside-visible canaries (the other two passed by an
+  accident of ordering) and 11 canaries hidden inside the page that hides its whole self —
+  and all pass against this one. Two more ways round were closed with it: text
+  nested deeper than the 1,500 levels the reader tracks (its "hidden" could not be honoured,
+  so such a page is now refused whole, `page_malformed`), and opacity that is not exactly
+  zero (`0.01`, `-1`).
+- **The one exception, and the door it leaves open** *(reviewed 12 Oct and kept: the
+  wrapper is proven, the exception is narrow, the page is visibly marked — and the limitation
+  stays stated here as it is)*. A page that fades its whole self in
+  — one real lender sends every section with an inline `opacity:0`, the starting state of an
+  entrance animation — reads as empty by the rule above. So when under 200 letters are
+  visible and 400 or more are behind `opacity:0` and nothing else, the page is read with
+  **those declarations, and only those,** ignored. Text hidden any other way is dropped
+  there as everywhere, including inside a faded section: `tests/fixtures/web/
+  injection-revealed.html` is a page in exactly that shape with 20 canaries hidden other
+  ways, and none comes out. **But text somebody hid with `opacity:0` and never meant to fade
+  in is read on such a page** — no reading of markup can tell it from a section that will
+  fade in. That fixture carries such an instruction, with an attempt to close the wrapper,
+  and it is followed from its bytes to the request: it reaches the model, once, inside the
+  wrapper, its forged tags rewritten, nowhere in the system prompt, in a request with no
+  tools (`tests/unit/files/context-web.test.ts`, `tests/unit/llm/chat-pages.test.ts`,
+  `tests/integration/web-pages.test.ts`). **Those tests fail when the tag rewrite is
+  removed:** run on 12 Oct with `defang` replaced by a function that returns its input, 13
+  tests failed across the three wrapper suites, the three written for this page among them.
+  The person is told, and so is the model: the reader writes `[read as the site sent it]` as
+  the page's first line, the database records `read_as_sent` from it, the page shows "Read as
+  the site sent it: … what was read may differ from what you see on the page" under its title
+  for as long as it is there, and its opening tag — ours — carries `as_sent="READ AS SENT…"`
+  with a rule in the system prompt saying what that means. (As first built, that note went
+  only to the screen reader's live region: a sighted person was never told. Fixed in the same
+  round.)
+- **What `aria-hidden` costs, measured.** `aria-hidden="true"` removes text from the
+  accessibility tree; it does not remove it from the screen. It is dropped because that is
+  the rule that was decided (D98), and on the 17 real pages measured the cost is: one
+  lender's two tab labels ("Variable interest rates", "Fixed interest rates", which sit
+  inside an `aria-hidden` wrapper its script later clears) are no longer written above
+  their panels, and one news page loses a duplicated timestamp. No rate figure on any
+  measured page is affected. **Ruled on by the reviewer, 12 Oct: it stays dropped.** That
+  lender's page is already read in part with 154 figures missing, so two labels on tables
+  with no numbers in them buy nothing, and reading `aria-hidden` would reopen a hiding
+  place the canaries were written to cover.
+- **A link is not a page.** Without a rule, a question about a link that was never opened is
+  answered from the address and from what the model remembers of the site — a confident rate
+  from memory. `UNREAD_LINK_RULES` says a link is only text, that the only pages read are
+  the ones in the block, and that a rate from memory is a wrong answer.
+  `tests/unit/llm/chat-pages.test.ts` asserts the rule is sent whenever the message or an
+  earlier one of his contains a link, and never otherwise (an ordinary turn's request is
+  byte for byte what it was). Live, 12 Oct, two messages with an unread link each got "I
+  haven't opened that page … pressing Read this page will have it read" and no figure
+  (`npm run pages -- unread`). As with part 1, the live run is a signal and the tests are the
+  proof.
+- **A link is never fetched because it appeared.** The interface offers; the person presses
+  (D94). The server fetches only on `fetch_page`, which only that button sends. A page is
+  never fetched by the chat function, by the model, or from text in a document — a page that
+  says "now read https://…" has nothing to cause a fetch with. `tests/e2e/links.spec.ts`
+  asserts no fetch on typing, on Send without reading, or on a link in a reply.
+- **The browser never contacts the site.** The function fetches and returns bytes with
+  `content-type: application/octet-stream`, `x-content-type-options: nosniff` and
+  `content-disposition: attachment`; the browser reads them as data with the same readers as
+  a file. The HTML is never parsed by a browser, never inserted into a document, never
+  executed. Every browser test routes the fixtures' host and asserts zero requests to it.
+- **What is not defended.** A page that simply *lies in plain sight* — a fake rate in visible
+  text — is reported as what the page says, attributed to the site, with the time it was
+  read. That is the correct behaviour and it is not a defence: the assistant cannot know a
+  page is wrong. The rules tell it to attribute and never to adopt.
+
+**Logging rule for pages.** As for files, and one thing more: **an address is logged as its
+host only.** A path or a query string can carry a client's name, an account number or a
+session token, so `fetch_page` logs the host asked for, the host that answered, hops, HTTP
+status, content type, bytes, milliseconds, the outcome code and *whether* there was a query —
+never the path, the query, the title or a word of the page. `src/lib/pages/fetch.ts` logs
+nothing at all (it has no logger). `tests/unit/files/page-fetch.test.ts` runs every path with
+canaries in the text, the title, the path and the query and asserts none appears in any log
+line, error body or stored record other than the address column itself;
+`tests/integration/web-pages.test.ts` repeats it on the real stack. The full address is held
+in `web_fetches.requested_url` for one day (§11) and in `conversation_files.source_url` while
+the page is kept, both readable only as §6 says.
+
 ---
 
 ## 4. Database access
@@ -528,12 +653,109 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
 
 ## 10. Crawler safety (SSRF)
 
-- `https` only. Public-IP-only resolution. Reject `localhost`, `127.0.0.0/8`, `10.0.0.0/8`,
-  `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `::1`.
-- Re-check the resolved IP after redirects — DNS rebinding defence. Max 3 redirects.
-- Response cap 2 MB, timeout 15s, no automatic file downloads.
-- `robots.txt` honoured. Descriptive User-Agent with a contact URL.
-- Per-host rate limit, minimum 1 request per 2 seconds.
+*Rewritten 12 Oct 2026 from the six-line outline to what Milestone 5 part 2 built. The client
+controls the address and the fetch runs inside our infrastructure: this is the serious risk
+of that part. The guard is its own module (`src/lib/pages/guard.ts`, pure, no network) with
+its own tests (`tests/unit/pages/guard.test.ts`); the fetch that uses it is
+`src/lib/pages/fetch.ts`. Numbers are in `src/lib/pages/limits.ts`.*
+
+**The address, before anything is resolved (`parsePublicUrl`).**
+
+- `https` only. No other scheme: `http`, `file`, `ftp`, `gopher`, `data`, `javascript`,
+  `blob`, `ws`.
+- Port 443 only. A link that names a port is refused.
+- No username or password in the address.
+- **No numeric host at all**, IPv4 or IPv6. The address is parsed by the WHATWG URL parser
+  first, which is what turns `2130706433`, `0x7f.0.0.1`, `017700000001`, `127.1` and
+  `0177.0.0.1` into `127.0.0.1` — the guard judges the parsed host, so every encoding of a
+  number is a number. A public IP literal is refused too: no page a broker reads is
+  addressed by number, and refusing all of them leaves no encoding to get wrong.
+- No single-label name (`localhost`, `intranet`), and none under `.localhost`, `.local`,
+  `.localdomain`, `.internal`, `.intranet`, `.lan`, `.home`, `.corp`, `.private`, `.test`,
+  `.invalid`, `.example`, `.onion` or `.arpa` (which covers `.home.arpa`).
+- No whitespace, control character or backslash anywhere; at most 2,048 characters.
+
+**The name, once resolved (`checkResolvedAddresses`).** Both families are asked, always, and
+**every** address returned must be public — one private answer among public ones refuses the
+name. A family whose question *failed* (as opposed to answering "no records") stops the read:
+fail closed. Refused ranges: `0.0.0.0/8`, `10/8`, `100.64/10` (carrier NAT), `127/8`,
+`169.254/16` (link-local, **including the cloud metadata address `169.254.169.254`**),
+`172.16/12`, `192.0.0/24`, `192.0.2/24`, `192.88.99/24`, `192.168/16`, `198.18/15`,
+`198.51.100/24`, `203.0.113/24`, `224/4`, `240/4`, `255.255.255.255`; `::`, `::1`,
+`fc00::/7`, `fe80::/10`, `fec0::/10`, `ff00::/8`, `2001:db8::/32`, `3fff::/20`, `100::/64`;
+IPv4-compatible (`::a.b.c.d`), 6to4 (`2002::/16`) and Teredo (`2001::/32`) addresses, refused
+outright; and **IPv4-mapped (`::ffff:…`) and NAT64 (`64:ff9b::/96`) addresses judged by the
+IPv4 address inside them** — `::ffff:127.0.0.1` is loopback and `64:ff9b::a9fe:a9fe` is the
+metadata address.
+
+**Redirects.** `redirect: 'manual'`. At most **5** hops (this section said 3; Bankwest's
+broker address takes exactly 3, and since every hop is checked the cap protects time, not
+safety). **Every hop is put through both checks above before it is requested** — a public
+page that redirects to `https://169.254.169.254/` or to `http://…` is refused as
+`link_redirect_blocked`. A loop is detected and refused. A hop to another host has that
+host's robots.txt checked. A `<meta refresh>` or a script redirect is not a redirect: it is
+never followed, and a page that is only one is refused (`page_forwards`).
+
+**A name that resolves to a public address when checked and a private one when fetched (DNS
+rebinding) is NOT prevented. It is made useless.** The runtime's `fetch` resolves the name
+again itself. But the fetch is `https` and the certificate is verified against the name: to
+be read, an internal service would have to present a certificate valid for the attacker's
+domain. Probed from the Edge runtime on 12 Oct: `https://` to an address whose certificate
+does not match the name fails in the handshake, before a byte of the response exists. Pinning
+the connection to the checked address is possible there (`Deno.connect` + `Deno.startTls`)
+and was not built — it means our own HTTP client. Plain `http` has no such protection, which
+is one reason it is refused outright.
+
+**The response.**
+
+- 10 s to the first byte of each hop, 20 s for the whole read, one retry with backoff and
+  jitter on a transport failure only (a GET; nothing non-idempotent is retried).
+- A per-host breaker: three failures in a row rest that host for a minute.
+- **The size cap is enforced on the stream, on decompressed bytes:** 5 MB for a page or
+  text, 20 MB for a document (chosen from the first bytes, not the header). A declared
+  `Content-Length` over the cap is refused before reading; a body that goes over it — a lie
+  in the header, an endless body, a compression bomb — is cut off and **refused, never
+  truncated and read**. `tests/unit/pages/fetch.test.ts` covers the lie with a scripted
+  response, and runs the endless body, the compression bomb (60 MB of zeros in 58 KB) and a
+  body that stops arriving against a real HTTP server it starts on the loopback address.
+- Only a 200 is read. A 404 that looks like a page (the probe's was 18 KB of ordinary HTML)
+  is "not found"; 401/403, 429 and 5xx each have their own sentence.
+- Nothing is downloaded to disk, nothing is executed, cookies are neither sent nor kept, and
+  no credential of ours is in the request.
+
+**Pace and identity.**
+
+- `robots.txt` is honoured: rules for our own agent, else for `*` — **and a disallow
+  addressed to an AI assistant acting for a user (`Claude-User`, `Claude-Web`,
+  `anthropic-ai`, `ChatGPT-User`, `Perplexity-User`, `MistralAI-User`,
+  `Meta-ExternalFetcher`, `DuckAssistBot`) is treated as addressed to us** (D96).
+  No robots file, or a 404 for it, means allowed. A 5xx or a timeout for it means **not
+  read**: a site whose rules cannot be checked is not assumed to have none.
+- The agent says what it is: `FunddCommandCentre/1.0 (+https://fundd.com.au; reads one page
+  when a signed-in user pastes its link)`. A browser-like agent was probed and was *worse*
+  (Domain: 200 → 403), and it would be a lie.
+- **Ten reads a minute per person; two seconds between reads of one host, by anyone.** Both
+  are decided in the database under a lock (`claim_web_fetch`), not in the function's memory,
+  so they hold across function instances.
+- **One id opens one page, once.** `fetch_page` carries an id; an id already on record opens
+  nothing and is answered 409. Found on review, 12 Oct, before commit: the first build let a
+  repeated id through as "the same read", which skipped both limits — one id, sent in a loop,
+  would have been unlimited requests to any site from our address.
+  `tests/unit/files/page-fetch.test.ts` ("a repeated id is not a way round the limit").
+- Reads run from Supabase's Sydney region (`forceFunctionRegion=ap-southeast-2`): sites
+  answer by where the request comes from (REIWA: 200 from Sydney, 403 from Mumbai).
+
+**What proves it.** `tests/unit/pages/guard.test.ts` is table-driven over every form above.
+`tests/unit/pages/fetch.test.ts` then runs the fetcher **with the guard replaced by one that
+passes everything** and asserts the same addresses now reach `fetch` — the tests fail
+without the protection. Nothing in the unit suite touches the network; the redirect, timeout
+and size cases use a server on `127.0.0.1` that the test starts, reached through an injected
+guard for exactly that reason.
+
+**Not covered, and why.** DNS rebinding between check and fetch — above. A public site that
+proxies to something internal of *its own* — not ours to see. An open redirector on a public
+site — followed, and re-checked at every hop, so it reaches only public addresses. IPv6
+zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
 
 ---
 
@@ -570,6 +792,27 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
   Australia. The client decided this is his to manage with his own clients (D91, 12 Oct
   2026); the product carries no consent wording. No other provider receives a file or any
   part of one: there is no OCR or document service.
+- **Pages read from a link (Milestone 5 part 2, D95, D99).** A page is public; *which* page a
+  broker read, for which client's conversation, is not. What is held: **never the page's
+  HTML** (it passes through the `files` function's memory to the browser and is not written
+  anywhere); the text read out of it, as for a file; the address it was read from
+  (`conversation_files.source_url`), visible to whoever can see the conversation and to
+  nobody else; and one row per read attempt in `web_fetches` — who asked, the address, how
+  the site answered, a size and a hash, no content — which **no browser session can read at
+  all**, its owner included. Retention: **a web page's text is kept 24 hours** from the read
+  (`FILES_PAGE_RETENTION_DAYS`, default 1), not 30 days — a page of rates a day old is a
+  wrong answer waiting to be given, and reading it again is one tap and costs nothing; **a
+  document reached by a link (a PDF, a spreadsheet) is kept 30 days**, as an attachment is;
+  **a fetch record is deleted after 24 hours.** All three by the same nightly job. Removing a
+  page, replacing it by reading it again, and expiry all leave a tombstone that names
+  nothing — no title, no hash and no address (a database constraint, not a convention).
+  Nothing is cached: every read goes to the site.
+- **What a site learns.** The address asked for, the time, an IP address belonging to
+  Supabase in Sydney, and our agent string, which names Fundd. It does not learn who at Fundd
+  asked or why. The agent string's contact address is the client's own site — **a yes from
+  him is still owed** (it was proposed 12 Oct and is what the build uses).
+- **No other party.** No search service, no scraping, rendering or extraction service, no
+  proxy. A page's text reaches Anthropic with a question, exactly as a file's does.
 
 ---
 

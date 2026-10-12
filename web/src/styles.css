@@ -2919,3 +2919,150 @@ body.is-dragging * {
     animation: none;
   }
 }
+
+/* ---------- links and pages read from them (Milestone 5 part 2) ---------- */
+
+/* The links in the message being written, above the box: one row each, never wider than
+   the column. The address shrinks and is cut; the button keeps its size. */
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.links__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.links__icon {
+  flex: 0 0 auto;
+}
+
+/* min-width: 0 again: without it a 2,000-character address widens the page. */
+.links__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.links__address {
+  margin: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.links__state {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.links__row--failed,
+.links__row--refused {
+  align-items: flex-start;
+  border-color: #fda29b;
+  background: var(--danger-bg);
+}
+
+.links__row--failed .links__state,
+.links__row--refused .links__state {
+  color: var(--danger);
+}
+
+.links__row--read {
+  border-color: #abefc6;
+  background: #ecfdf3;
+}
+
+.links__read {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+}
+
+.links__more {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* The question asked once, when Send is pressed with a link that has not been read. */
+.composer__ask {
+  margin: 8px 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  overflow-wrap: anywhere;
+}
+
+.composer__ask p {
+  margin: 0;
+}
+
+.composer__ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.composer__ask-actions .button {
+  min-height: var(--tap);
+}
+
+.composer__note--problem {
+  color: var(--danger);
+}
+
+/* A page that was read only in part says so in its own colour, under its name. */
+.file__partial {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.file__origin {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+/* A link is a tap target too. */
+.file__origin a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--navy-700);
+  font-weight: 600;
+}
+
+/* On a phone the button goes under a failed link's reason rather than squeezing it. */
+@media (max-width: 479px) {
+  .links__row--failed,
+  .links__row--refused {
+    flex-wrap: wrap;
+  }
+
+  /* Wide enough to fill the first line beside the icon, so only the button moves down. */
+  .links__row--failed .links__body,
+  .links__row--refused .links__body {
+    flex: 1 1 calc(100% - 40px);
+  }
+}

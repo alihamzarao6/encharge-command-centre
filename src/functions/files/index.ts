@@ -10,12 +10,19 @@
  * to the model, turned into text, and dropped. Nothing in this function writes bytes anywhere,
  * and nothing it logs contains a file's name or a word of its content.
  *
+ * Milestone 5 part 2 adds the one action whose reply is not JSON: `fetch_page` returns the
+ * bytes of a web page the person pointed at, for the browser to read with the same readers.
+ * They are sent as an opaque download (`application/octet-stream`, `nosniff`) so no browser
+ * ever renders them, with what was measured about them in the `x-page-meta` header. The
+ * fetch itself runs here and nowhere else: the browser never contacts the site.
+ *
  * SOURCE, not the deployed file: `npm run functions:bundle` writes the self-contained module
  * to supabase/functions/files/index.ts (gitignored), exactly as for chat, memory, admin, crm.
  * Same CORS rule as the others: one allowed origin, CHAT_ALLOWED_ORIGIN.
  */
 /* eslint-disable -- Deno runtime file; type-checked by the Supabase CLI, not by the repo's tsc. */
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
+import { encodePageMeta, PAGE_META_HEADER } from '../../lib/files/meta.js';
 import { handleFilesRequest } from '../../lib/files/page.js';
 import { createFilesPageDeps } from '../../lib/files/wiring.js';
 import { logger } from '../../lib/logger.js';
@@ -46,7 +53,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
-  const deps = createFilesPageDeps(Deno.env.toObject(), logger);
+  // `Deno` is the DNS resolver the page guard checks every name with.
+  const deps = createFilesPageDeps(Deno.env.toObject(), logger, { dns: Deno });
   if (!deps.ok) {
     // Config errors name the missing VARIABLE, never a value.
     logger.error('files function misconfigured', { error: deps.error });
@@ -70,5 +78,19 @@ Deno.serve(async (request: Request): Promise<Response> => {
     : null;
 
   const result = await handleFilesRequest(deps.value, { token, body });
+  if ('bytes' in result) {
+    return new Response(result.bytes, {
+      status: 200,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-content-type-options': 'nosniff',
+        'content-disposition': 'attachment',
+        'cache-control': 'no-store',
+        [PAGE_META_HEADER]: encodePageMeta(result.body),
+        'access-control-expose-headers': PAGE_META_HEADER,
+        ...CORS_HEADERS,
+      },
+    });
+  }
   return json(result.status, result.body);
 });

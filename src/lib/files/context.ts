@@ -19,11 +19,18 @@
  * The answer is rebuilt from the stored pages on every turn — the assistant answers from the
  * file, not from its memory of having read it (the brief's fixed decision 3). Remove the
  * file and the next turn has nothing to answer from.
+ *
+ * Milestone 5 part 2: a page read from a link goes in through THE SAME WRAPPER — one fence,
+ * not two. What it adds to the opening tag is what a page has and a file does not: the site
+ * it came from and when it was read, both taken from the server's own record of the fetch,
+ * and a plain statement when the site left figures for a script to fill in. The page's title
+ * is the page's own text and is treated like a file name: defanged, never trusted.
  */
 import type { Result } from '../errors.js';
 import { err, ok } from '../errors.js';
+import { NOT_LOADED_MARK } from '../pages/limits.js';
 import { KIND_LABEL, type ExtractionMethod, type FileKind, type Legibility } from './limits.js';
-import { DOCUMENT_RULES } from './rules.js';
+import { DOCUMENT_RULES, webPageRules } from './rules.js';
 import { queryTerms, rankPages } from './select.js';
 
 export interface TurnPage {
@@ -34,6 +41,17 @@ export interface TurnPage {
   readonly legibility: Legibility;
 }
 
+/** Where a file came from, when it came from a link. The server's record, never the page's. */
+export interface TurnSource {
+  readonly host: string;
+  /** ISO instant the server fetched it. */
+  readonly fetchedAt: string;
+  /** Places the site left for a script to fill in, found empty. */
+  readonly valuesMissing: number;
+  /** The page shows nothing until its scripts run, and was read as the site sent it. */
+  readonly readAsSent: boolean;
+}
+
 export interface TurnFile {
   readonly id: string;
   readonly name: string;
@@ -41,6 +59,8 @@ export interface TurnFile {
   /** Newest first decides who gets leftover budget. */
   readonly createdAt: string;
   readonly pages: readonly TurnPage[];
+  /** Absent for an uploaded file. */
+  readonly source?: TurnSource;
 }
 
 export interface DocumentFileSummary {
@@ -116,6 +136,48 @@ function renderPage(page: TurnPage): string {
 }
 
 export const CUT_MARKER = '[…this page continues; it was cut here to fit]';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Perth is UTC+8 all year: no daylight saving to get wrong. */
+const PERTH_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * "12 Oct 2026, 2:14 pm Perth time". The client is in Perth and so are the rates he reads;
+ * worked out by hand so it is the same in the Edge runtime, in Node and in a test.
+ */
+export function formatPerthTime(instant: Date | string): string {
+  const at = typeof instant === 'string' ? Date.parse(instant) : instant.getTime();
+  if (!Number.isFinite(at)) return 'an unknown time';
+  const local = new Date(at + PERTH_OFFSET_MS);
+  const hour = local.getUTCHours();
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const minute = String(local.getUTCMinutes()).padStart(2, '0');
+  const month = MONTHS[local.getUTCMonth()] ?? '';
+  return `${String(local.getUTCDate())} ${month} ${String(local.getUTCFullYear())}, ${String(hour12)}:${minute} ${hour < 12 ? 'am' : 'pm'} Perth time`;
+}
+
+/** What the opening tag says about a file that came from a link. Empty for an upload. */
+function sourceAttributes(file: TurnFile): string {
+  const source = file.source;
+  if (source === undefined) return '';
+  const parts = [
+    ` source="${attribute(source.host)}"`,
+    ` read="${formatPerthTime(source.fetchedAt)}"`,
+  ];
+  if (source.valuesMissing > 0) {
+    const places =
+      source.valuesMissing === 1 ? '1 figure' : `${String(source.valuesMissing)} figures`;
+    parts.push(
+      ` incomplete="READ IN PART: ${places} on this page are put in by the site after it loads and are NOT in this text. Each is marked ${NOT_LOADED_MARK}"`,
+    );
+  }
+  if (source.readAsSent) {
+    parts.push(
+      ' as_sent="READ AS SENT: this page shows nothing until its scripts run, so it was read as the site sent it. Some of this text may never be shown to a visitor"',
+    );
+  }
+  return parts.join('');
+}
 
 interface Chosen {
   readonly pages: readonly string[];
@@ -254,7 +316,7 @@ export function buildDocumentBlock(
     const total = file.pages.length;
     sections.push(
       [
-        `<untrusted_document id="${String(index + 1)}" name="${attribute(file.name)}" type="${KIND_LABEL[file.kind]}" parts="${String(total)}" shown="${shownDescription(mode, chosen.labels, total)}">`,
+        `<untrusted_document id="${String(index + 1)}" name="${attribute(file.name)}" type="${KIND_LABEL[file.kind]}"${sourceAttributes(file)} parts="${String(total)}" shown="${shownDescription(mode, chosen.labels, total)}">`,
         ...chosen.pages,
         '</untrusted_document>',
       ].join('\n'),
@@ -289,14 +351,31 @@ export interface TurnFileSource {
    * a file at all (a removed one counts): the rules block is still sent then, so "what did
    * the payslip say" after a removal is answered with "it is no longer attached".
    */
-  forTurn(
-    conversationId: string,
-  ): Promise<Result<{ readonly files: readonly TurnFile[]; readonly everHadFile: boolean }>>;
+  forTurn(conversationId: string): Promise<
+    Result<{
+      readonly files: readonly TurnFile[];
+      readonly everHadFile: boolean;
+      /** A page from a link was read here at some point (a removed or expired one counts). */
+      readonly everHadPage?: boolean;
+    }>
+  >;
+}
+
+/**
+ * The rules a turn owes for what this conversation holds: the part 1 block whenever a file
+ * was ever here, and the web block — which carries the time now — whenever a page was.
+ */
+export function rulesFor(everHadFile: boolean, everHadPage: boolean, now: Date): string | null {
+  if (!everHadFile) return null;
+  return everHadPage
+    ? `${DOCUMENT_RULES}\n\n${webPageRules(formatPerthTime(now))}`
+    : DOCUMENT_RULES;
 }
 
 export function createTurnDocuments(
   source: TurnFileSource,
   budgetChars: number = DEFAULT_CONTEXT_MAX_CHARS,
+  now: () => Date = () => new Date(),
 ): TurnDocuments {
   return {
     load: async (input) => {
@@ -304,7 +383,7 @@ export function createTurnDocuments(
       if (!loaded.ok) return err(loaded.error);
       const built = buildDocumentBlock(loaded.value.files, input, budgetChars);
       return ok({
-        rules: loaded.value.everHadFile ? DOCUMENT_RULES : null,
+        rules: rulesFor(loaded.value.everHadFile, loaded.value.everHadPage === true, now()),
         block: built.block,
         summary: built.summary,
       });

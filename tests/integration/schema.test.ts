@@ -49,6 +49,7 @@ const EXPECTED_TABLES = [
   'notion_sync_map',
   'review_queue',
   'tasks',
+  'web_fetches',
   'workflow_runs',
 ];
 

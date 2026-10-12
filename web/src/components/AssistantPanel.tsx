@@ -19,6 +19,7 @@ import { Composer } from './Composer.js';
 import { Thread } from './Thread.js';
 import { useThreadState, useThreadStore } from './ThreadContext.js';
 import { useAttachments } from './UploadsContext.js';
+import { useLinkReading } from './useLinks.js';
 
 interface Props {
   readonly onClose: () => void;
@@ -30,6 +31,14 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
   const state = useThreadState();
   const panel = useRef<HTMLElement>(null);
   const attachments = useAttachments();
+  // Milestone 5 part 2: the same link reading as the page, from the same store.
+  const links = useLinkReading({
+    draft: state.draft,
+    setDraft: store.setDraft,
+    send: (text) => {
+      void store.send(text, null);
+    },
+  });
 
   // Whatever arrived is now on screen.
   useEffect(() => {
@@ -117,6 +126,7 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
         autoFocus
         onAttach={attachments.attach}
         sendBlockedNote={attachments.sendBlockedNote}
+        links={links}
       />
     </aside>
   );

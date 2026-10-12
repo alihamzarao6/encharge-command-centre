@@ -29,7 +29,8 @@
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "memory": "tsx scripts/memory.ts",
     "crm": "tsx scripts/crm.ts",
-    "files": "tsx scripts/files.ts"
+    "files": "tsx scripts/files.ts",
+    "pages": "tsx scripts/pages.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

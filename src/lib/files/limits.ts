@@ -6,7 +6,17 @@
  *
  * Every refusal is a sentence the person can act on. A file that is not read is never a
  * silent failure: the code says which rule refused it, the sentence says what to do next.
+ *
+ * Milestone 5 part 2 adds one kind (`html`, a web page read from a link) and the reasons a
+ * page is not read. Those reasons and their sentences live in pages/limits.ts and are part of
+ * the same list here, so a page that is refused travels the same path as a file that is.
  */
+import {
+  PAGE_REFUSAL_CODES,
+  isPageRefusalCode,
+  pageRefusalMessage,
+  type PageRefusalCode,
+} from '../pages/limits.js';
 
 /**
  * Put at the start of a table row whose cells could not be matched to columns: the row has
@@ -24,7 +34,7 @@ export const UNCERTAIN_COLUMNS_MARK = '[columns uncertain]';
  */
 export const EMPTY_CELL_MARK = '(blank)';
 
-export const FILE_KINDS = ['pdf', 'docx', 'xlsx', 'csv', 'text', 'image'] as const;
+export const FILE_KINDS = ['pdf', 'docx', 'xlsx', 'csv', 'text', 'image', 'html'] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
 
 /**
@@ -38,6 +48,7 @@ export const EXTRACTION_METHODS = [
   'xlsx_xml',
   'csv_parse',
   'plain_text',
+  'html_text',
 ] as const;
 export type ExtractionMethod = (typeof EXTRACTION_METHODS)[number];
 
@@ -49,6 +60,7 @@ export const BROWSER_METHOD: Readonly<Record<FileKind, ExtractionMethod | null>>
   csv: 'csv_parse',
   text: 'plain_text',
   image: null,
+  html: 'html_text',
 };
 
 /** Deterministic parses are exact; a transcription is only as good as the page was legible. */
@@ -103,6 +115,7 @@ export const REFUSAL_CODES = [
   'too_long',
   'too_many_scanned_pages',
   'too_many_files',
+  ...PAGE_REFUSAL_CODES,
 ] as const;
 export type RefusalCode = (typeof REFUSAL_CODES)[number];
 
@@ -124,7 +137,13 @@ export function formatBytes(bytes: number): string {
 const LIMIT_MB = String(FILE_LIMITS.maxFileBytes / MB);
 
 const FIXED_REFUSALS: Readonly<
-  Record<Exclude<RefusalCode, 'too_large' | 'too_many_pages' | 'too_many_scanned_pages'>, string>
+  Record<
+    Exclude<
+      RefusalCode,
+      'too_large' | 'too_many_pages' | 'too_many_scanned_pages' | PageRefusalCode
+    >,
+    string
+  >
 > = {
   empty: 'This file is empty (0 bytes), so there is nothing to read.',
   password_pdf:
@@ -153,6 +172,7 @@ const FIXED_REFUSALS: Readonly<
 
 /** `detail` is the measured number the sentence quotes: a byte size or a page count. */
 export function refusal(code: RefusalCode, detail = 0): Refusal {
+  if (isPageRefusalCode(code)) return { code, message: pageRefusalMessage(code, detail) };
   if (code === 'too_large') {
     return {
       code,
@@ -190,6 +210,7 @@ export const KIND_LABEL: Readonly<Record<FileKind, string>> = {
   csv: 'CSV',
   text: 'Text file',
   image: 'Photo',
+  html: 'Web page',
 };
 
 /** The `accept` list for the file input. A hint to the picker; the bytes decide (sniff.ts). */

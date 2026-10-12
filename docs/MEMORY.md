@@ -19,11 +19,11 @@ file means every later session works from a wrong picture.
 |---|---|
 | Binding scope | **Scope v3** (22 Aug) for *what* is built — the B2B outbound lead-research engine is **out of scope**, see D23. **The 1 Sep 2026 milestones document for *how it is delivered and paid*: eight milestones, 2,000 USD total (D77)** — the six-stage map (D26, D27) is superseded |
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
-| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is committed and pushed (`15db99d` + `8c29221`; CI run 35954883737 green on `8c29221`, all three jobs, zero skipped) and deployed (the live web bundle names `8c29221` as its build commit — read from the bundle 12 Oct; the reviewer confirms migration `20260924010000_ghl_writes.sql` and the `crm` redeploy separately, it could not be checked from this machine). Part 5 (phone and laptop) and the client's sign-off are still OPEN. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data). Milestone 5 part 1 — reading files and documents — was started on 12 Oct on the reviewer's instruction with Milestone 4 unsigned, reviewed, committed (`0aaac43` + `c11f04f`), CI green and DEPLOYED the same day: migration `20261012010000` applied (20 of 20), the purge cron job confirmed, `files` v1 and `chat` v14 live (12 Oct entries; D83–D92).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
+| Active milestone | **Milestone 4 — Your data on screen (350) — IN PROGRESS: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is committed and pushed (`15db99d` + `8c29221`; CI run 35954883737 green on `8c29221`, all three jobs, zero skipped) and deployed (the live web bundle names `8c29221` as its build commit — read from the bundle 12 Oct; the reviewer confirms migration `20260924010000_ghl_writes.sql` and the `crm` redeploy separately, it could not be checked from this machine). Part 5 (phone and laptop) and the client's sign-off are still OPEN. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data). Milestone 5 part 1 — reading files and documents — was started on 12 Oct on the reviewer's instruction with Milestone 4 unsigned, reviewed, committed (`0aaac43` + `c11f04f`), CI green and DEPLOYED the same day: migration `20261012010000` applied (20 of 20), the purge cron job confirmed, `files` v1 and `chat` v14 live (12 Oct entries; D83–D92). **Milestone 5 part 2 — reading a web page from a link — was probed, decided with the reviewer and BUILT the same day: it is in the working tree, NOT committed, NOT pushed, NOT deployed, awaiting review of its report (12 Oct "M5 part 2 · build"; D93–D99).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
-| Next task | **Milestone 5 part 2 (website reading), on its own brief.** Part 1 is closed: the reviewer tested the deployed app on 12 Oct. Milestone 4 part 5 (phone and laptop) and its sign-off are still owed |
+| Next task | **Review of the Milestone 5 part 2 report.** Then, in the order RUNBOOK §1f gives: commit; push a BRANCH and wait for CI green with zero skipped (migration `20261012020000` from zero and two new stack suites have never run on a stack); `supabase db push`; deploy `files` and `chat`; push `main` last — that push is the web deploy. **Owed from the client:** a yes to `fundd.com.au` as the contact address the page reader gives to sites (D96). Milestone 4 part 5 (phone and laptop) and its sign-off are still owed |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **CI run 38201198962 (`c11f04f`, 12 Oct): all three jobs green, zero skipped — unit 1,903 · integration 118 · security 60 · browser 540; coverage 91.24% lines / 87.55% branches.** First run of migration `20261012010000` from zero and of the two files stack suites. *(Run 38200249819 on `0aaac43` failed one integration assertion — a test string, fixed in `c11f04f`.)* **Local, 12 Oct (M5 part 1, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped (16 stack-backed files, no Docker) in 95 files**, coverage **91.19% lines / 87.56% branches / 91.76% functions / 90.16% statements** · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (`files.spec.ts` 93 + the 447 existing) · production build 566.98 kB JS + 32.10 kB CSS, `web:check` 0 hits · `functions:bundle` five functions. **CI not run — nothing is pushed.** *(Previous:* CI run 35954883737 (`8c29221`, 24 Sep), all three jobs green, zero skipped: unit 1,507 · integration 102 · security 48 · browser 447.*)* Earlier runs, newest first: **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Last regression run | **Local, 12 Oct (M5 part 2 after review round 1, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,742 passed, 187 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.5% lines / 88.94% branches / 92.6% functions / 91.56% statements** (floor 80 / 75 / 80 / 80) · browser **609 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 18.1 minutes (`links.spec.ts` 69 + the 540 existing) · production build 590.53 kB JS + 33.80 kB CSS (the page reader in the lazily loaded `extract` chunk, 53.38 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 85 assertions. **CI not run — nothing is pushed.** *(Before that round:* **Local, 12 Oct (M5 part 2, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,655 passed, 186 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.48% lines / 88.86% branches / 92.58% functions / 91.54% statements** (floor 80 / 75 / 80 / 80; `src/lib/pages` alone 98.54% / 93.58%) · browser **606 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 14.7 minutes (`links.spec.ts` 66 + the 540 existing), and the three specs touching the files changed last re-run afterwards, 207 of 207 · production build 589.92 kB JS + 33.80 kB CSS (the page reader is in the lazily loaded `extract` chunk, 52.78 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 79 assertions. New tests: 730 in nine new unit files (guard 171 · robots 57 · fetch 118 · page-fetch 65 · context-web 35 · chat-pages 15 · files-html 186 · links 47 · uploads-links 36), 66 browser, and 24 that only CI can run (integration 14, security 10). **CI not run — nothing is pushed.***)* *(Last CI:* run 38205144578 on `fd1a7ec`, 12 Oct — all three jobs green, zero skipped: unit 1,903 · integration 118 · security 60 · browser 540.*)* Earlier: **CI run 38201198962 (`c11f04f`, 12 Oct): all three jobs green, zero skipped — unit 1,903 · integration 118 · security 60 · browser 540; coverage 91.24% lines / 87.55% branches.** First run of migration `20261012010000` from zero and of the two files stack suites. *(Run 38200249819 on `0aaac43` failed one integration assertion — a test string, fixed in `c11f04f`.)* **Local, 12 Oct (M5 part 1, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped (16 stack-backed files, no Docker) in 95 files**, coverage **91.19% lines / 87.56% branches / 91.76% functions / 90.16% statements** · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (`files.spec.ts` 93 + the 447 existing) · production build 566.98 kB JS + 32.10 kB CSS, `web:check` 0 hits · `functions:bundle` five functions. **CI not run — nothing is pushed.** *(Previous:* CI run 35954883737 (`8c29221`, 24 Sep), all three jobs green, zero skipped: unit 1,507 · integration 102 · security 48 · browser 447.*)* Earlier runs, newest first: **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
 | Known broken | **M4 part 2 is LIVE (13 Sep):** part-1 migration applied to the live project (through the Supabase MCP because the CLI/management token in `.env` answers 401; applied verbatim, then the version row was corrected from the MCP's `20260913061442` to `20260912010000` in the SQL editor — `list_migrations` now matches the repo, 18 of 18); `crm` v1 deployed (MCP); the four `GHL_*` secrets set by the reviewer in the dashboard; **first Refresh from the app succeeded** — run row `success`, trigger `api`, 13 requests, 10 opportunities, 10 contacts, 15 definitions, 6,050 ms — and the overview shows 10 open / 7 Appointment Booked / 2 New Lead / 1 Contacted, equal to `npm run crm -- read` taken the same minute (PHASE-ACCEPTANCE M4 item 3, first evidence). The `.env` management token needs replacing before the next CLI deploy. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -126,6 +126,13 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D90** | **A photo or scanned page is read ONCE by Claude vision, transcribed, and the image discarded. Up to 50 such pages per file. From two pages up the person is told how many pages will be read and roughly what that costs against today's cap, and continues or stops. A cap, timeout or dropped connection mid-file leaves NOTHING attached and says how far it got; Retry resumes** | The reviewer raised the limit from 10 to 50 on 12 Oct: a bank statement runs 15–30 pages and ten would refuse the first real document. Not beyond 50 — at about 2.7 cents a page that is already a third of the daily cap, and it is where a phone browser starts to struggle. Never a half-read file presented as a whole one | 12 Oct |
 | **D91** | **Client documents reach Anthropic — the extracted text on every question, a page image once for photos and scans. Not a blocker and not ours to gate: the client handles that side himself. No warning or consent wording in the product** | Reviewer's instruction, 12 Oct. On the record: no new third party is introduced (no OCR vendor, no document service); Anthropic's published position is that API content is not used for training and inference runs "global" or "us" — there is no Australian region | 12 Oct |
 | **D92** | **A spreadsheet is passed as labelled tables — real row numbers, column letters, every sheet, merged ranges noted, formula cells showing the sheet's own stored result — plus count / sum / min / max per numeric column computed in CODE** | A sheet is not prose, and a model adding up a long column is unreliable. Totals come from code or from the sheet's own formulas; anything else the assistant adds up itself it is told to say so. Formulas are never recalculated | 12 Oct |
+| **D93** | **Reading a page from a link is ONE link, ONE page — fetched by our server, read in the browser, kept as one more file of the conversation. No search, no crawling, no following a link on the page, no renderer, and no third-party service.** The `files` function fetches the bytes (guarded, D97), pinned to Supabase's Sydney region, and hands them to the browser, which reads them through part 1's `FileExtractor` and sends back text (D84 unchanged). A PDF, Word, Excel, CSV, text or image at a link goes through part 1's readers untouched, including the pages-and-cost question before a scan. **The address, site, read time, size and hash are the SERVER's record of the fetch (`web_fetches`); the browser supplies the text and can never say where it came from** | The brief fixed "one link, one page", "the same wrapper" and "a PDF at a URL goes through part 1's reader"; the probe decided the rest. A renderer would fix three lenders' rate pages and would mean every address he reads, and its content, going to a fourth party — and would not fix realestate.com.au. Sydney because sites answer by where a request comes from (REIWA: 200 from Sydney, 403 from Mumbai). Server-side provenance because rule 12 is worth nothing if the thing being described can describe itself | 12 Oct |
+| **D94** | **A link is never read because it appeared. A link in the message box gets a row above the box with "Read this page"; pressing Send with an unread link asks once — "Read it, then send" or "Send without reading". Up to three links are offered at a time. A message that is only a link: reading it leaves the page in the thread and the box empty for the question** | Reviewer's choice, 12 Oct ("he taps to read"). This assistant's main work is drafting, and drafts contain links — his own site, a booking link, an email pasted in with a "confirm" or "unsubscribe" link. Fetching those is at best a cost and at worst an action he did not take. Asking once on Send catches the case where he did mean it, without a dialog on every message | 12 Oct |
+| **D95** | **A web page's text is kept 24 hours; a document reached by a link is kept 30 days, like an attachment. The raw HTML is never stored anywhere. The record of a fetch — who asked, the address, how the site answered, no content — is kept 24 hours. One nightly job (part 1's) enforces all three** (`FILES_PAGE_RETENTION_DAYS`, default 1) | Reviewer's choice, 12 Oct. A page of rates a day old is a wrong answer waiting to be given, and reading it again is one tap and costs nothing; a lender's policy PDF does not change daily and is what part 1 already keeps for a loan application's working life. The address he read is client-revealing in its own right, so a removed, replaced or expired page keeps none (a constraint, not a convention) | 12 Oct |
+| **D96** | **robots.txt is honoured, including rules addressed to AI assistants acting for a user: a site that tells `Claude-User`, `ChatGPT-User`, `Perplexity-User`, `anthropic-ai` and the like to stay out is not read, although our own agent is not named. A robots file that cannot be fetched (5xx, timeout) means the page is NOT read. The agent says what it is — `FunddCommandCentre/1.0 (+https://fundd.com.au; reads one page when a signed-in user pastes its link)` — and never imitates a browser** | Reviewer's choice, 12 Oct ("honour the AI rules"). Honouring the letter would read ABC News; honouring the intent does not, and the intent is plainly about what we are. A browser-like agent was probed: it reads *fewer* sites (Domain 200 → 403) and would be a lie told under the client's name. **Still owed: the client's yes to his own site being the contact address in the agent string** | 12 Oct |
+| **D97** | **The fetch is guarded as its own module (`src/lib/pages/guard.ts`): https only, port 443 only, no credentials, no numeric host of any encoding, no single-label or internal name; every address the name resolves to, in both families, must be public; all of it checked again on every redirect hop, at most five; 10 s to a first byte and 20 s in all; 5 MB a page and 20 MB a document, counted on the decompressed stream, and over the cap is a refusal, never a truncation. Ten reads a minute per person and two seconds between reads of one site, both decided in the database under a lock. One request id opens one page, once** | The client controls the address and the fetch runs inside our infrastructure. **A name that resolves publicly when checked and privately when fetched is not prevented; it is made useless** — the fetch is https with the certificate checked against the name, so an internal service would need a valid certificate for the attacker's domain (probed). Pinning the connection is possible on the runtime and means writing an HTTP client; not built. Five hops, not SECURITY §10's old three, because a real lender address takes exactly three and every hop is checked. The limits live in the database because a function instance's memory is not shared with the next instance | 12 Oct |
+| **D98** | **What "the page's text" is: the text of visible elements only — never an attribute, a comment, a script or a style — with navigation, page header and footer, sidebars, cookie banners, controls and link-only menus removed; tables as rows with their headings, an empty cell written `(blank)`; tab and accordion labels carried to their panels as headings; cut into parts at headings. Text the MARKUP declares hidden (the `hidden` attribute, `aria-hidden`, an inline style — including opacity under a tenth) is dropped, **decided for each piece of text, wherever it sits: a hidden span inside a visible sentence, a hidden cell in a visible table**; text hidden only by a CSS CLASS is read. A place the site leaves for a script to fill in is written `[not in the page as fetched]`, counted, and the page is shown and described to the model as read in part. Under 200 letters, a paywall, a login page, a bot challenge, a consent wall, a page that only forwards elsewhere, or a page nested deeper than the reader tracks: refused with the reason. **One exception: a page that shows next to nothing and has 400 or more letters behind an inline `opacity:0` and nothing else is read with those declarations — only those — ignored, is stored as `read_as_sent`, says so under its title, and is described that way to the model** | "Read class-hidden text" was the reviewer's choice on 12 Oct, after measurement: hiding by class cannot be judged without a browser engine, and on NAB and Bankwest it is where the labels of the rate tables are. No renderer was also his choice. **The exception is mine, and was reviewed on 12 Oct on one condition — a canary in the exact shape it triggers on (met; see the "review 1" entry).** It is `opacity:0` and nothing wider because that is what the real page does: Bankwest sends every section with its own inline `opacity:0`, the start of an entrance animation, so there is no single wrapper to lift, and anything wider would read `display:none` text on any page an attacker cares to fade. It is still a door: text hidden with `opacity:0` and never meant to fade in is read on such a page, and no reading of markup can tell the two apart — the wrapper (D87, D99) is what makes it harmless, and that is tested in that shape. **Both points were put to the reviewer after the canary round and he ruled the same day: fade-in pages stay readable** (Bankwest reads completely and is a page the client will use; the wrapper is proven, the fallback is narrow, the page is visibly marked) **and `aria-hidden` stays dropped** (it costs one lender's two tab labels on tables that have no figures in them anyway, and reading it would reopen a hiding place the canaries cover) | 12 Oct |
+| **D99** | **Nothing is cached: every read goes to the site. A page carries the time it was read on screen and in front of the model, which is also told the time now and must say when a page was read whenever it gives a figure from it. Reading the same address again replaces the older copy — or, if nothing changed, refreshes it. A page is data in the same wrapper as an attached file (D87), with two additions to the system prompt and none to the user turn: the rules for pages, and — whenever a message contains a link — that a link is only text, that the only pages read are the ones in the block, and that a rate from memory is a wrong answer** | The question a page raises that a file does not is "is this still true". Two copies of one rate page in front of the model would be two answers. The link rule exists because without it a question about an unopened link is answered from the address and from what the model remembers of the site — the confident stale rate the brief's third fixed decision forbids. `DOCUMENT_RULES` is byte-identical to part 1's, so part 1's recorded fixtures still hold | 12 Oct |
 
 ---
 
@@ -142,6 +149,294 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-12 — [M5 part 2 · review 1] The fallback's canary — and the hole that writing it found — working tree, NOT committed
+
+**Asked for, before commit:** an injection canary in the exact shape the reader's
+whole-page-hidden fallback triggers on (under 200 visible letters, 400+ hidden, the hidden
+text carrying instructions for the assistant); proof the instructions still do not act; proof
+the test fails when `defang` is removed.
+
+**Did — the canary.** `tests/fixtures/web/injection-revealed.html`: a page that shows only
+"Loading", its content in sections that each start at `opacity:0` (the real lender's shape),
+an instruction and an attempt to close the wrapper in a block hidden the same way, and 20
+canaries hidden every other way inside and beside those sections. Followed from its bytes:
+through the reader (`files-html.test.ts`), to the block a turn sends (`context-web.test.ts`),
+to the whole request (`chat-pages.test.ts`), to the database and a real turn
+(`web-pages.test.ts`, CI), and in Chrome (`links.spec.ts`). The instruction reaches the
+model once, inside the wrapper, its forged tags rewritten, nowhere in the system prompt, in a
+request with no tools. **With `defang` replaced by a function that returns its input, 13
+tests fail across the three wrapper suites — the three written for this page among them.**
+The file was restored and its hash checked. Live, once, as a signal only: the model gave the
+rate, said the page was read as sent, and reported and declined the hidden instruction.
+
+**Found by writing it — a hole in the reader that had nothing to do with the fallback.** The
+"is this hidden" check was made per BLOCK, by whatever the block's first text sat in. All 44
+existing canaries were hidden blocks, so all passed. **A hidden span after visible words in
+the same paragraph was read. So was a hidden cell or row in a visible table.** That is the
+commonest shape an injected instruction takes, on any page. The tests were written first: 36
+failed. Fixed: hidden is now decided for each piece of text; a hidden cell or row is not in
+its table; a hidden tab names no panel. Fifteen canaries added to the first fixture (59 now).
+The same fix made a visible sentence that began with a hidden span readable again (on ANZ,
+"The information on this page does not apply to ANZ Plus products" was being lost).
+
+**Found with it:**
+
+1. *The fallback as built read EVERYTHING hidden* on a page that tripped it — `display:none`,
+   `hidden`, off-screen, all of it. Now it ignores inline `opacity:0` and nothing else.
+   I first narrowed it to "lift the one wrapper the page sits behind"; **the real Bankwest
+   bytes refused that** — the page is not behind one wrapper, every section has its own
+   `opacity:0` — and the fixture I had modelled on it had a `hidden` attribute the real page
+   does not have. Fixture corrected against the saved bytes. Bankwest reads exactly as before:
+   11,161 characters, 214 rates.
+2. *"The person is told" was true only for a screen reader.* The note went to the `sr-only`
+   live region and nowhere else, and the model was told nothing. Now: the reader writes
+   `[read as the site sent it]` as the page's first line; `finish` finds it and sets
+   `conversation_files.read_as_sent` (a new column and a defaulted parameter, in the same
+   uncommitted migration); the page says so under its title for as long as it is there; its
+   opening tag carries `as_sent="READ AS SENT…"` and the rules say what that means
+   (`WEB_RULES_VERSION` 2026-10-12.3).
+3. *Past 1,500 levels of nesting a "hidden" could not be honoured* — the element was not
+   tracked and its text was read as its ancestor's. Such a page is now refused whole
+   (`page_malformed`, a new refusal with its own sentence). No real page is a tenth as deep.
+4. *Opacity that is not exactly zero* (`0.01`, `-1`) was not treated as hidden. Under a
+   tenth now is.
+
+**Measured after the fix, on the 17 pages the Edge runtime fetched:** every rate count
+unchanged (NAB 513, Westpac 453, Macquarie 209, Bankwest 214). Two losses, both from
+`aria-hidden`, which is dropped as D98 says: ANZ's tab labels "Variable interest rates" and
+"Fixed interest rates" are no longer written above their panels (the tab list sits in an
+`aria-hidden` wrapper the site's script clears), and ABC loses a duplicated timestamp. One
+gain: the ANZ sentence above.
+
+**Put to the reviewer, and ruled on the same day:** (1) `aria-hidden` hides text from a
+screen reader, not from the screen, and dropping it costs real labels — **it stays dropped**:
+ANZ is already read in part with 154 figures missing, so two tab labels on tables with no
+numbers in them buy nothing, and reading `aria-hidden` reopens a vector the canaries were
+written to cover. (2) On a fade-in page, text hidden with `opacity:0` and never meant to
+appear is read — **fade-in pages stay readable**: Bankwest reads completely and is a page he
+will actually use, the wrapper is proven (13 failures without `defang`, and the live run had
+the model report and decline the hidden instruction), the fallback is narrow, and the page
+is visibly marked. The limitation stays stated in SECURITY §3 as written. **Then: go ahead —
+commit, push, CI, deploy in RUNBOOK §1f order.**
+
+**Gates, local, after this round:** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,742 passed, 187 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.5% lines / 88.94% branches / 92.6% functions / 91.56% statements** (floor 80 / 75 / 80 / 80) · browser **609 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 18.1 minutes (`links.spec.ts` 69 + the 540 existing) · production build 590.53 kB JS + 33.80 kB CSS (the page reader in the lazily loaded `extract` chunk, 53.38 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 85 assertions. **CI not run — nothing is pushed.**
+
+**Next:** as the build entry says — nothing is committed.
+
+### 2026-10-12 — [M5 part 2 · build] He can paste a link and ask what the page says — working tree, NOT committed, NOT pushed, NOT deployed
+
+**Approved first.** The Part A proposals below were put to the reviewer as a plan with four
+questions, then a fifth during the build. His answers: he taps to read (D94) · 24 hours for a
+page (D95) · honour robots rules aimed at AI assistants (D96) · build without a renderer
+(D93, D98) · read text that is hidden only by a CSS class (D98). The rest of Part A stood as
+proposed. D93–D99 in §2 are those decisions as built.
+
+**Did.** One link, one page, read on his say-so:
+
+- *The guard* — `src/lib/pages/guard.ts` (pure): https, port 443, no credentials, no numeric
+  host in any encoding, no internal name; every resolved address public, both families.
+  `robots.ts` (RFC 9309 + the AI-assistant rule). `fetch.ts`: manual redirects, the guard on
+  every hop, five at most, loops, 10 s / 20 s, one retry on a transport failure, a per-host
+  breaker, the size cap on the decompressed stream. It has no logger.
+- *The endpoint* — `files` gains `fetch_page`: guard → per-person and per-site limits in the
+  database → robots → fetch → SHA-256 → a record in `web_fetches` → the bytes back to the
+  browser as an opaque download with what was measured in a header. `begin` takes the fetch's
+  id and is held to that record; the address, site and read time are copied from it.
+- *The database* — migration `20261012020000_web_pages.sql`: four columns on
+  `conversation_files`, kind `html`, reason `replaced`, the tombstone extended to the address,
+  `web_fetches` (forced RLS, no policy), `claim_web_fetch` / `complete_web_fetch`, `begin` and
+  `finish` recreated with defaulted parameters, the purge extended. **No policy was changed.**
+- *The reader* — `web/src/lib/files/html.ts` with its own tokenizer and entity table: one
+  more `FileExtractor` beside part 1's. No DOM, no dependency; runs in the browser, under
+  Node for the tests and the CLI.
+- *The model's side* — the same wrapper, plus `source` and `read` on a page's opening tag;
+  `webPageRules(now)` and `UNREAD_LINK_RULES` appended in the system prompt. `DOCUMENT_RULES`
+  is byte-identical to part 1's.
+- *The interface* — a strip of the links in the draft above the box (`LinkStrip`,
+  `useLinks`), the one question on Send, a page in the thread with its title, site, read
+  time and "Open the page", "Read in part" where true; a link is one more item in part 1's
+  upload queue (`uploads.ts` `addLink`). Both surfaces.
+- *The terminal* — `npm run pages -- check | fetch | extract | ask | unread`.
+- *Docs* — SECURITY §3, §10 (rewritten from six lines to what is built), §11; SCHEMA §4;
+  TESTING; PHASE-ACCEPTANCE (W1–W13, every Part C case mapped, real output, measured cost);
+  RUNBOOK §1f with **the deploy order fixed — CI on a branch, then the database, then the
+  functions, and `main` pushed last because that push is the web deploy** — and §10;
+  `.env.example`; CLAUDE.md §5; TASKS.
+
+**Found by testing, and fixed before anything was committed:**
+
+1. *A repeated request id skipped both rate limits.* `claim_web_fetch` answered an id it had
+   seen as "the same read, go ahead" — no count, no gap, and the address not compared. One
+   id sent in a loop would have been unlimited requests to any public site from our address.
+   Found while writing the queue's tests. Now one id opens one page, once: a repeat claims
+   nothing and is answered 409, the browser uses a new id for every attempt, and the limits
+   are taken under a lock on the person as well as the host. A test had pinned the old
+   behaviour ("the same gesture retried is the same read"); it now asserts the opposite, and
+   that thirty attempts under one id reach a site once.
+2. *An expired record of a fetch could never be retried.* "Try again" resent the same id for
+   ever. The queue now drops what it read from the stale bytes and fetches afresh.
+3. *Part 1's stack suites would have failed in CI on this migration* — they named the two
+   function signatures the migration replaces, and compared a turn's files with an exact
+   shape that gained a field. Both updated. Nothing local could have shown it; found by
+   reading them against the migration.
+4. *The model told him to "re-read the page after it loads"* for a figure the site fills in by
+   script — advice that cannot work here. The rule now says reading again will not get it;
+   the live reply now says so too (`WEB_RULES_VERSION` 2026-10-12.2).
+5. *Two address forms cited in the docs were not in the guard's table.* Added
+   (`0x7f.0.0.1`, the metadata address through NAT64); the docs were also wrong that 6to4 and
+   IPv4-compatible addresses are judged by the address inside — they are refused outright.
+
+**Decided along the way — each is in the report for review:**
+
+- *A page that hides its whole self until its script runs is read as sent* (D98, the Bankwest
+  case). My addition; not put to the reviewer as a question at the time.
+- *Tab and accordion labels are carried to their panels as headings.* Without it Bankwest's
+  and NAB's owner-occupier and investment rates are two unlabelled tables.
+- *The migration is `20261012020000`, not the plan's `20261013010000`;* the column is
+  `values_missing integer`, not `read_flags`; the web rules are appended to the one rules
+  string rather than sent as separate system blocks (`DOCUMENT_RULES` is still
+  byte-identical, which was the point); the server module is `src/lib/pages/`; the terminal
+  command is `npm run pages`, not `npm run web` (`web:*` already means the dashboard).
+
+**Measured.** The reader over the pages the Edge runtime fetched in the probe: NAB 22,831
+characters in 5 parts (61 ms), Westpac 45,422 / 9, Macquarie 22,449 / 5, Bankwest 11,161 / 5,
+RBA 16,235 / 3, Canstar 55,013 / 18, REIWA 5,544 / 3 — all complete; **ANZ 154, CBA 12 and ING
+144 figures missing, each marked**; AFR and The West refused as paywalls; three lender PDFs
+read by part 1's reader. Live cost of a question: **$0.051–0.073 the first time, $0.006–0.011
+a follow-up**; reading itself is no model call. A message with an unread link: $0.004, and
+both live replies said the page had not been opened and gave no figure. About $0.33 was spent
+on the Anthropic key for these runs, as the plan said. Tables in `PHASE-ACCEPTANCE.md`.
+
+**Gates, local, 12 Oct:** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,655 passed, 186 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.48% lines / 88.86% branches / 92.58% functions / 91.54% statements** (floor 80 / 75 / 80 / 80; `src/lib/pages` alone 98.54% / 93.58%) · browser **606 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 14.7 minutes (`links.spec.ts` 66 + the 540 existing), and the three specs touching the files changed last re-run afterwards, 207 of 207 · production build 589.92 kB JS + 33.80 kB CSS (the page reader is in the lazily loaded `extract` chunk, 52.78 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 79 assertions. New tests: 730 in nine new unit files (guard 171 · robots 57 · fetch 118 · page-fetch 65 · context-web 35 · chat-pages 15 · files-html 186 · links 47 · uploads-links 36), 66 browser, and 24 that only CI can run (integration 14, security 10). **CI not run — nothing is pushed.**
+
+**Not verified, and why:** the stack suites and the migration from zero (no Docker — CI is
+their first run; every statement was replayed on a local PostgreSQL 17, 79 assertions) · a
+real phone and a real screen reader · the Sydney pin from the deployed app (`curl` only) · a
+signed-in read on the live app (nothing is deployed, and it would write to production) ·
+DNS rebinding between check and fetch is not prevented (SECURITY §10 says why that is
+acceptable) · how often CBA, ANZ and ING change the markup the "filled in later" detection
+reads.
+
+**Owed from the client:** a yes to `fundd.com.au` being the contact address the reader gives
+to sites. Nothing else is needed from him.
+
+**Next:** the reviewer reads the report. Then, in this order: commit; push a BRANCH and wait
+for CI green with zero skipped; `supabase db push`; deploy `files` and `chat`; push `main`
+(RUNBOOK §1f).
+
+### 2026-10-12 — [M5 part 2 · Part A] Reading a web page from a link: probe run, decisions proposed (since approved — see the build entry above; D93–D99)
+
+**Preconditions confirmed first:** `main` equals `origin/main` at `fd1a7ec`, nothing staged,
+no stash. CI run 38205144578 on `fd1a7ec`: all three jobs green, zero skipped (unit 1,903 ·
+integration 118 · security 60 · browser 540). The live web bundle names `fd1a7ec` as its
+build commit. `supabase functions list` on the live project: `chat` v14, `files` v1,
+`memory` v8, `admin` v8, `crm` v5 — what the 12 Oct entry recorded.
+
+**Did (A0):** probed 25 addresses from the Supabase Edge runtime, three ways each (Sydney
+with an honest agent, Sydney with a browser-like agent, the default region). Full table and
+method: `PHASE-ACCEPTANCE.md`, Milestone 5 part 2. The probe function was deployed for the
+run and deleted the same hour; nothing else on the live project was touched and nothing was
+written to its database.
+
+**Surprised by:**
+1. *Three of seven lender rate pages come back without their rates* — CBA, ANZ, ING. The
+   page is there; the figures are empty elements a script fills in. NAB, Westpac, Macquarie
+   and Bankwest are complete. This is the limit the client meets on day one.
+2. *The region is part of the request.* REIWA answered 200 from Sydney and 403 from Mumbai,
+   which is where the platform ran my calls. A read has to be pinned to `ap-southeast-2`.
+3. *A browser-like User-Agent is worse, not better:* Domain went from 200 to 403.
+4. *ABC, AFR and realestate.com.au tell AI assistants acting for a user to stay out* in
+   robots.txt, while permitting an unnamed agent. Our agent is unnamed. Honouring the letter
+   reads ABC; honouring the intent does not. See decision 9.
+5. *A paywalled AFR article declares itself free* in its own metadata. Detection cannot rest
+   on that field.
+6. *Loopback is routable from inside the function,* and `http://2130706433/` is loopback by
+   the time `fetch` sees it. The guard is not decoration.
+
+**Proposed decisions (Part A1–A8, then five the probe added). None is standing until
+reviewed; D-numbers are assigned on approval.**
+
+- **A1 · What a read is.** Status 200, then the bytes decide the kind (Part 1's sniff). For
+  HTML: the text of visible elements only — never an attribute, a comment or a script — with
+  navigation, page header and footer, sidebars, cookie banners, form controls and link-only
+  menus removed; the main content block where one holds the bulk of the page, otherwise the
+  whole pruned body (Macquarie's `<main>` holds 808 of 35,103 characters, so `<main>` alone
+  cannot be trusted). Tables become rows with their headings, spans repeated, an empty cell
+  written `(blank)` as Part 1 does. Cut into sections at headings so a long page can be shown
+  in part honestly. Under 200 letters after pruning → refused with the reason, never an empty
+  attachment.
+- **A2 · Script-drawn pages.** No renderer in this part. Of the 20 addresses that returned a
+  page: complete in the returned HTML or PDF 15, rates missing 3, paywalled 2. A place a
+  script fills in is written into the text as `[not in the page as fetched]`, counted, and
+  the page is marked "read in part" on screen and in what the model sees. A renderer would
+  mean every address he reads and its content going to a fourth party; it would fix CBA, ANZ
+  and ING and would not fix realestate.com.au.
+- **A3 · Refused outright,** each with what happened and what to do instead (paste the text,
+  or save the page as a PDF and attach it — Part 1 reads that): not https; an address with
+  a password, a port or a number in place of a name; a private or local address, directly or
+  by redirect; robots.txt; no such site; no answer in time; too many redirects or a loop;
+  404/410; 401/403 and a login page; 429 and a bot challenge; 5xx; a paywall; a page that
+  only forwards to another; too large; nothing readable.
+- **A4 · Content types.** HTML → the new reader. PDF, Word, Excel, CSV, plain text (JSON is
+  read as text) and images → Part 1's readers unchanged, including the pages-and-cost
+  question before a scan. Everything Part 1 refuses is refused here with the same sentence.
+  The header's content type is a hint; the bytes decide. An uploaded `.html` file stays
+  refused (D83 not reopened).
+- **A5 · Size and cost.** HTML and text up to 5 MB (largest seen: Canstar, 1.82 MB);
+  documents up to 20 MB, as an attachment. Enforced on the stream, on decompressed bytes.
+  10 s to the first byte of each hop, 20 s for the whole read. A read costs nothing — no
+  model call — unless the link is a scan or a picture. In a turn the page shares the existing
+  48,000 characters (D88): from Part 1's measured rate, about $0.02 for a news article to
+  $0.095 for a page at the budget on the first question, then about $0.002–0.01 while
+  cached. To be measured live on four pages once built.
+- **A6 · Retention.** The raw HTML is never stored. The text goes where Part 1's goes, under
+  the same RLS. **A web page is kept 24 hours; a document from a link 30 days, like an
+  attachment.** Same purge job, a different number, because a page of rates a day old is a
+  wrong answer waiting to be given and reading it again is one tap and free.
+- **A7 · Freshness.** Nothing is cached. Every read goes to the site. The stored copy
+  answers follow-ups in its conversation and carries its read time on screen and in what the
+  model sees; the model is given the time now and must say when the page was read whenever
+  it quotes a figure. Reading the same address again replaces the older copy.
+- **A8 · Recognising a link.** A link is never opened because it appeared. A link in the box
+  gets "Read this page" beside it; pressing Send with an unread link asks once — "Read it,
+  then send" or "Send without reading". Up to three links offered at a time. A message that
+  is only a link: reading it leaves the page in the thread and the box empty for the
+  question. An unread link in a sent message is answered with "I have not opened that",
+  never from the address or from what the model knows of the site. *Why not automatic:* this
+  assistant's main work is drafting, and drafts contain links — his own site, a booking link,
+  an email he pasted with a "confirm" or "unsubscribe" link in it. Fetching those is at best
+  a cost and at worst an action he did not take.
+- **9 · robots.txt, and which rules count as ours** — *the reviewer's call.* Honoured always
+  (CLAUDE.md §7, SECURITY §10). Proposed: obey rules addressed to our own agent, to `*`, **and
+  to AI assistants acting for a user** (`Claude-User`, `ChatGPT-User`, `Perplexity-User`,
+  `anthropic-ai`, `claude-web`). Cost on the probe set: ABC is refused; AFR and
+  realestate.com.au were unreadable anyway. The alternative — the letter only — reads ABC.
+- **10 · SSRF.** https only, port 443 only, no numeric addresses, no single-label or
+  internal names; every resolved address must be public (all of them, A and AAAA); checked
+  again on every hop, at most 5 (SECURITY §10 says 3; Bankwest's broker address takes
+  exactly 3, and each hop is re-checked, so the cap protects time, not safety). **A name
+  that resolves differently between the check and the fetch is not prevented; it is made
+  useless:** the fetch is https with the certificate checked against the name, so an internal
+  service would have to hold a valid certificate for the attacker's domain to be read.
+  Pinning the connection to the checked address is possible on this runtime (probed) and
+  costs an HTTP client of our own; not proposed.
+- **11 · Where the reading happens.** Unchanged from D84: the Edge Function fetches (guarded)
+  and hands the bytes to the browser, which reads them through Part 1's `FileExtractor` and
+  sends text. The browser never contacts the site. The address, host, read time, size and
+  hash are recorded by the server at fetch time and taken from there, not from the browser.
+- **12 · Identity and pace.** The honest agent above (the contact address is the client's own
+  site — worth a yes from him). Pinned to Sydney. Ten reads a minute per person, two seconds
+  between reads of one host (SECURITY §10).
+- **13 · Dependencies and services.** None added. No scraping, rendering or extraction
+  service. The HTML reader is our own tokenizer, as the Word and Excel readers are.
+
+**Not verified:** how often the three script-filled lenders change their markup (the
+detection is a heuristic over class and data-attribute names; measured 12 / 293 / 244 on
+them and 0 on the other fourteen HTML pages in the set) · any page behind a login · the browser's side of the
+region pin (verified with `curl`, not from the app).
+
+**Next:** review of Part A. Then the build, in the order the plan gives.
 
 ### 2026-10-12 — [M5 part 1 · closed] The reviewer tested the deployed app
 

@@ -20,6 +20,13 @@
  *   remove     the person who attached it, or an administrator.
  *   refused    the browser refused a file before sending anything; recorded so "why did his
  *              upload fail" has an answer in the logs.
+ *   fetch_page (Milestone 5 part 2) fetch ONE web page the person pointed at and hand its
+ *              bytes back to be read by the same readers. The address goes through the SSRF
+ *              guard, the per-person and per-host limits and the site's robots.txt before
+ *              anything is requested (src/lib/pages/). The server records what it fetched —
+ *              address, time, size, SHA-256 — and `begin` then accepts those bytes and no
+ *              others, taking the address and the time from that record: the browser reads
+ *              the page, but it never gets to say where the page came from.
  *
  * Order in every action: who is asking (401/403 before any work), then the input, then
  * whether they may touch THIS conversation or file — and "not yours" answers exactly as "not
@@ -27,7 +34,9 @@
  *
  * Logging (CLAUDE.md rule 20 and this part's hard boundary): ids, kinds, sizes, counts,
  * durations, outcomes. Never a file's name, never a word of its content — not in a log line,
- * not in an error message, not in a thrown error's context.
+ * not in an error message, not in a thrown error's context. For a page: the HOST, the status,
+ * the content type, the size, the time and the outcome. Never the path or the query (a query
+ * string can name a person), never the title, never a byte of the page.
  */
 import { z } from 'zod';
 
@@ -44,6 +53,15 @@ import {
 } from '../llm/pricing.js';
 import { utcDayStart, utcMonthStart, type SpendCaps } from '../llm/spend.js';
 import type { Logger } from '../logger.js';
+import type { PageFetcher } from '../pages/fetch.js';
+import { parsePublicUrl, type PublicUrl } from '../pages/guard.js';
+import {
+  PAGE_LIMITS,
+  PAGE_RETRY_MESSAGES,
+  pageRefusalMessage,
+  type PageRefusalCode,
+  type PageRetryCode,
+} from '../pages/limits.js';
 import { FILE_REMOVAL_DENIED_MESSAGE, canRemoveFile, canSeeConversationFiles } from './access.js';
 import type { FilesConfig } from './config.js';
 import {
@@ -64,7 +82,7 @@ import {
   type FileView,
   type PageInsert,
 } from './store.js';
-import { meaningfulChars, sanitiseExtractedText, sanitiseFileName } from './text.js';
+import { meaningfulChars, sanitiseExtractedText, sanitiseFileName, sanitiseTitle } from './text.js';
 import {
   VISION_PROMPT_TOKENS,
   VISION_SYSTEM_PROMPT,
@@ -122,7 +140,26 @@ export interface FilesReadPageReply {
 export interface FilesFinishReply {
   readonly action: 'finish';
   readonly duplicate: boolean;
+  /** Older reads of the same address that this one took the place of. */
+  readonly replaced: number;
   readonly file: FileView;
+}
+
+/**
+ * What comes back WITH the bytes of a fetched page. Nothing here is the page's own words:
+ * the host and the file name are from the address, the rest is measured.
+ */
+export interface FilesFetchReply {
+  readonly action: 'fetch_page';
+  /** The server's record of this fetch; `begin` must quote it. */
+  readonly fetchId: string;
+  /** The host that answered, after redirects. */
+  readonly host: string;
+  /** The last piece of the address, as a hint to the reader (".csv" is a table, not prose). */
+  readonly fileName: string;
+  readonly contentType: string | null;
+  readonly byteSize: number;
+  readonly contentHash: string;
 }
 
 export interface FilesRemoveReply {
@@ -160,6 +197,8 @@ export type FilesErrorStatus =
 
 export type FilesPageResult =
   | { readonly status: 200; readonly body: FilesReply }
+  /** The one reply that is not JSON: the page's bytes, with `body` carried in a header. */
+  | { readonly status: 200; readonly body: FilesFetchReply; readonly bytes: Uint8Array }
   | { readonly status: FilesErrorStatus; readonly body: FilesErrorBody };
 
 export interface FilesPageDeps {
@@ -173,8 +212,12 @@ export interface FilesPageDeps {
   /** The price of the model that reads page images. */
   readonly visionPricing: ModelPricing;
   readonly config: FilesConfig;
+  /** Milestone 5 part 2: the guarded fetch of one page (src/lib/pages/fetch.ts). */
+  readonly pages: PageFetcher;
   readonly log: Logger;
   readonly now?: () => Date;
+  /** For the pause between two reads of one host. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 export const FILES_MESSAGES = {
@@ -192,6 +235,10 @@ export const FILES_MESSAGES = {
     "Today's budget for the assistant has been used up, so this page was not read and the file was not attached. It resets at midnight UTC.",
   capMonth:
     "This month's budget for the assistant has been used up, so this page was not read and the file was not attached.",
+  readAgain: 'That page has to be opened again before it can be attached. Try again.',
+  siteJustRead: 'That site was opened a moment ago. Wait a few seconds, then try again.',
+  pageNotSaved:
+    'The page was opened but could not be recorded just now, so it was not read. Try again.',
 } as const;
 
 function failure(
@@ -217,6 +264,25 @@ function bad(message: string): FilesPageResult {
   return failure(400, 'BAD_REQUEST', message);
 }
 
+/** The page will not be read as it stands: the same sentence the browser would have shown. */
+function refusePage(code: PageRefusalCode, detail = 0): FilesPageResult {
+  return failure(422, 'PAGE_REFUSED', pageRefusalMessage(code, detail), false, code);
+}
+
+const RETRY_STATUS: Readonly<Record<PageRetryCode, FilesErrorStatus>> = {
+  page_timeout: 504,
+  site_unreachable: 502,
+  site_error: 502,
+  site_resting: 503,
+  robots_unavailable: 503,
+  too_many_reads: 429,
+};
+
+/** The page was not read this time, and may be next time. */
+function retryPage(code: PageRetryCode): FilesPageResult {
+  return failure(RETRY_STATUS[code], 'PAGE_NOT_READ', PAGE_RETRY_MESSAGES[code], true);
+}
+
 const UUID = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
@@ -238,6 +304,15 @@ const REQUEST = z.discriminatedUnion('action', [
     totalPages: COUNT,
     visionPages: COUNT,
     extractMs: z.number().min(0).max(86_400_000).optional(),
+    /** Milestone 5 part 2: the fetch these bytes came from, and the page's own title. */
+    fetchId: UUID.optional(),
+    title: z.string().max(2_000).optional(),
+  }),
+  z.object({
+    action: z.literal('fetch_page'),
+    requestId: UUID,
+    // The limit on an address is applied by the guard, so "too long" is a sentence.
+    url: z.string().max(8_192),
   }),
   z.object({
     action: z.literal('append'),
@@ -262,6 +337,8 @@ const REQUEST = z.discriminatedUnion('action', [
     byteSize: COUNT,
     reason: z.enum(REFUSAL_CODES),
     extractMs: z.number().min(0).max(86_400_000).optional(),
+    /** The fetch that handed the browser the page it then refused. */
+    fetchId: UUID.optional(),
   }),
 ]);
 
@@ -282,6 +359,11 @@ function toView(record: FileRecord): FileView {
     status: record.status,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
+    sourceUrl: record.sourceUrl,
+    sourceHost: record.sourceHost,
+    fetchedAt: record.fetchedAt,
+    valuesMissing: record.valuesMissing,
+    readAsSent: record.readAsSent,
   };
 }
 
@@ -366,6 +448,10 @@ function mapStoreError(error: AppError): FilesPageResult {
       return refuse('no_text');
     case 'too_long':
       return refuse('too_long');
+    case 'bad_receipt':
+      return failure(409, 'FETCH_EXPIRED', FILES_MESSAGES.readAgain, true);
+    case 'too_many_reads':
+      return retryPage('too_many_reads');
     case null:
       return failure(503, error.code, FILES_MESSAGES.storeDown, true);
   }
@@ -468,6 +554,31 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     return bad('Only a PDF or an image can have pages read as images.');
   }
 
+  // From a link (Milestone 5 part 2)? Then only against the server's own record of having
+  // fetched exactly these bytes. The database checks again, under a lock (FL007); this check
+  // is here so that each way of failing gets its own sentence.
+  let sourceHost: string | null = null;
+  if (request.fetchId !== undefined) {
+    const found = await deps.files.getFetch(request.fetchId);
+    if (!found.ok) {
+      log.error('fetch record unavailable for an upload', { error: found.error });
+      return failure(503, found.error.code, FILES_MESSAGES.storeDown, true);
+    }
+    const receipt = found.value;
+    // "Never fetched", "somebody else's" and "refused" are one answer: read it again.
+    const usable = receipt?.userId === user.userId && receipt.status === 'fetched' ? receipt : null;
+    if (usable?.finalHost == null) {
+      return failure(409, 'FETCH_EXPIRED', FILES_MESSAGES.readAgain, true);
+    }
+    if (usable.byteSize !== request.byteSize || usable.contentHash !== request.contentHash) {
+      return bad('What was sent is not the page that was fetched.');
+    }
+    sourceHost = usable.finalHost;
+  } else if (request.kind === 'html') {
+    // A web page that was uploaded rather than fetched is still refused (D83).
+    return refusedHere('active_content');
+  }
+
   let conversationId: string;
   if (request.conversationId === undefined || request.conversationId === null) {
     // Attaching first and asking second is the natural order, so an upload may open the
@@ -498,13 +609,21 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     conversationId,
     uploadedBy: user.userId,
     requestId: request.requestId,
-    name: sanitiseFileName(request.name),
+    // A page is named by its own title where it has one, and by its host where it has not;
+    // either way the words are the page's, and are cleaned like a stranger's file name.
+    name:
+      sourceHost === null
+        ? sanitiseFileName(request.name)
+        : sanitiseTitle(request.title ?? request.name, sourceHost),
     kind: request.kind,
     byteSize: request.byteSize,
     contentHash: request.contentHash,
     expectedPages: request.totalPages,
     visionPages: request.visionPages,
-    retentionDays: deps.config.retentionDays,
+    // A web page goes stale in a day (D95); a document reached by a link is a document.
+    retentionDays:
+      request.kind === 'html' ? deps.config.pageRetentionDays : deps.config.retentionDays,
+    ...(request.fetchId === undefined ? {} : { fetchId: request.fetchId }),
   });
   if (!begun.ok) {
     if (fileStoreReason(begun.error) === 'too_many_files') return refusedHere('too_many_files');
@@ -528,6 +647,7 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     extractMs: request.extractMs ?? null,
     resumed: begun.value.existing && !begun.value.duplicate,
     duplicate: begun.value.duplicate,
+    source: sourceHost === null ? 'upload' : 'link',
   });
   return {
     status: 200,
@@ -757,10 +877,199 @@ async function finish(ctx: Ctx, request: ActionRequest<'finish'>): Promise<Files
     visionPages: done.value.visionPages,
     totalMs: ctx.now().getTime() - new Date(file.createdAt).getTime(),
     outcome: done.value.duplicate ? 'duplicate' : done.value.already ? 'already' : 'attached',
+    source: stored.value.sourceHost === null ? 'upload' : 'link',
+    valuesMissing: stored.value.valuesMissing,
+    readAsSent: stored.value.readAsSent,
+    replaced: done.value.replaced,
   });
   return {
     status: 200,
-    body: { action: 'finish', duplicate: done.value.duplicate, file: toView(stored.value) },
+    body: {
+      action: 'finish',
+      duplicate: done.value.duplicate,
+      replaced: done.value.replaced,
+      file: toView(stored.value),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------
+// fetch_page (Milestone 5 part 2)
+// ---------------------------------------------------------------------------------------
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes.slice().buffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The last piece of an address, as a name for the reader: `rates.csv` is read as a table and
+ * `rates` as prose (web/src/lib/files/sniff.ts). From the address only, never from the page.
+ */
+export function fileNameFromUrl(url: PublicUrl): string {
+  const path = url.pathAndQuery.split('?')[0] ?? '';
+  const last =
+    path
+      .split('/')
+      .filter((piece) => piece !== '')
+      .pop() ?? '';
+  let decoded = last;
+  try {
+    decoded = decodeURIComponent(last);
+  } catch {
+    // Not valid percent-encoding: the raw piece is still a usable hint.
+  }
+  return decoded === '' ? url.host : sanitiseFileName(decoded);
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchPage(ctx: Ctx, request: ActionRequest<'fetch_page'>): Promise<FilesPageResult> {
+  const { deps, user, log } = ctx;
+  const fetchId = request.requestId;
+
+  // The address rules first. An address that would never be opened is not counted against
+  // anyone and not recorded: there is nothing to record but a refusal.
+  const parsed = parsePublicUrl(request.url);
+  if (!parsed.ok) {
+    log.info('page not read', {
+      userId: user.userId,
+      fetchId,
+      host: null,
+      outcome: parsed.refusal,
+      at: 'address',
+    });
+    return refusePage(parsed.refusal);
+  }
+  const url = parsed.url;
+
+  // May this read go ahead? Per person, and per host (SECURITY.md §10).
+  const claimInput = {
+    id: fetchId,
+    userId: user.userId,
+    url: url.href,
+    host: url.host,
+    perMinute: PAGE_LIMITS.readsPerMinute,
+    hostGapMs: PAGE_LIMITS.hostGapMs,
+  };
+  let claim = await deps.files.claimFetch(claimInput);
+  if (claim.ok && !claim.value.claimed && !claim.value.spent) {
+    // Somebody read this site a moment ago. Wait it out once rather than send him away.
+    await (deps.sleep ?? defaultSleep)(Math.min(claim.value.waitMs, PAGE_LIMITS.hostGapMs));
+    claim = await deps.files.claimFetch(claimInput);
+  }
+  if (!claim.ok) {
+    const reason = fileStoreReason(claim.error);
+    if (reason === 'too_many_reads') {
+      log.info('page not read', {
+        userId: user.userId,
+        fetchId,
+        host: url.host,
+        outcome: 'too_many_reads',
+        at: 'limit',
+      });
+    } else {
+      log.error('page read could not be claimed', { fetchId, host: url.host, error: claim.error });
+    }
+    return mapStoreError(claim.error);
+  }
+  if (!claim.value.claimed) {
+    const spent = claim.value.spent;
+    log.info('page not read', {
+      userId: user.userId,
+      fetchId,
+      host: url.host,
+      outcome: spent ? 'read_id_spent' : 'site_just_read',
+      at: 'limit',
+    });
+    // One id opens one page, once. A repeat opens nothing — it is not a way round the limits
+    // — and the browser is told to ask again, which it does under a new id.
+    return spent
+      ? failure(409, 'FETCH_EXPIRED', FILES_MESSAGES.readAgain, true)
+      : failure(429, 'PAGE_NOT_READ', FILES_MESSAGES.siteJustRead, true);
+  }
+
+  const result = await deps.pages.read(url.href);
+  const facts = result.facts;
+  // One line per read, whatever happened. Host, status, type, size, time, outcome — and
+  // whether there was a query, but never the query, the path or anything from the page.
+  const line = {
+    userId: user.userId,
+    fetchId,
+    host: url.host,
+    finalHost: facts.finalHost,
+    hops: facts.hops,
+    httpStatus: facts.httpStatus,
+    contentType: facts.contentType,
+    bytes: facts.bytes,
+    ms: facts.ms,
+    hadQuery: url.hasQuery,
+  };
+
+  if (!result.ok) {
+    const recorded = await deps.files.completeFetch({
+      id: fetchId,
+      userId: user.userId,
+      status: result.kind === 'refused' ? 'refused' : 'failed',
+      outcome: result.code,
+      finalHost: facts.finalHost,
+      httpStatus: facts.httpStatus,
+      contentType: facts.contentType,
+      hops: facts.hops,
+      durationMs: facts.ms,
+    });
+    if (!recorded.ok) {
+      log.error('page outcome not recorded', { fetchId, error: recorded.error });
+    }
+    log.info('page not read', { ...line, outcome: result.code, at: 'site' });
+    return result.kind === 'refused'
+      ? refusePage(result.code, result.detail)
+      : retryPage(result.code);
+  }
+
+  const { page } = result;
+  const contentHash = await sha256Hex(page.bytes);
+  const recorded = await deps.files.completeFetch({
+    id: fetchId,
+    userId: user.userId,
+    status: 'fetched',
+    outcome: null,
+    finalUrl: page.final.href,
+    finalHost: page.final.host,
+    httpStatus: facts.httpStatus,
+    contentType: page.contentType,
+    byteSize: page.bytes.length,
+    contentHash,
+    hops: facts.hops,
+    durationMs: facts.ms,
+  });
+  if (!recorded.ok || !recorded.value) {
+    // Without the record these bytes could never be attached. Better to say so now than
+    // to hand over a page that `begin` will then refuse.
+    log.error('page fetched but not recorded', {
+      fetchId,
+      host: url.host,
+      error: recorded.ok ? null : recorded.error,
+    });
+    return failure(503, 'PAGE_NOT_READ', FILES_MESSAGES.pageNotSaved, true);
+  }
+  log.info('page fetched', { ...line, outcome: 'fetched' });
+  return {
+    status: 200,
+    body: {
+      action: 'fetch_page',
+      fetchId,
+      host: page.final.host,
+      fileName: fileNameFromUrl(page.final),
+      contentType: page.contentType,
+      byteSize: page.bytes.length,
+      contentHash,
+    },
+    bytes: page.bytes,
   };
 }
 
@@ -789,7 +1098,10 @@ async function remove(ctx: Ctx, request: ActionRequest<'remove'>): Promise<Files
   return { status: 200, body: { action: 'remove', fileId: file.id, removed: removed.value } };
 }
 
-function refusedByBrowser(ctx: Ctx, request: ActionRequest<'refused'>): FilesPageResult {
+async function refusedByBrowser(
+  ctx: Ctx,
+  request: ActionRequest<'refused'>,
+): Promise<FilesPageResult> {
   ctx.log.info('file upload refused', {
     userId: ctx.user.userId,
     kind: request.kind,
@@ -797,7 +1109,22 @@ function refusedByBrowser(ctx: Ctx, request: ActionRequest<'refused'>): FilesPag
     reason: request.reason,
     extractMs: request.extractMs ?? null,
     at: 'browser',
+    ...(request.fetchId === undefined ? {} : { fetchId: request.fetchId, source: 'link' }),
   });
+  if (request.fetchId !== undefined) {
+    // The page was fetched and then found to be a paywall, a login page, nothing at all.
+    // Closing the record means those bytes can no longer be attached by anyone. Best effort:
+    // the refusal has been shown either way, and the record expires on its own.
+    const closed = await ctx.deps.files.completeFetch({
+      id: request.fetchId,
+      userId: ctx.user.userId,
+      status: 'refused',
+      outcome: request.reason,
+    });
+    if (!closed.ok) {
+      ctx.log.error('refused page not recorded', { fetchId: request.fetchId, error: closed.error });
+    }
+  }
   return { status: 200, body: { action: 'refused', logged: true } };
 }
 
@@ -835,6 +1162,8 @@ async function route(deps: FilesPageDeps, input: FilesPageInput): Promise<FilesP
       return estimate(ctx, request);
     case 'begin':
       return begin(ctx, request);
+    case 'fetch_page':
+      return fetchPage(ctx, request);
     case 'append':
       return append(ctx, request);
     case 'read_page':

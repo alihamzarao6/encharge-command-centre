@@ -451,6 +451,10 @@ describe('configuration and access', () => {
       retentionDays: 30,
       visionRoute: 'default',
       visionMaxTokens: 4096,
+      // Milestone 5 part 2 (D95, D96): a web page is kept one day, and says who is asking.
+      pageRetentionDays: 1,
+      pageUserAgent:
+        'FunddCommandCentre/1.0 (+https://fundd.com.au; reads one page when a signed-in user pastes its link)',
     });
     expect(loadFilesConfig({ FILES_CONTEXT_MAX_CHARS: ' ', FILES_VISION_ROUTE: '' })).toEqual({
       ok: true,
@@ -465,6 +469,8 @@ describe('configuration and access', () => {
         FILES_RETENTION_DAYS: '7',
         FILES_VISION_ROUTE: 'fast',
         FILES_VISION_MAX_TOKENS: '2048',
+        FILES_PAGE_RETENTION_DAYS: '3',
+        PAGES_USER_AGENT: 'ExampleReader/2.0 (+https://example.org/reader)',
       }),
     ).toEqual({
       ok: true,
@@ -473,6 +479,8 @@ describe('configuration and access', () => {
         retentionDays: 7,
         visionRoute: 'fast',
         visionMaxTokens: 2048,
+        pageRetentionDays: 3,
+        pageUserAgent: 'ExampleReader/2.0 (+https://example.org/reader)',
       },
     });
     for (const [name, value] of [
@@ -482,6 +490,15 @@ describe('configuration and access', () => {
       ['FILES_RETENTION_DAYS', 'forever'],
       ['FILES_VISION_MAX_TOKENS', '99999'],
       ['FILES_VISION_ROUTE', 'opus'],
+      ['FILES_PAGE_RETENTION_DAYS', '0'],
+      ['FILES_PAGE_RETENTION_DAYS', '31'],
+      // An agent with no contact address is the anonymous crawler the rules forbid.
+      ['PAGES_USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'],
+      ['PAGES_USER_AGENT', 'short'],
+      [
+        'PAGES_USER_AGENT',
+        `Reader (+https://example.org) ${String.fromCodePoint(13, 10)}X-Injected: 1`,
+      ],
     ] as const) {
       const result = loadFilesConfig({ [name]: value });
       expect(result.ok).toBe(false);

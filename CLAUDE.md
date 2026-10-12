@@ -126,6 +126,8 @@ npm run crm -- read     # M4 part 1: one READ-ONLY pass over the live Finance Pi
 npm run crm -- sync     # M4 part 1: full GoHighLevel → database sync (one transaction; `-- runs [--limit N]` lists recent runs)
 npm run files -- extract <file>   # M5 part 1: read a file with the app's own readers and print what came out (no network, no database)
 npm run files -- ask <file> "<q>" # M5 part 1: LIVE — one answer from that file through the chat's own request; `-- read <page.jpg>` one page image transcribed; `-- record` re-records the prompt-injection probes
+npm run pages -- check <url>      # M5 part 2: what the address rules and DNS say about a link — no request to the site
+npm run pages -- extract <file|url> # M5 part 2: read a page with the app's own readers and print what came out; `-- fetch <url>` the guarded fetch from THIS machine (host/status/bytes/outcome, never the page); `-- ask <file|url> "<q>"` and `-- unread "<message with a link>"` are LIVE
 npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
 npm run web:build       # static build → web/dist
 npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits

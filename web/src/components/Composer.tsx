@@ -1,7 +1,10 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 
 import { ACCEPT_ATTRIBUTE } from '../../../src/lib/files/limits.js';
-import { ATTACH_LABEL, RETENTION_HINT } from '../lib/filesView.js';
+import { ATTACH_LABEL, RETENTION_HINT, unreadAsk } from '../lib/filesView.js';
+import { onlyLinks } from '../lib/links.js';
+import { LinkStrip } from './LinkStrip.js';
+import type { ComposerLinks } from './useLinks.js';
 
 interface Props {
   readonly value: string;
@@ -22,6 +25,12 @@ interface Props {
    * waits — and this sentence says why, rather than a greyed-out button saying nothing.
    */
   readonly sendBlockedNote?: string | null;
+  /**
+   * Milestone 5 part 2: the links in the draft and what can be done about each. A link is
+   * never opened because it was typed; it is read when the person says so. Pressing Send
+   * with a link that has not been read asks once, here, before anything goes.
+   */
+  readonly links?: ComposerLinks;
 }
 
 export const MAX_MESSAGE_CHARS = 8_000;
@@ -40,9 +49,14 @@ export function Composer({
   autoFocus = false,
   onAttach,
   sendBlockedNote = null,
+  links,
 }: Props): ReactElement {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const readFirst = useRef<HTMLButtonElement>(null);
+  // The question about an unread link, asked for these words. Different words, no question.
+  const [askedFor, setAskedFor] = useState<string | null>(null);
+  const asking = askedFor !== null && askedFor === value;
 
   // Grow with the text up to a cap, so a long brief is visible without a tiny scrollbox.
   useEffect(() => {
@@ -56,18 +70,37 @@ export function Composer({
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
 
+  // The question is the next thing to answer: the keyboard goes to its first choice.
+  useEffect(() => {
+    if (asking) readFirst.current?.focus();
+  }, [asking]);
+
   const canSend =
     !disabled &&
     sendBlockedNote === null &&
     value.trim() !== '' &&
     value.length <= MAX_MESSAGE_CHARS;
 
+  const unread = (links?.offers ?? []).filter((offer) => offer.state === 'unread');
+
+  function submit(): void {
+    if (!canSend) return;
+    if (unread.length > 0 && !asking) {
+      setAskedFor(value);
+      return;
+    }
+    setAskedFor(null);
+    onSend();
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key === 'Enter' && !event.shiftKey && enterSends()) {
       event.preventDefault();
-      if (canSend) onSend();
+      submit();
     }
   }
+
+  const ask = asking && unread.length > 0 ? unreadAsk(unread.length, !onlyLinks(value)) : null;
 
   return (
     <>
@@ -76,11 +109,52 @@ export function Composer({
           {sendBlockedNote}
         </p>
       )}
+      {links !== undefined && (
+        <LinkStrip
+          offers={links.offers}
+          more={links.more}
+          onRead={links.onRead}
+          disabled={disabled}
+        />
+      )}
+      {links?.notSent != null && (
+        <p className="composer__note composer__note--problem" role="alert" data-testid="not-sent">
+          {links.notSent}
+        </p>
+      )}
+      {ask !== null && links !== undefined && (
+        <div className="composer__ask" role="alert" data-testid="link-ask">
+          <p>{ask.text}</p>
+          <div className="composer__ask-actions">
+            <button
+              ref={readFirst}
+              type="button"
+              className="button button--small button--primary"
+              onClick={() => {
+                setAskedFor(null);
+                links.onReadThenSend(unread.map((offer) => offer.link.url));
+              }}
+            >
+              {ask.read}
+            </button>
+            <button
+              type="button"
+              className="button button--small"
+              onClick={() => {
+                setAskedFor(null);
+                onSend();
+              }}
+            >
+              {ask.skip}
+            </button>
+          </div>
+        </div>
+      )}
       <form
         className="composer"
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSend) onSend();
+          submit();
         }}
       >
         {onAttach !== undefined && (

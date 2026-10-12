@@ -28,6 +28,14 @@
  * turn: the person asked about a file, and an answer written without it would be a guess
  * presented as a reading.
  *
+ * Milestone 5 part 2: a page read from a link is one of those files and arrives the same way.
+ * What this handler adds is the other half — the link that was NOT read. Whenever the turn
+ * (this message, or an earlier one of the person's) contains a web address, a short rule goes
+ * in the system prompt: a link is only text, the only pages read are the ones in the
+ * documents block, and a question about any other is answered "I have not opened that" —
+ * never from the address and never from what the model remembers of the site. It is sent
+ * with or without attached files, because the link that was never read is the usual case.
+ *
  * An empty reply is an error, not a turn. Part 5 found Sonnet 5 spending the whole output
  * budget on adaptive thinking and returning no text (D39); the metered call is recorded by
  * client.ts, but nothing is saved to `messages` and the caller is told, so the interface
@@ -49,6 +57,7 @@ import { titleFromFirstMessage } from '../memory/naming.js';
 import { SHARED_MEMORY_SCOPE } from '../memory/privacy.js';
 import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
 import type { DocumentTurnSummary, TurnDocumentContext, TurnDocuments } from '../files/context.js';
+import { UNREAD_LINK_RULES, mentionsLink } from '../files/rules.js';
 
 export interface ConversationRow {
   readonly id: string;
@@ -359,6 +368,26 @@ type Prepared =
   | { readonly ok: true; readonly value: PreparedTurn }
   | { readonly ok: false; readonly result: ChatTurnResult };
 
+/**
+ * The rules this turn owes beyond the voice: those for attached documents (when the
+ * conversation has, or had, any), and the one about links whenever the person's words in
+ * this turn's context contain a web address. Undefined when neither applies, so an ordinary
+ * turn's request is byte for byte what it was.
+ */
+export function turnRules(prepared: {
+  readonly message: string;
+  readonly history: readonly HistoryMessage[];
+  readonly documents: TurnDocumentContext | null;
+}): string | undefined {
+  const linked =
+    mentionsLink(prepared.message) ||
+    prepared.history.some((entry) => entry.role === 'user' && mentionsLink(entry.content));
+  const parts = [prepared.documents?.rules ?? null, linked ? UNREAD_LINK_RULES : null].filter(
+    (part): part is string => part !== null,
+  );
+  return parts.length === 0 ? undefined : parts.join('\n\n');
+}
+
 function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
   const documents = prepared.documents;
   const turn: ChatMessage[] = [...prepared.history, { role: 'user', content: prepared.message }];
@@ -366,7 +395,7 @@ function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRe
     route: 'default',
     system: (deps.systemBlocks ?? buildSystemBlocks)(
       prepared.recall?.belowBreakpoint ?? undefined,
-      documents?.rules ?? undefined,
+      turnRules(prepared),
     ),
     // The documents lead the conversation as a user message of their own: a file that goes
     // in whole is then the same bytes at the same place on every turn, which is what lets

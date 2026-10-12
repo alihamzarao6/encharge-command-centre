@@ -321,6 +321,114 @@ Notes:
 - **Changing the 30 days:** `FILES_RETENTION_DAYS` on `files`. It applies to files attached
   after the change; existing rows keep the date they were given.
 
+### 1f. Deploying page reading (Milestone 5 part 2) — and the order every deploy now follows
+
+One migration, a changed `files`, a changed `chat`, and the web app. No new function, no new
+secret, no new service.
+
+**The order, and why it is this one.** Vercel deploys the web app on **every push to
+`main`** — the push *is* the web deploy. Part 1 was pushed first and its web app was live
+before its backend (12 Oct). So `main` is pushed **last**, and CI is run on a branch first:
+
+```bash
+# 1. CI before anything is live. Every branch push runs all three CI jobs (.github/workflows/ci.yml).
+git switch -c m5-part-2 && git push -u origin m5-part-2
+#    Wait for green with ZERO skipped. This is the first run of migration 20261012020000 from
+#    zero and of tests/integration/web-pages.test.ts + tests/security/web-pages.test.ts.
+#    (Vercel may build a preview for the branch. A preview is not production; leave it.)
+
+# 2. The database. Safe ahead of the functions: the deployed `files` and `chat` keep working
+#    against it (the two changed functions took new parameters WITH defaults, passed by name).
+supabase db push                 # 20261012020000 — source columns, web_fetches, claim/complete,
+                                 # begin + finish recreated, the purge extended
+
+# 3. The functions. Safe ahead of the web app: the old web app does not send what is new.
+npm run functions:bundle
+supabase functions deploy files --no-verify-jwt    # gains fetch_page; begin takes a fetch id
+supabase functions deploy chat --no-verify-jwt     # a turn's rules now cover pages and links
+
+# 4. Check the backend BEFORE the web app points people at it (below).
+
+# 5. The web app: this push is the deploy.
+git switch main && git merge --ff-only m5-part-2 && git push origin main
+```
+
+**Step 2 check** (SQL editor):
+
+```sql
+select count(*) from supabase_migrations.schema_migrations;            -- 21
+select relrowsecurity, relforcerowsecurity from pg_class where relname = 'web_fetches';  -- t | t
+select count(*) from pg_policies where tablename = 'web_fetches';      -- 0 — deliberate
+select jobname, active from cron.job where jobname = 'purge-conversation-files';  -- still one row, true
+```
+
+**Step 4 check.** `supabase functions list` shows new versions of `files` and `chat`. Then,
+signed in to the *still-old* web app: attach a file and ask about it. That is part 1 running
+on the new database and the new functions; if it works, nothing was broken on the way.
+
+**After step 5**, in the app, with the reviewer:
+
+1. Paste `https://www.rba.gov.au/statistics/cash-rate/` with a question. A row appears above
+   the box; **nothing is fetched until "Read this page" is pressed** (the `files` log shows no
+   line). Press it. The page appears in the thread with its title, `rba.gov.au`, the time, and
+   "Removed tomorrow". Ask the question: the answer says when the page was read.
+2. `supabase functions logs files` — one `page fetched` line: host, status 200, type, bytes,
+   milliseconds, `hadQuery`. **No path, no title, no text.** If any of those is there, stop.
+3. Paste an ANZ, CBA or ING rates address and read it: "Read in part: N figures…" under the
+   title, and the assistant declines to give a rate from it.
+4. Paste `https://www.afr.com/…` (any article): refused as a paywall, in a sentence.
+5. Type `http://169.254.169.254/` and `https://localhost/`: each says why beside the link and
+   offers no button.
+6. Send a message containing a link **without** reading it ("Send without reading"): the
+   assistant says it has not opened the page and gives no figure.
+
+Notes:
+
+- **The read is pinned to Sydney.** The web app calls `files` with
+  `?forceFunctionRegion=ap-southeast-2` for this one action. Sites answer by where a request
+  comes from (REIWA: 200 from Sydney, 403 from where the platform ran it by default). If a
+  site that read yesterday is refused today, check the region in the function's log before
+  anything else.
+- **Two settings, both optional:** `FILES_PAGE_RETENTION_DAYS` (default 1) and
+  `PAGES_USER_AGENT`, on `files`. The agent's contact address is the client's own site —
+  **confirm that with him** (owed since 12 Oct). Nothing else about the fetch is a setting.
+- **No new secret, and nothing leaves that did not before** except the request to the site
+  itself: no search, scraping or rendering service.
+- **"Why could it not read this page?"** — first `npm run pages -- check <url>` (the address
+  rules and DNS; no request to the site). Then the `files` log around the time he tried:
+  `page not read` carries `outcome` — `robots_ai_disallowed`, `page_blocked`, `page_timeout`,
+  `page_too_large`, … — and `at` (`address`, `limit`, `site`). A page that was fetched and
+  then refused by the reader in his browser logs `file upload refused` with the reason
+  (`page_paywall`, `page_forwards`, `page_no_text`, `page_malformed`, …). To see what the reader makes of a
+  page: `npm run pages -- extract <url>` — but **that fetches from your machine, not from
+  Sydney**, and sites answer the two differently; it shows what the reader does with the
+  bytes, not what the app was sent.
+- **Pages he will paste that cannot be read**, so nobody investigates them as faults: the
+  rate figures on **CBA, ANZ and ING** (read in part — the site fills them in by script);
+  **realestate.com.au** (refuses every automated reader); **AFR, The West** and other
+  paywalled news; **ABC News** and any site whose robots.txt tells AI assistants to stay out;
+  **anything behind a login** (a lender's broker portal, an aggregator's platform, his CRM).
+  The way round is always the same and the product says it: open it himself, save as PDF,
+  attach — part 1 reads that.
+- **"Read as the site sent it" under a page.** The page shows nothing until its scripts run
+  (one lender fades every section in), so it was read with its `opacity:0` declarations
+  ignored. What was read can differ from what he sees — in particular it can include text
+  the page never shows. It is not a fault. The assistant is told the same and says so; tell
+  him to check anything that matters against the page, or to save it as a PDF and attach
+  that, which is read as he sees it.
+- **"It gave an old rate."** A page is as true as when it was read; the thread shows the
+  time, and the assistant is told to say it. A page is removed after a day. "Read again" on
+  the link replaces the copy; if nothing changed it says so.
+- **Someone is hammering a site through us.** They cannot: ten reads a minute per person and
+  two seconds between reads of one site are enforced in the database. To see who has been
+  reading what in the last day: `select user_id, requested_host, status, outcome, created_at
+  from web_fetches order by created_at desc limit 50;` (service role only; rows last a day).
+  To stop one person, deactivate the account (Team page).
+- **Rolling back.** Redeploy the previous `files` and `chat` (`git checkout fd1a7ec --
+  src && npm run functions:bundle`, deploy, then restore the tree) and revert the web app in
+  Vercel. The migration can stay: the old functions run against it. To remove it, the
+  reverse is written at the top of the migration file.
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.
@@ -642,10 +750,14 @@ parked below.)*
 
 ## 10. Adding a new website to read (Milestone 5 — was Stage 4, D77)
 
-Reading is on demand — point the assistant at a URL. There is no source registry to extend.
-If a page cannot be read: check `robots.txt` (honoured, always), the SSRF rules (SECURITY
-§10 — private ranges are rejected by design), and the size / timeout caps. *(The "adding a new
-data source" adapter procedure for the research engine is parked below.)*
+Reading is on demand — he pastes a link and presses "Read this page" (Milestone 5 part 2,
+built 12 Oct 2026). There is no source registry to extend and no list of allowed sites: any
+public `https` page may be asked for, one at a time. If a page cannot be read, the product
+says why in a sentence; §1f lists how to find out more (`npm run pages -- check <url>`, the
+`files` log's `outcome`) and the kinds of page that will never read. The rules themselves —
+`robots.txt` honoured always, private and reserved addresses refused by design, the size and
+time caps — are SECURITY §10 and are not settings. *(The "adding a new data source" adapter
+procedure for the research engine is parked below.)*
 
 ---
 

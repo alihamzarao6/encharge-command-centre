@@ -7,8 +7,12 @@
  *
  * The database decides the things that must not be decided twice: whether an upload is
  * complete, whether a conversation is full, whether the same file is already attached. This
- * adapter turns its answers (SQLSTATE FL001–FL006, 02000) into a `reason` the endpoint maps
- * to a sentence.
+ * adapter turns its answers (SQLSTATE FL001–FL007, WF001, 02000) into a `reason` the endpoint
+ * maps to a sentence.
+ *
+ * Milestone 5 part 2 adds the server's record of each page it fetched (`web_fetches`,
+ * migration 20261012020000): claimed before the fetch, completed after it, and the only place
+ * an attachment's address and read time are ever taken from.
  *
  * Nothing here ever puts a file's name or a word of its text into an error or a log field.
  * Postgres error messages from these functions carry ids and counts only, by construction.
@@ -17,6 +21,7 @@ import { createClient, type PostgrestError, type SupabaseClient } from '@supabas
 
 import { fetchWithTimeout, type SupabaseAuthConfig } from '../auth/clients.js';
 import { AppError, NetworkError, ensureError, err, ok, type Result } from '../errors.js';
+import { NOT_LOADED_MARK, READ_AS_SENT_MARK } from '../pages/limits.js';
 import type { TurnFile, TurnFileSource, TurnPage } from './context.js';
 import {
   EXTRACTION_METHODS,
@@ -54,6 +59,30 @@ type FileDbRow = {
   removed_at: string | null;
   removed_by: string | null;
   removed_reason: string | null;
+  source_url: string | null;
+  source_host: string | null;
+  fetched_at: string | null;
+  values_missing: number;
+  read_as_sent: boolean;
+};
+
+type FetchDbRow = {
+  id: string;
+  user_id: string;
+  requested_url: string;
+  requested_host: string;
+  final_url: string | null;
+  final_host: string | null;
+  status: string;
+  outcome: string | null;
+  http_status: number | null;
+  content_type: string | null;
+  byte_size: number | null;
+  content_hash: string | null;
+  hops: number | null;
+  duration_ms: number | null;
+  created_at: string;
+  fetched_at: string | null;
 };
 
 type PageDbRow = {
@@ -83,6 +112,12 @@ export type FilesDatabase = {
         Update: Partial<PageDbRow>;
         Relationships: [];
       };
+      web_fetches: {
+        Row: FetchDbRow;
+        Insert: Partial<FetchDbRow>;
+        Update: Partial<FetchDbRow>;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -100,6 +135,7 @@ export type FilesDatabase = {
           p_retention_days: number;
           p_max_files: number;
           p_abandoned_minutes: number;
+          p_fetch_id?: string;
         };
         Returns: {
           id: string;
@@ -115,7 +151,13 @@ export type FilesDatabase = {
         Returns: number;
       };
       finish_conversation_file: {
-        Args: { p_file_id: string; p_actor: string; p_max_chars: number };
+        Args: {
+          p_file_id: string;
+          p_actor: string;
+          p_max_chars: number;
+          p_gap_mark?: string;
+          p_sent_mark?: string;
+        };
         Returns: {
           id: string;
           duplicate: boolean;
@@ -124,7 +166,36 @@ export type FilesDatabase = {
           char_count: number;
           vision_pages: number;
           confidence: number | null;
+          replaced: number;
         }[];
+      };
+      claim_web_fetch: {
+        Args: {
+          p_id: string;
+          p_user_id: string;
+          p_url: string;
+          p_host: string;
+          p_per_minute: number;
+          p_host_gap_ms: number;
+        };
+        Returns: { claimed: boolean; existing: boolean; wait_ms: number }[];
+      };
+      complete_web_fetch: {
+        Args: {
+          p_id: string;
+          p_user_id: string;
+          p_status: string;
+          p_outcome: string | null;
+          p_final_url: string | null;
+          p_final_host: string | null;
+          p_http_status: number | null;
+          p_content_type: string | null;
+          p_byte_size: number | null;
+          p_content_hash: string | null;
+          p_hops: number | null;
+          p_duration_ms: number | null;
+        };
+        Returns: boolean;
       };
       remove_conversation_file: {
         Args: { p_file_id: string; p_actor: string; p_reason: string };
@@ -182,6 +253,14 @@ export interface FileView {
   readonly status: FileStatus;
   readonly createdAt: string;
   readonly expiresAt: string;
+  /** From a link: the address read, its host and when. All null for an uploaded file. */
+  readonly sourceUrl: string | null;
+  readonly sourceHost: string | null;
+  readonly fetchedAt: string | null;
+  /** Places the page left for a script to fill in, found empty. */
+  readonly valuesMissing: number;
+  /** The page shows nothing until its scripts run, and was read as the site sent it. */
+  readonly readAsSent: boolean;
 }
 
 /** A file as the endpoint needs it to decide what a request may do. */
@@ -203,6 +282,8 @@ export interface BeginFileInput {
   readonly expectedPages: number;
   readonly visionPages: number;
   readonly retentionDays: number;
+  /** Set for a page that was fetched: the database checks the attachment against it. */
+  readonly fetchId?: string;
 }
 
 export interface BeginFileResult {
@@ -241,6 +322,57 @@ export interface FinishFileResult {
   readonly pageCount: number;
   readonly charCount: number;
   readonly visionPages: number;
+  /** Older reads of the same address that this one replaced. */
+  readonly replaced: number;
+}
+
+/** What the server recorded about one page it was asked to read. */
+export interface FetchReceipt {
+  readonly id: string;
+  readonly userId: string;
+  readonly status: 'started' | 'fetched' | 'refused' | 'failed';
+  readonly finalUrl: string | null;
+  readonly finalHost: string | null;
+  readonly byteSize: number | null;
+  readonly contentHash: string | null;
+  readonly fetchedAt: string | null;
+}
+
+export interface ClaimFetchInput {
+  readonly id: string;
+  readonly userId: string;
+  readonly url: string;
+  readonly host: string;
+  readonly perMinute: number;
+  readonly hostGapMs: number;
+}
+
+export type ClaimFetchResult =
+  /** Go ahead: this read is now on record. */
+  | { readonly claimed: true }
+  /**
+   * This id has already been used for a read. One id opens one page, once: were a repeat let
+   * through, the same id sent again and again would be unlimited requests to a site, past
+   * both limits. The caller opens nothing; the browser asks again under a new id.
+   */
+  | { readonly claimed: false; readonly spent: true }
+  /** The host was read a moment ago: wait this long and ask again. */
+  | { readonly claimed: false; readonly spent: false; readonly waitMs: number };
+
+export interface CompleteFetchInput {
+  readonly id: string;
+  readonly userId: string;
+  readonly status: 'fetched' | 'refused' | 'failed';
+  /** A reason code. Never a sentence. */
+  readonly outcome: string | null;
+  readonly finalUrl?: string | null;
+  readonly finalHost?: string | null;
+  readonly httpStatus?: number | null;
+  readonly contentType?: string | null;
+  readonly byteSize?: number | null;
+  readonly contentHash?: string | null;
+  readonly hops?: number | null;
+  readonly durationMs?: number | null;
 }
 
 /** Why the database refused. Read by the endpoint to choose a status and a sentence. */
@@ -251,7 +383,11 @@ export type FileStoreReason =
   | 'page_out_of_range'
   | 'incomplete'
   | 'no_text'
-  | 'too_long';
+  | 'too_long'
+  /** The attachment does not match the server's record of the fetch. */
+  | 'bad_receipt'
+  /** This person has opened too many pages in the last minute. */
+  | 'too_many_reads';
 
 const REASON_BY_SQLSTATE: Readonly<Record<string, FileStoreReason>> = {
   '02000': 'not_found',
@@ -261,6 +397,8 @@ const REASON_BY_SQLSTATE: Readonly<Record<string, FileStoreReason>> = {
   FL004: 'incomplete',
   FL005: 'no_text',
   FL006: 'too_long',
+  FL007: 'bad_receipt',
+  WF001: 'too_many_reads',
 };
 
 export function fileStoreReason(error: AppError): FileStoreReason | null {
@@ -282,6 +420,11 @@ export interface FileStore extends TurnFileSource {
   finish(fileId: string, actor: string): Promise<Result<FinishFileResult>>;
   remove(fileId: string, actor: string): Promise<Result<boolean>>;
   purge(): Promise<Result<{ readonly abandoned: number; readonly expired: number }>>;
+  /** May this read go ahead? Applies the per-person and per-host limits atomically. */
+  claimFetch(input: ClaimFetchInput): Promise<Result<ClaimFetchResult>>;
+  /** How a read ended. False when the record is not this person's. */
+  completeFetch(input: CompleteFetchInput): Promise<Result<boolean>>;
+  getFetch(fetchId: string): Promise<Result<FetchReceipt | null>>;
 }
 
 function mapPostgrest(error: PostgrestError, operation: string): AppError {
@@ -325,7 +468,7 @@ function asLegibility(value: string): Legibility {
 }
 
 const FILE_COLUMNS =
-  'id, conversation_id, user_id, scope, uploaded_by, name, kind, byte_size, expected_pages, vision_pages, page_count, char_count, status, created_at, expires_at';
+  'id, conversation_id, user_id, scope, uploaded_by, name, kind, byte_size, expected_pages, vision_pages, page_count, char_count, status, created_at, expires_at, source_url, source_host, fetched_at, values_missing, read_as_sent';
 
 type FileColumns = Pick<
   FileDbRow,
@@ -344,6 +487,11 @@ type FileColumns = Pick<
   | 'status'
   | 'created_at'
   | 'expires_at'
+  | 'source_url'
+  | 'source_host'
+  | 'fetched_at'
+  | 'values_missing'
+  | 'read_as_sent'
 >;
 
 function toRecord(row: FileColumns): Result<FileRecord> {
@@ -372,6 +520,11 @@ function toRecord(row: FileColumns): Result<FileRecord> {
     status,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
+    sourceUrl: row.source_url,
+    sourceHost: row.source_host,
+    fetchedAt: row.fetched_at,
+    valuesMissing: row.values_missing,
+    readAsSent: row.read_as_sent,
     expectedPages: row.expected_pages,
     conversationAuthorId: row.user_id,
     scope: row.scope,
@@ -403,6 +556,7 @@ export function supabaseFileStore(
           p_retention_days: input.retentionDays,
           p_max_files: FILE_LIMITS.maxFilesPerConversation,
           p_abandoned_minutes: FILE_LIMITS.abandonedAfterMinutes,
+          ...(input.fetchId === undefined ? {} : { p_fetch_id: input.fetchId }),
         });
         if (error !== null) return err(mapPostgrest(error, 'begin_conversation_file'));
         const row = data[0];
@@ -509,6 +663,8 @@ export function supabaseFileStore(
           p_file_id: fileId,
           p_actor: actor,
           p_max_chars: FILE_LIMITS.maxFileChars,
+          p_gap_mark: NOT_LOADED_MARK,
+          p_sent_mark: READ_AS_SENT_MARK,
         });
         if (error !== null) return err(mapPostgrest(error, 'finish_conversation_file'));
         const row = data[0];
@@ -522,6 +678,7 @@ export function supabaseFileStore(
           pageCount: row.page_count,
           charCount: row.char_count,
           visionPages: row.vision_pages,
+          replaced: row.replaced,
         });
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'finish_conversation_file'));
@@ -559,7 +716,9 @@ export function supabaseFileStore(
       try {
         const files = await client
           .from('conversation_files')
-          .select('id, name, kind, status, created_at, expires_at')
+          .select(
+            'id, name, kind, status, created_at, expires_at, source_host, fetched_at, values_missing, read_as_sent',
+          )
           .eq('conversation_id', conversationId)
           .in('status', ['ready', 'removed'])
           .order('created_at', { ascending: false })
@@ -567,6 +726,11 @@ export function supabaseFileStore(
         if (files.error !== null)
           return err(mapPostgrest(files.error, 'conversation_files.forTurn'));
         const everHadFile = files.data.length > 0;
+        // A removed page keeps its kind and loses its address, so `html` is what says a page
+        // was ever read here; a live document from a link still has its host.
+        const everHadPage = files.data.some(
+          (row) => row.kind === 'html' || typeof row.source_host === 'string',
+        );
         // Past its date but not yet purged: already not usable. The schedule removes the row;
         // this makes the promise true in the hours before it runs.
         // Compared as instants, not as text: the database writes "+00:00" where JavaScript
@@ -576,7 +740,7 @@ export function supabaseFileStore(
           (row) =>
             row.status === 'ready' && Date.parse(row.expires_at) > cutoff && isFileKind(row.kind),
         );
-        if (live.length === 0) return ok({ files: [], everHadFile });
+        if (live.length === 0) return ok({ files: [], everHadFile, everHadPage });
 
         const byFile = new Map<string, TurnPage[]>();
         const ids = live.map((row) => row.id);
@@ -616,11 +780,104 @@ export function supabaseFileStore(
             kind: row.kind,
             createdAt: row.created_at,
             pages: byFile.get(row.id) ?? [],
+            ...(typeof row.source_host === 'string' && typeof row.fetched_at === 'string'
+              ? {
+                  source: {
+                    host: row.source_host,
+                    fetchedAt: row.fetched_at,
+                    valuesMissing: row.values_missing,
+                    readAsSent: row.read_as_sent,
+                  },
+                }
+              : {}),
           });
         }
-        return ok({ files: out, everHadFile });
+        return ok({ files: out, everHadFile, everHadPage });
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'conversation_files.forTurn'));
+      }
+    },
+
+    claimFetch: async (input) => {
+      try {
+        const { data, error } = await client.rpc('claim_web_fetch', {
+          p_id: input.id,
+          p_user_id: input.userId,
+          p_url: input.url,
+          p_host: input.host,
+          p_per_minute: input.perMinute,
+          p_host_gap_ms: input.hostGapMs,
+        });
+        if (error !== null) return err(mapPostgrest(error, 'claim_web_fetch'));
+        const row = data[0];
+        if (row === undefined) {
+          return err(new AppError('INTERNAL', 'claim_web_fetch returned no row'));
+        }
+        if (row.claimed) return ok({ claimed: true });
+        return ok(
+          row.existing
+            ? { claimed: false, spent: true }
+            : { claimed: false, spent: false, waitMs: Math.max(0, row.wait_ms) },
+        );
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'claim_web_fetch'));
+      }
+    },
+
+    completeFetch: async (input) => {
+      try {
+        const { data, error } = await client.rpc('complete_web_fetch', {
+          p_id: input.id,
+          p_user_id: input.userId,
+          p_status: input.status,
+          p_outcome: input.outcome,
+          p_final_url: input.finalUrl ?? null,
+          p_final_host: input.finalHost ?? null,
+          p_http_status: input.httpStatus ?? null,
+          p_content_type: input.contentType ?? null,
+          p_byte_size: input.byteSize ?? null,
+          p_content_hash: input.contentHash ?? null,
+          p_hops: input.hops ?? null,
+          p_duration_ms: input.durationMs ?? null,
+        });
+        if (error !== null) return err(mapPostgrest(error, 'complete_web_fetch'));
+        return ok(data);
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'complete_web_fetch'));
+      }
+    },
+
+    getFetch: async (fetchId) => {
+      try {
+        const { data, error } = await client
+          .from('web_fetches')
+          .select('id, user_id, status, final_url, final_host, byte_size, content_hash, fetched_at')
+          .eq('id', fetchId)
+          .limit(1);
+        if (error !== null) return err(mapPostgrest(error, 'web_fetches.get'));
+        const row = data[0];
+        if (row === undefined) return ok(null);
+        const status = row.status;
+        if (
+          status !== 'started' &&
+          status !== 'fetched' &&
+          status !== 'refused' &&
+          status !== 'failed'
+        ) {
+          return err(new AppError('INTERNAL', 'web_fetches row outside its check constraints'));
+        }
+        return ok({
+          id: row.id,
+          userId: row.user_id,
+          status,
+          finalUrl: row.final_url,
+          finalHost: row.final_host,
+          byteSize: row.byte_size,
+          contentHash: row.content_hash,
+          fetchedAt: row.fetched_at,
+        });
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'web_fetches.get'));
       }
     },
   };

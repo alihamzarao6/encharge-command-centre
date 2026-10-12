@@ -13,6 +13,7 @@
 import { FILE_LIMITS, refusal, type FileKind } from '../../../../src/lib/files/limits.js';
 import { sanitiseExtractedText, sanitiseFileName } from '../../../../src/lib/files/text.js';
 import { docxExtractor } from './docx.js';
+import { htmlExtractor } from './html.js';
 import { pdfExtractor } from './pdf.js';
 import { csvExtractor, textExtractor } from './plain.js';
 import { sniff, type ImageMediaType } from './sniff.js';
@@ -65,6 +66,8 @@ export const EXTRACTORS: Readonly<Record<Exclude<FileKind, 'image'>, FileExtract
   xlsx: xlsxExtractor,
   csv: csvExtractor,
   text: textExtractor,
+  // Milestone 5 part 2: a web page, reached only by a link the server fetched (sniff.ts).
+  html: htmlExtractor,
 };
 
 /**
@@ -121,7 +124,10 @@ export async function extractFile(
     return refused(null, refusal('too_large', bytes.length));
   }
   const name = sanitiseFileName(input.name);
-  const sniffed = sniff(bytes, name);
+  const sniffed = sniff(bytes, name, {
+    fromLink: input.fromLink === true,
+    contentType: input.contentType ?? null,
+  });
   if (!sniffed.ok) return refused(sniffed.kind, sniffed.refusal);
 
   const extractor =
@@ -145,7 +151,7 @@ export async function extractFile(
     extraction.dispose();
     return refused(extraction.kind, refusal(code, detail));
   };
-  if (totalPages === 0) return fail('no_text');
+  if (totalPages === 0) return fail(extraction.kind === 'html' ? 'page_no_text' : 'no_text');
   if (chars > FILE_LIMITS.maxFileChars) return fail('too_long');
   if (totalPages > FILE_LIMITS.maxPages) {
     // Only a PDF has pages of its own. Everything else was cut into parts here, and telling

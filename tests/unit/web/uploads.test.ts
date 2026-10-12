@@ -97,6 +97,12 @@ const view = (id: string, conversationId = CONV, pageCount = 2): AttachedFile =>
   status: 'ready',
   createdAt: '2026-10-12T04:00:00Z',
   expiresAt: '2026-11-11T04:00:00Z',
+  sourceUrl: null,
+  sourceHost: null,
+  fetchedAt: null,
+  valuesMissing: 0,
+  readAsSent: false,
+  removedReason: null,
 });
 
 const ESTIMATE: VisionEstimate = {
@@ -164,6 +170,8 @@ function rig(conversationId: string | null = CONV): Rig {
         return Promise.resolve(next ?? textDoc());
       },
       hash: () => Promise.resolve('a'.repeat(64)),
+      // These tests attach files; links are tests/unit/web/uploads-links.test.ts.
+      fetchPage: () => Promise.reject(new Error('uploads.test.ts does not read links')),
       call: <R extends FilesRequest>(request: R): Promise<FilesOutcome<ReplyFor<R['action']>>> => {
         r.requests.push(request);
         if (r.holdWhen(request)) {

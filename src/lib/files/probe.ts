@@ -180,11 +180,15 @@ export interface ProbeRequest {
  * One question about one file, as a chat turn in a conversation with no history would send
  * it: the voice prefix (cached), the document rules, the wrapped document as a user message
  * of its own, then the question.
+ *
+ * `rules` is the conversation's rules block. A page read from a link sends the web rules as
+ * well (context.ts `rulesFor`); a file sends the document rules alone, which is the default.
  */
 export function probeRequest(
   file: TurnFile,
   question: string,
   budgetChars: number = DEFAULT_CONTEXT_MAX_CHARS,
+  rules: string = DOCUMENT_RULES,
 ): ProbeRequest {
   const built = buildDocumentBlock(
     [file],
@@ -196,7 +200,7 @@ export function probeRequest(
     block: built.block,
     request: {
       route: 'default',
-      system: buildSystemBlocks(undefined, DOCUMENT_RULES),
+      system: buildSystemBlocks(undefined, rules),
       messages:
         built.block === null
           ? turn

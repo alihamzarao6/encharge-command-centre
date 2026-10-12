@@ -22,6 +22,7 @@ import { CANARY_NAME, CANARY_TEXT, CONV_ID, HASH, USER_ID } from './helpers.js';
 
 const CONFIG = { url: 'http://stack.test', anonKey: 'anon', serviceRoleKey: 'service' };
 const FILE_ID = 'f1000000-0000-4000-8000-000000000001';
+const FETCH_ID = 'f2000000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-10-12T04:00:00Z');
 
 interface Seen {
@@ -96,6 +97,11 @@ const FILE_ROW = {
   status: 'ready',
   created_at: '2026-10-12T03:00:00Z',
   expires_at: '2026-11-11T03:00:00Z',
+  source_url: null,
+  source_host: null,
+  fetched_at: null,
+  values_missing: 0,
+  read_as_sent: false,
 };
 
 const BEGIN = {
@@ -348,6 +354,7 @@ describe('finish, remove, purge, get', () => {
               char_count: 40,
               vision_pages: 1,
               confidence: 0.9,
+              replaced: 1,
             },
           ])
         : undefined,
@@ -361,12 +368,17 @@ describe('finish, remove, purge, get', () => {
         pageCount: 2,
         charCount: 40,
         visionPages: 1,
+        replaced: 1,
       },
     });
     expect(JSON.parse(seen[0]?.body ?? '{}')).toEqual({
       p_file_id: FILE_ID,
       p_actor: USER_ID,
       p_max_chars: FILE_LIMITS.maxFileChars,
+      // What the reader writes where a page left a figure for a script to fill in.
+      p_gap_mark: '[not in the page as fetched]',
+      // And at the top of a page it read as the site sent it.
+      p_sent_mark: '[read as the site sent it]',
     });
   });
 
@@ -422,11 +434,44 @@ describe('finish, remove, purge, get', () => {
         status: 'ready',
         createdAt: '2026-10-12T03:00:00Z',
         expiresAt: '2026-11-11T03:00:00Z',
+        sourceUrl: null,
+        sourceHost: null,
+        fetchedAt: null,
+        valuesMissing: 0,
+        readAsSent: false,
         expectedPages: 2,
         conversationAuthorId: USER_ID,
         scope: 'workspace',
       },
     });
+    // A page read from a link carries where it came from and when, as the server recorded it.
+    stub(() =>
+      json([
+        {
+          ...FILE_ROW,
+          kind: 'html',
+          name: 'Home loan rates',
+          source_url: 'https://www.lender.example.org/home-loans/rates',
+          source_host: 'www.lender.example.org',
+          fetched_at: '2026-10-12T03:00:00Z',
+          values_missing: 12,
+          read_as_sent: true,
+        },
+      ]),
+    );
+    expect(await store().get(FILE_ID)).toMatchObject({
+      ok: true,
+      value: {
+        kind: 'html',
+        sourceUrl: 'https://www.lender.example.org/home-loans/rates',
+        sourceHost: 'www.lender.example.org',
+        fetchedAt: '2026-10-12T03:00:00Z',
+        valuesMissing: 12,
+        readAsSent: true,
+      },
+    });
+    stub(() => json([FILE_ROW]));
+    await store().get(FILE_ID);
     // The hash is never selected: nothing above this layer needs it.
     expect(seen[0]?.query).not.toContain('content_hash');
     stub(() => json([]));
@@ -448,6 +493,9 @@ describe('forTurn — what a turn may read', () => {
     status: 'ready',
     created_at: '2026-10-12T03:00:00Z',
     expires_at: '2026-11-11T03:00:00Z',
+    source_host: null,
+    fetched_at: null,
+    values_missing: 0,
     ...extra,
   });
   const pageRow = (
@@ -486,6 +534,7 @@ describe('forTurn — what a turn may read', () => {
       ok: true,
       value: {
         everHadFile: true,
+        everHadPage: false,
         files: [
           {
             id: 'live',
@@ -540,7 +589,7 @@ describe('forTurn — what a turn may read', () => {
     stub((req) => (req.path === '/rest/v1/conversation_files' ? json([]) : undefined));
     expect(await store().forTurn(CONV_ID)).toEqual({
       ok: true,
-      value: { files: [], everHadFile: false },
+      value: { files: [], everHadFile: false, everHadPage: false },
     });
     expect(seen).toHaveLength(1);
     seen.length = 0;
@@ -551,7 +600,7 @@ describe('forTurn — what a turn may read', () => {
     );
     expect(await store().forTurn(CONV_ID)).toEqual({
       ok: true,
-      value: { files: [], everHadFile: true },
+      value: { files: [], everHadFile: true, everHadPage: false },
     });
     expect(seen).toHaveLength(1);
   });
@@ -600,6 +649,67 @@ describe('forTurn — what a turn may read', () => {
   });
 });
 
+describe('claimFetch — may this read go ahead', () => {
+  const CLAIM = {
+    id: FETCH_ID,
+    userId: USER_ID,
+    url: 'https://www.lender.example.org/rates',
+    host: 'www.lender.example.org',
+    perMinute: 10,
+    hostGapMs: 2_000,
+  };
+  const answer = (row: { claimed: boolean; existing: boolean; wait_ms: number }): void => {
+    stub((req) => (req.path === '/rest/v1/rpc/claim_web_fetch' ? json([row]) : undefined));
+  };
+
+  it('claimed: go ahead', async () => {
+    answer({ claimed: true, existing: false, wait_ms: 0 });
+    expect(await store().claimFetch(CLAIM)).toEqual({ ok: true, value: { claimed: true } });
+    expect(JSON.parse(seen[0]?.body ?? '{}')).toEqual({
+      p_id: FETCH_ID,
+      p_user_id: USER_ID,
+      p_url: CLAIM.url,
+      p_host: CLAIM.host,
+      p_per_minute: 10,
+      p_host_gap_ms: 2_000,
+    });
+  });
+
+  it('an id already on record is spent: nothing is claimed, and it is not a wait', async () => {
+    answer({ claimed: false, existing: true, wait_ms: 0 });
+    expect(await store().claimFetch(CLAIM)).toEqual({
+      ok: true,
+      value: { claimed: false, spent: true },
+    });
+  });
+
+  it('the site was just read: how long to wait, never a negative time', async () => {
+    answer({ claimed: false, existing: false, wait_ms: 1_250 });
+    expect(await store().claimFetch(CLAIM)).toEqual({
+      ok: true,
+      value: { claimed: false, spent: false, waitMs: 1_250 },
+    });
+    answer({ claimed: false, existing: false, wait_ms: -40 });
+    expect(await store().claimFetch(CLAIM)).toEqual({
+      ok: true,
+      value: { claimed: false, spent: false, waitMs: 0 },
+    });
+  });
+
+  it("the person's limit is a reason, and no answer at all is an error — never a go-ahead", async () => {
+    stub((req) =>
+      req.path === '/rest/v1/rpc/claim_web_fetch'
+        ? json({ code: 'WF001', message: 'user has opened 10 pages in the last minute' }, 400)
+        : undefined,
+    );
+    const limited = await store().claimFetch(CLAIM);
+    expect(limited.ok).toBe(false);
+    if (!limited.ok) expect(fileStoreReason(limited.error)).toBe('too_many_reads');
+    stub((req) => (req.path === '/rest/v1/rpc/claim_web_fetch' ? json([]) : undefined));
+    expect((await store().claimFetch(CLAIM)).ok).toBe(false);
+  });
+});
+
 /**
  * The stack suites (tests/integration/files.test.ts) run this adapter against the real
  * functions, in CI. This machine has no stack, so the one mistake those suites exist to catch
@@ -607,19 +717,23 @@ describe('forTurn — what a turn may read', () => {
  * here, by reading the migration.
  */
 describe('the adapter and the migration agree', () => {
-  const sql = readFileSync(
-    new URL('../../../supabase/migrations/20261012010000_conversation_files.sql', import.meta.url),
-    'utf8',
-  );
+  // Both migrations, in order. Part 2 (20261012020000) redefines begin, finish, remove and
+  // purge and adds columns, so a function is read at its LAST definition and a table as its
+  // `create table` plus every `add column` after it — what the database actually holds.
+  const sql = ['20261012010000_conversation_files.sql', '20261012020000_web_pages.sql']
+    .map((name) =>
+      readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8'),
+    )
+    .join('\n');
 
   function declaration(fn: string): string {
-    const start = sql.indexOf(`create or replace function public.${fn}(`);
+    const start = sql.lastIndexOf(`create or replace function public.${fn}(`);
     expect(start, `${fn} is declared`).toBeGreaterThan(-1);
     return sql.slice(start, sql.indexOf('language plpgsql', start));
   }
   /** The whole function, body included. */
   function definition(fn: string): string {
-    const start = sql.indexOf(`create or replace function public.${fn}(`);
+    const start = sql.lastIndexOf(`create or replace function public.${fn}(`);
     return sql.slice(start, sql.indexOf('\n$$;', start));
   }
   /** `p_name type` on its own line: the parameters, in order. */
@@ -632,14 +746,29 @@ describe('the adapter and the migration agree', () => {
       (match) => match[1] ?? '',
     );
   }
+  /** Columns a later `alter table public.<table> add column …` gave the table. */
+  function addedColumns(table: string): string[] {
+    const out: string[] = [];
+    for (const statement of sql.matchAll(
+      new RegExp(`alter table public\\.${table}\\b([^;]*);`, 'g'),
+    )) {
+      for (const added of (statement[1] ?? '').matchAll(/add column (\w+) /g)) {
+        out.push(added[1] ?? '');
+      }
+    }
+    return out;
+  }
   /** The column names of `create table public.<table>`. */
   function columns(table: string): string[] {
     const start = sql.indexOf(`create table public.${table} (`);
     expect(start, `${table} is created`).toBeGreaterThan(-1);
     const body = sql.slice(start, sql.indexOf('\n);', start));
     return [
-      ...body.matchAll(/^ {2}(\w+) (?:uuid|text|bigint|integer|numeric|timestamptz|boolean)\b/gm),
-    ].map((match) => match[1] ?? '');
+      ...[
+        ...body.matchAll(/^ {2}(\w+) (?:uuid|text|bigint|integer|numeric|timestamptz|boolean)\b/gm),
+      ].map((match) => match[1] ?? ''),
+      ...addedColumns(table),
+    ];
   }
   const selected = (req: Seen | undefined): string[] =>
     (new URLSearchParams(req?.query ?? '').get('select') ?? '')
@@ -658,17 +787,52 @@ describe('the adapter and the migration agree', () => {
     await s.finish(FILE_ID, USER_ID);
     await s.remove(FILE_ID, USER_ID);
     await s.purge();
+    await s.claimFetch({
+      id: FETCH_ID,
+      userId: USER_ID,
+      url: 'https://www.lender.example.org/rates',
+      host: 'www.lender.example.org',
+      perMinute: 10,
+      hostGapMs: 2_000,
+    });
+    await s.completeFetch({
+      id: FETCH_ID,
+      userId: USER_ID,
+      status: 'failed',
+      outcome: 'site_error',
+    });
     for (const fn of [
-      'begin_conversation_file',
       'append_conversation_file_pages',
       'finish_conversation_file',
       'remove_conversation_file',
       'purge_conversation_files',
+      'claim_web_fetch',
+      'complete_web_fetch',
     ]) {
       const declared = parameters(fn);
       expect(declared.length, fn).toBeGreaterThan(0);
       expect(sent(`/rest/v1/rpc/${fn}`).sort(), fn).toEqual([...declared].sort());
     }
+    // An upload sends every parameter but the fetch; a page from a link sends that too.
+    const begin = parameters('begin_conversation_file');
+    expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual(
+      begin.filter((name) => name !== 'p_fetch_id').sort(),
+    );
+    seen.length = 0;
+    await s.begin({ ...BEGIN, kind: 'html', fetchId: FETCH_ID });
+    expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual([...begin].sort());
+  });
+
+  it('the deployed function keeps working across the deploy: the new parameters have defaults', () => {
+    // files v1 calls begin with twelve named arguments and finish with three. PostgREST
+    // resolves a call by its argument names, so each added parameter must have a default.
+    expect(declaration('begin_conversation_file')).toMatch(/p_fetch_id uuid default null/);
+    expect(declaration('finish_conversation_file')).toMatch(/p_gap_mark text default null/);
+    // …and the old signatures are gone, so there is exactly one function to resolve to.
+    expect(sql).toContain(
+      'drop function public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer);',
+    );
+    expect(sql).toContain('drop function public.finish_conversation_file(uuid, uuid, integer);');
   });
 
   it('the rows the functions return carry the names the adapter reads', () => {
@@ -688,8 +852,10 @@ describe('the adapter and the migration agree', () => {
       'char_count',
       'vision_pages',
       'confidence',
+      'replaced',
     ]);
     expect(returned('purge_conversation_files')).toEqual(['abandoned', 'expired']);
+    expect(returned('claim_web_fetch')).toEqual(['claimed', 'existing', 'wait_ms']);
   });
 
   it('a page is stored with exactly the fields the function reads out of the JSON', async () => {
@@ -729,7 +895,9 @@ describe('the adapter and the migration agree', () => {
     await s.pageInfo(FILE_ID, 1);
     await s.visionPagesStored(FILE_ID);
     await s.forTurn(CONV_ID);
-    expect(seen.length).toBeGreaterThanOrEqual(5);
+    await s.getFetch(FETCH_ID);
+    expect(seen.length).toBeGreaterThanOrEqual(6);
+    expect(seen.some((req) => req.path === '/rest/v1/web_fetches')).toBe(true);
     for (const req of seen) {
       const table = req.path.replace('/rest/v1/', '');
       const known = columns(table);
@@ -751,7 +919,17 @@ describe('the adapter and the migration agree', () => {
     const raised = [
       ...new Set([...sql.matchAll(/using errcode = '(\w+)'/g)].map((match) => match[1] ?? '')),
     ].sort();
-    expect(raised).toEqual(['02000', 'FL001', 'FL002', 'FL003', 'FL004', 'FL005', 'FL006']);
+    expect(raised).toEqual([
+      '02000',
+      'FL001',
+      'FL002',
+      'FL003',
+      'FL004',
+      'FL005',
+      'FL006',
+      'FL007',
+      'WF001',
+    ]);
     const reasons: (string | null)[] = [];
     for (const code of raised) {
       stub(() => pgError(code));
@@ -759,7 +937,7 @@ describe('the adapter and the migration agree', () => {
       reasons.push(result.ok ? null : fileStoreReason(result.error));
     }
     expect(reasons).not.toContain(null);
-    // Seven codes, seven different reasons: none of them is swallowed by another.
+    // Nine codes, nine different reasons: none of them is swallowed by another.
     expect(new Set(reasons).size).toBe(raised.length);
   });
 
@@ -783,6 +961,7 @@ describe('the adapter and the migration agree', () => {
     const root = new URL('../../../', import.meta.url);
     const sources = [
       'src/lib/files',
+      'src/lib/pages',
       'src/functions/files',
       'web/src/lib/files',
       'web/src/lib/filesApi.ts',

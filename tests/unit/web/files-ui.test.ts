@@ -50,6 +50,12 @@ const FILE: AttachedFile = {
   status: 'ready',
   createdAt: '2026-10-12T03:00:00Z',
   expiresAt: '2026-11-11T03:00:00Z',
+  sourceUrl: null,
+  sourceHost: null,
+  fetchedAt: null,
+  valuesMissing: 0,
+  readAsSent: false,
+  removedReason: null,
 };
 
 const item = (overrides: Partial<UploadItem> = {}): UploadItem => ({
@@ -63,6 +69,8 @@ const item = (overrides: Partial<UploadItem> = {}): UploadItem => ({
   message: null,
   retryable: false,
   estimate: null,
+  source: 'file',
+  url: null,
   ...overrides,
 });
 
@@ -294,6 +302,12 @@ describe('reading the files endpoint', () => {
       status: 'ready',
       created_at: 'a',
       expires_at: 'b',
+      source_url: null,
+      source_host: null,
+      fetched_at: null,
+      values_missing: 0,
+      read_as_sent: false,
+      removed_reason: null,
       ...overrides,
     });
     expect(
@@ -316,6 +330,12 @@ describe('reading the files endpoint', () => {
         status: 'ready',
         createdAt: 'a',
         expiresAt: 'b',
+        sourceUrl: null,
+        sourceHost: null,
+        fetchedAt: null,
+        valuesMissing: 0,
+        readAsSent: false,
+        removedReason: null,
       },
       {
         id: 'f2',
@@ -329,7 +349,39 @@ describe('reading the files endpoint', () => {
         status: 'removed',
         createdAt: 'a',
         expiresAt: 'b',
+        sourceUrl: null,
+        sourceHost: null,
+        fetchedAt: null,
+        valuesMissing: 0,
+        readAsSent: false,
+        removedReason: null,
       },
+    ]);
+    // A page read from a link carries where it came from; a reason nobody defined is no reason.
+    expect(
+      toAttachedFiles([
+        row({
+          id: 'p1',
+          kind: 'html',
+          name: 'Home loan rates',
+          source_url: 'https://www.lender.example.org/rates',
+          source_host: 'www.lender.example.org',
+          fetched_at: '2026-10-12T06:14:00Z',
+          values_missing: 12,
+        }),
+        row({ id: 'p2', kind: 'html', status: 'removed', name: null, removed_reason: 'replaced' }),
+        row({ id: 'p3', status: 'removed', name: null, removed_reason: 'something-else' }),
+      ]).map((file) => [
+        file.id,
+        file.kind,
+        file.sourceHost,
+        file.valuesMissing,
+        file.removedReason,
+      ]),
+    ).toEqual([
+      ['p1', 'html', 'www.lender.example.org', 12, null],
+      ['p2', 'html', null, 0, 'replaced'],
+      ['p3', 'pdf', null, 0, null],
     ]);
     // The browser never asks for the text or the hash: neither column is in the select.
     expect(CONVERSATION_FILE_COLUMNS).not.toMatch(/content|hash|text/);

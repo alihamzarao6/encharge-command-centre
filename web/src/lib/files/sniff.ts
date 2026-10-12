@@ -4,6 +4,10 @@
  * paragraph of prose are both just text. For everything else the name is not consulted: a
  * JPEG called `statement.pdf` is read as a picture, a program called `payslip.pdf` is refused
  * as a program.
+ *
+ * Milestone 5 part 2: bytes that are a web page are read as one ONLY when the server fetched
+ * them from a link the person asked to have read (`fromLink`). The same bytes chosen from a
+ * device are refused as before (D83). An SVG is refused either way.
  */
 import { refusal, type FileKind, type Refusal } from '../../../../src/lib/files/limits.js';
 import { extensionOf } from '../../../../src/lib/files/text.js';
@@ -54,6 +58,8 @@ const EXTENSION_KIND: Readonly<Record<string, FileKind>> = {
   webp: 'image',
   heic: 'image',
   heif: 'image',
+  html: 'html',
+  htm: 'html',
 };
 
 const KIND_NOUN: Readonly<Record<FileKind, string>> = {
@@ -63,6 +69,7 @@ const KIND_NOUN: Readonly<Record<FileKind, string>> = {
   csv: 'a CSV file',
   text: 'a text file',
   image: 'a picture',
+  html: 'a web page',
 };
 
 function found(kind: FileKind, name: string, mediaType: ImageMediaType | null = null): Sniffed {
@@ -101,7 +108,11 @@ function sniffZip(bytes: Uint8Array, name: string): Sniffed {
   return refuse('archive');
 }
 
-function sniffText(bytes: Uint8Array, name: string): Sniffed {
+/** Tags that open a page. A page of prose that mentions one in passing does not start with it. */
+const HTML_START =
+  /^(?:<!--[\s\S]*?-->\s*)*<(?:!doctype html|html|head|body|title|meta|link|div|p|h[1-6]|table|section|article|main|header|nav|span|ul|ol|form|center|font|br|img|a|script|style)\b/;
+
+function sniffText(bytes: Uint8Array, name: string, hint: SniffHint): Sniffed {
   // The UTF-8 byte order mark reads as three Latin-1 characters here; drop it either way.
   const head = ascii(bytes, 0, 2048)
     .replace(/^(?:\u{EF}\u{BB}\u{BF}|\u{FF}\u{FE}|\u{FE}\u{FF})/u, '')
@@ -111,22 +122,31 @@ function sniffText(bytes: Uint8Array, name: string): Sniffed {
     .trimStart();
   const lower = head.toLowerCase();
   if (lower.startsWith('#!')) return refuse('executable');
-  if (
-    lower.startsWith('<!doctype html') ||
-    lower.startsWith('<html') ||
-    lower.startsWith('<svg') ||
-    (lower.startsWith('<?xml') && lower.includes('<svg')) ||
-    lower.includes('<script')
-  ) {
-    return refuse('active_content');
+  const svg = lower.startsWith('<svg') || (lower.startsWith('<?xml') && lower.includes('<svg'));
+  const page =
+    lower.startsWith('<!doctype html') || lower.startsWith('<html') || lower.includes('<script');
+  if (hint.fromLink === true && !svg) {
+    // What the server said it is counts for a page with no doctype, and for nothing else.
+    const saysHtml = /\b(?:text\/html|application\/xhtml\+xml)\b/.test(hint.contentType ?? '');
+    const xhtml = lower.startsWith('<?xml') && lower.includes('<html');
+    if (page || xhtml || HTML_START.test(lower) || (saysHtml && lower.includes('<'))) {
+      return found('html', name);
+    }
   }
+  if (svg || page) return refuse('active_content');
   if (lower.startsWith('{\\rtf')) return refuse('unsupported');
   const extension = extensionOf(name);
   const delimited = extension === 'csv' || extension === 'tsv' || extension === 'tab';
   return found(delimited ? 'csv' : 'text', name);
 }
 
-export function sniff(bytes: Uint8Array, name: string): Sniffed {
+export interface SniffHint {
+  /** The server fetched these bytes from a link. */
+  readonly fromLink?: boolean;
+  readonly contentType?: string | null;
+}
+
+export function sniff(bytes: Uint8Array, name: string, hint: SniffHint = {}): Sniffed {
   if (bytes.length === 0) return refuse('empty');
 
   // PDF: the header may sit a little way in (the spec allows leading junk, and mail systems
@@ -194,6 +214,6 @@ export function sniff(bytes: Uint8Array, name: string): Sniffed {
     return refuse('media');
   }
 
-  if (looksLikeText(bytes)) return sniffText(bytes, name);
+  if (looksLikeText(bytes)) return sniffText(bytes, name, hint);
   return refuse('unsupported');
 }

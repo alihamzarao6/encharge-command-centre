@@ -18,6 +18,14 @@
  *
  * `announcement` is the one sentence a screen reader is given (aria-live, polite): that a
  * file is being read, that it was attached, or that it was not and why.
+ *
+ * Milestone 5 part 2: A LINK IS ONE MORE THING IN THE SAME QUEUE. `addLink` asks our server
+ * to fetch the page (the browser never contacts the site), then reads the bytes with the
+ * same readers and sends the text through the same steps as a file. So a link pasted while
+ * another page is still being read waits its turn; the same link twice is one read; Stop,
+ * Try again and "attached whole or not at all" are exactly what they are for a file. What a
+ * link adds is one step at the front (`fetching`), and a promise back to whoever asked —
+ * the message box, which may be waiting to send once the page is in.
  */
 import {
   FILE_LIMITS,
@@ -25,9 +33,11 @@ import {
   type FileKind,
   type RefusalCode,
 } from '../../../src/lib/files/limits.js';
-import { sanitiseFileName } from '../../../src/lib/files/text.js';
+import { sanitiseFileName, sanitiseTitle } from '../../../src/lib/files/text.js';
+import { parsePublicUrl } from '../../../src/lib/pages/guard.js';
 import type {
   AttachedFile,
+  FetchedPage,
   FilesFailure,
   FilesOutcome,
   FilesRequest,
@@ -46,6 +56,8 @@ export interface BrowserFile {
 export type UploadPhase =
   /** Behind another upload. */
   | 'waiting'
+  /** A link: our server is fetching the page, and its bytes are arriving. */
+  | 'fetching'
   /** Being read on this device. */
   | 'reading'
   /** A scan: waiting for the person to say yes to the page count and the cost. */
@@ -75,7 +87,22 @@ export interface UploadItem {
   readonly message: string | null;
   readonly retryable: boolean;
   readonly estimate: VisionEstimate | null;
+  /** Where it came from: chosen on this device, or a link the person asked to have read. */
+  readonly source: 'file' | 'link';
+  /** For a link: the address, as sent. Null for a file. */
+  readonly url: string | null;
 }
+
+/** How reading a link ended, for whoever asked for it. */
+export type LinkOutcome =
+  /** The page is in the conversation. */
+  | 'attached'
+  /** It was already there, unchanged. */
+  | 'already'
+  /** It was not read; the reason is on screen. */
+  | 'failed'
+  /** The person stopped it, or left the conversation. */
+  | 'cancelled';
 
 export interface UploadsState {
   /** The conversation these uploads and files belong to; null = a new one, not created yet. */
@@ -89,6 +116,12 @@ export interface UploadsState {
   readonly notice: string | null;
   /** For a screen reader. */
   readonly announcement: string;
+  /**
+   * Links read in this conversation since the page was opened: the address as it was asked
+   * for → the file it became. An address that redirects is stored under where it ENDED, so
+   * this is what lets the box still recognise the address he pasted.
+   */
+  readonly readLinks: Readonly<Record<string, string>>;
 }
 
 export type FilesCall = <R extends FilesRequest>(
@@ -99,10 +132,22 @@ export type FilesCall = <R extends FilesRequest>(
 export interface UploadsDeps {
   /** Reads a file on this device. Loaded on first use; never throws. */
   readonly extract: (
-    input: { readonly name: string; readonly bytes: Uint8Array },
+    input: {
+      readonly name: string;
+      readonly bytes: Uint8Array;
+      /** The bytes were fetched by our server from a link: only then is a web page read. */
+      readonly fromLink?: boolean;
+      readonly contentType?: string | null;
+    },
     onProgress: (done: number, total: number) => void,
     signal: AbortSignal,
   ) => Promise<Extraction>;
+  /** Has OUR server fetch one page and hands back its bytes. Never throws. */
+  readonly fetchPage: (
+    request: { readonly requestId: string; readonly url: string },
+    signal: AbortSignal,
+    onProgress: (received: number, total: number) => void,
+  ) => Promise<FilesOutcome<FetchedPage>>;
   readonly hash: (bytes: Uint8Array) => Promise<string>;
   readonly call: FilesCall;
   /** The conversation's files, read under RLS; null = could not. */
@@ -120,6 +165,11 @@ export interface UploadsStore {
   /** The thread moved to another conversation (or a new one). */
   readonly setConversation: (conversationId: string | null) => void;
   readonly add: (files: readonly BrowserFile[]) => void;
+  /**
+   * Read the page at this address into the conversation. Resolves when that is settled one
+   * way or the other; never rejects. An address already being read is the same read.
+   */
+  readonly addLink: (url: string) => Promise<LinkOutcome>;
   /** Yes to reading a scan. */
   readonly confirm: (localId: string) => void;
   /** Stop an upload, or take a stopped one off the list. Nothing of it is kept. */
@@ -132,6 +182,7 @@ export interface UploadsStore {
 
 const ACTIVE: readonly UploadPhase[] = [
   'waiting',
+  'fetching',
   'reading',
   'confirm',
   'sending',
@@ -152,11 +203,21 @@ const INITIAL: UploadsState = {
   removing: null,
   notice: null,
   announcement: '',
+  readLinks: {},
 };
 
 /** What an upload is holding between steps. Never in the state: none of it is for the screen. */
 interface Work {
-  readonly file: BrowserFile;
+  /** Chosen on this device. Null for a link. */
+  readonly file: BrowserFile | null;
+  /** A link the person asked to have read. Null for a file. */
+  readonly link: { readonly url: string; readonly host: string } | null;
+  /** What our server handed back for that link, once it has. */
+  fetched: FetchedPage | null;
+  /** How it ended, when it ended well. */
+  outcome: LinkOutcome | null;
+  /** Whoever is waiting to hear. */
+  readonly waiters: ((outcome: LinkOutcome) => void)[];
   readonly requestId: string;
   readonly abort: AbortController;
   extraction: ExtractionOk | null;
@@ -169,6 +230,7 @@ interface Work {
 }
 
 export const UPLOAD_MESSAGES = {
+  pageArrivedDamaged: 'The page did not arrive whole, so it was not read. Try again.',
   notPrepared:
     'This device could not prepare that page to be read. Nothing was attached. Try from another device.',
   cancelled: 'Stopped. Nothing was attached.',
@@ -236,6 +298,11 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
   };
   const nameOf = (localId: string): string =>
     state.uploads.find((item) => item.localId === localId)?.name ?? 'The file';
+  const nameOfSize = (localId: string): number =>
+    state.uploads.find((item) => item.localId === localId)?.byteSize ?? 0;
+  /** "was not read." for a page, "was not attached." for a file. */
+  const notDone = (localId: string): string =>
+    work.get(localId)?.link == null ? 'was not attached.' : 'was not read.';
 
   const loadFiles = async (conversationId: string): Promise<void> => {
     set({ filesState: 'loading' });
@@ -264,7 +331,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
         retryable: failure.failure === 'retryable',
       });
     }
-    set({ announcement: `${nameOf(localId)} was not attached. ${message}` });
+    set({ announcement: `${nameOf(localId)} ${notDone(localId)} ${message}` });
   };
 
   const refuse = (
@@ -275,15 +342,18 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
   ): void => {
     const item = state.uploads.find((upload) => upload.localId === localId);
     update(localId, { phase: 'refused', message, retryable: false, kind });
-    set({ announcement: `${nameOf(localId)} was not attached. ${message}` });
+    set({ announcement: `${nameOf(localId)} ${notDone(localId)} ${message}` });
     // So that "why did his upload fail" has an answer in the logs. Best effort; the refusal
     // has already been shown, and the report carries a size and a reason, never the file.
+    // For a page it also closes the server's record of the fetch: those bytes were refused.
+    const fetchId = work.get(localId)?.fetched?.fetchId;
     void deps.call({
       action: 'refused',
       kind,
       byteSize: item?.byteSize ?? 0,
       reason: code,
       extractMs: work.get(localId)?.extractMs ?? 0,
+      ...(fetchId === undefined ? {} : { fetchId }),
     });
   };
 
@@ -294,8 +364,75 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     const { signal } = job.abort;
     const cancelled = (): boolean => signal.aborted || !work.has(localId);
 
+    // 0. A link: have our server fetch the page, then read its bytes here like any file's.
+    if (job.link !== null && job.extraction === null) {
+      if (job.fetched === null) {
+        update(localId, { phase: 'fetching', done: 0, total: 0, message: null });
+        set({ announcement: `Opening ${job.link.host}.` });
+        const page = await deps.fetchPage(
+          // A new id for every attempt: the server opens one page per id, once, so that a
+          // repeated id can never be a way round its limits.
+          { requestId: deps.newRequestId(), url: job.link.url },
+          signal,
+          (received, total) => {
+            if (!cancelled()) update(localId, { done: received, total });
+          },
+        );
+        if (cancelled()) return;
+        if (page.kind === 'error') {
+          if (page.failure === 'unauthenticated') await deps.onSessionExpired();
+          stop(localId, page);
+          return;
+        }
+        job.fetched = page.reply;
+        update(localId, { byteSize: page.reply.bytes.length });
+      }
+      const fetched = job.fetched;
+      update(localId, { phase: 'reading', done: 0, total: 0, message: null });
+      const started = deps.now();
+      let extraction: Extraction;
+      try {
+        extraction = await deps.extract(
+          {
+            name: fetched.fileName,
+            bytes: fetched.bytes,
+            fromLink: true,
+            contentType: fetched.contentType,
+          },
+          (done, total) => {
+            if (!cancelled()) update(localId, { done, total });
+          },
+          signal,
+        );
+      } catch {
+        refuse(localId, 'corrupt', refusal('corrupt').message, null);
+        return;
+      }
+      job.extractMs = Math.round(deps.now() - started);
+      if (cancelled()) {
+        if (extraction.ok) extraction.dispose();
+        return;
+      }
+      if (!extraction.ok) {
+        refuse(localId, extraction.refusal.code, extraction.refusal.message, extraction.kind);
+        return;
+      }
+      job.extraction = extraction;
+      job.contentHash = fetched.contentHash;
+      // The bytes have been read; only what was read is kept from here.
+      job.fetched = { ...fetched, bytes: new Uint8Array(0) };
+      update(localId, {
+        kind: extraction.kind,
+        // A page is called by its own title once it has one; a document by its file name.
+        name:
+          extraction.kind === 'html'
+            ? sanitiseTitle(extraction.title, fetched.host)
+            : sanitiseFileName(fetched.fileName),
+      });
+    }
+
     // 1. Read it, here. Size first: a file that is too big is never even loaded.
-    if (job.extraction === null) {
+    if (job.extraction === null && job.file !== null) {
       if (job.file.size === 0) {
         refuse(localId, 'empty', refusal('empty').message, null);
         return;
@@ -336,6 +473,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       update(localId, { kind: extraction.kind });
     }
     const extraction = job.extraction;
+    if (extraction === null) return;
     const visionPages = extraction.vision.length;
 
     // 2. A scan: say what it will read and what that costs, and wait for a yes (D90).
@@ -376,13 +514,20 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       action: 'begin',
       requestId: job.requestId,
       conversationId: state.conversationId,
-      name: sanitiseFileName(job.file.name),
+      name: sanitiseFileName(job.file?.name ?? job.fetched?.fileName ?? ''),
       kind: extraction.kind,
-      byteSize: job.file.size,
+      byteSize: nameOfSize(localId),
       contentHash: job.contentHash ?? '',
       totalPages: extraction.totalPages,
       visionPages,
       extractMs: job.extractMs,
+      // A page that was fetched: `begin` checks it against the server's record of the fetch.
+      ...(job.fetched === null
+        ? {}
+        : {
+            fetchId: job.fetched.fetchId,
+            ...(typeof extraction.title === 'string' ? { title: extraction.title } : {}),
+          }),
     });
     if (begun.kind === 'ok' && state.conversationId === null) {
       // The claim opened a conversation, and the thread is still on "new": this is that
@@ -401,12 +546,33 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     }
     if (begun.kind === 'error') {
       if (begun.failure === 'unauthenticated') await deps.onSessionExpired();
+      if (begun.code === 'FETCH_EXPIRED' && job.link !== null) {
+        // The server no longer stands behind what it fetched (it was too long ago, or these
+        // are not the bytes it handed over). Nothing read from them is kept: "Try again"
+        // opens the page afresh, and a scan is asked about again, since it may have changed.
+        job.extraction?.dispose();
+        job.extraction = null;
+        job.fetched = null;
+        job.contentHash = null;
+        job.confirmed = false;
+      }
       stop(localId, begun);
       return;
     }
     job.fileId = begun.reply.fileId;
     if (begun.reply.duplicate) {
-      set({ announcement: `${nameOf(localId)} is already attached to this conversation.` });
+      const link = job.link;
+      set((current) => ({
+        announcement:
+          link === null
+            ? `${nameOf(localId)} is already attached to this conversation.`
+            : `${nameOf(localId)} has not changed since it was last read.`,
+        readLinks:
+          link === null
+            ? current.readLinks
+            : { ...current.readLinks, [link.url]: begun.reply.fileId },
+      }));
+      job.outcome = 'already';
       drop(localId);
       await loadFiles(begun.reply.conversationId);
       return;
@@ -491,11 +657,29 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     const attached = finished.reply.file;
     const notes = extraction.notes.length === 0 ? '' : ` ${extraction.notes.join(' ')}`;
     const pages = `${String(attached.pageCount)} ${attached.pageCount === 1 ? 'part' : 'parts'}`;
+    const link = job.link;
+    const replaced = (finished.reply.replaced ?? 0) > 0;
     set((current) => ({
       files: [...current.files.filter((file) => file.id !== attached.id), attached],
-      announcement: `${nameOf(localId)} attached: ${pages}.${notes}`,
+      announcement:
+        link === null
+          ? `${nameOf(localId)} attached: ${pages}.${notes}`
+          : `Page read: ${nameOf(localId)}, from ${link.host}. ${pages}.${notes}${replaced ? ' It replaces the earlier read of this page.' : ''}`,
+      readLinks:
+        link === null ? current.readLinks : { ...current.readLinks, [link.url]: attached.id },
     }));
+    job.outcome = 'attached';
     drop(localId);
+    // An older read of the same address was replaced on the server: show what is there now.
+    if (replaced) await loadFiles(attached.conversationId);
+  };
+
+  /** Tell whoever asked how this one ended. Each waiter hears once. */
+  const settle = (job: Work, localId: string): void => {
+    const phase = state.uploads.find((item) => item.localId === localId)?.phase;
+    const outcome: LinkOutcome =
+      job.outcome ?? (phase === 'failed' || phase === 'refused' ? 'failed' : 'cancelled');
+    for (const waiter of job.waiters.splice(0, job.waiters.length)) waiter(outcome);
   };
 
   const pump = async (): Promise<void> => {
@@ -505,7 +689,9 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       for (;;) {
         const next = state.uploads.find((item) => item.phase === 'waiting');
         if (next === undefined) return;
+        const job = work.get(next.localId);
         await run(next.localId);
+        if (job !== undefined) settle(job, next.localId);
       }
     } finally {
       running = false;
@@ -528,6 +714,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     const name = nameOf(localId);
     drop(localId);
     set({ announcement: `${name}: ${UPLOAD_MESSAGES.cancelled}` });
+    for (const waiter of job.waiters.splice(0, job.waiters.length)) waiter('cancelled');
   };
 
   return {
@@ -549,6 +736,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
         job?.answer?.(false);
         forget(job);
         job?.extraction?.dispose();
+        for (const waiter of job?.waiters.splice(0, job.waiters.length) ?? []) waiter('cancelled');
       }
       work.clear();
       set({
@@ -559,6 +747,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
         removing: null,
         notice: null,
         announcement: '',
+        readLinks: {},
       });
       if (conversationId !== null) void loadFiles(conversationId);
     },
@@ -569,6 +758,10 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
         const localId = nextLocalId();
         work.set(localId, {
           file,
+          link: null,
+          fetched: null,
+          outcome: null,
+          waiters: [],
           requestId: deps.newRequestId(),
           abort: new AbortController(),
           extraction: null,
@@ -589,10 +782,72 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
           message: null,
           retryable: false,
           estimate: null,
+          source: 'file',
+          url: null,
         };
       });
       set((current) => ({ uploads: [...current.uploads, ...items] }));
       void pump();
+    },
+
+    addLink: (url) => {
+      // The server's own address rules, here first so he is told at once. The server asks
+      // them again: this check is a courtesy, not a control.
+      const parsed = parsePublicUrl(url);
+      if (!parsed.ok) return Promise.resolve('failed');
+      const target = parsed.url;
+      return new Promise<LinkOutcome>((resolve) => {
+        // The same address already on its way in is the same read.
+        const running = state.uploads.find(
+          (item) => item.url === target.href && ACTIVE.includes(item.phase),
+        );
+        const existing = running === undefined ? undefined : work.get(running.localId);
+        if (existing !== undefined) {
+          existing.waiters.push(resolve);
+          return;
+        }
+        // A stopped attempt at it is replaced by this one rather than left beside it.
+        for (const stale of state.uploads.filter((item) => item.url === target.href)) {
+          drop(stale.localId);
+        }
+        const localId = nextLocalId();
+        const host = target.host.replace(/^www\./, '');
+        work.set(localId, {
+          file: null,
+          link: { url: target.href, host },
+          fetched: null,
+          outcome: null,
+          waiters: [resolve],
+          requestId: deps.newRequestId(),
+          abort: new AbortController(),
+          extraction: null,
+          contentHash: null,
+          extractMs: 0,
+          fileId: null,
+          answer: null,
+          confirmed: false,
+        });
+        set((current) => ({
+          uploads: [
+            ...current.uploads,
+            {
+              localId,
+              name: host,
+              byteSize: 0,
+              kind: null,
+              phase: 'waiting',
+              done: 0,
+              total: 0,
+              message: null,
+              retryable: false,
+              estimate: null,
+              source: 'link',
+              url: target.href,
+            },
+          ],
+        }));
+        void pump();
+      });
     },
 
     confirm: (localId) => {

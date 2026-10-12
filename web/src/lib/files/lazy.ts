@@ -7,7 +7,13 @@
 import type { Extraction } from './types.js';
 
 export async function extractInBrowser(
-  input: { readonly name: string; readonly bytes: Uint8Array },
+  input: {
+    readonly name: string;
+    readonly bytes: Uint8Array;
+    /** Milestone 5 part 2: fetched by our server from a link the person asked to have read. */
+    readonly fromLink?: boolean;
+    readonly contentType?: string | null;
+  },
   onProgress: (done: number, total: number) => void,
   signal: AbortSignal,
 ): Promise<Extraction> {

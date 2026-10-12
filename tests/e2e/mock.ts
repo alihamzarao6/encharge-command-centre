@@ -11,11 +11,20 @@
  * request id resumes; the same content is the same attachment. A page image it is sent is
  * checked to be a JPEG and measured, so a test can assert what actually left the browser.
  *
+ * Milestone 5 part 2 added `fetch_page`: the scripted server "fetches" an address from the
+ * test's own table of pages (`options.pages`) and answers as the real function does — the
+ * page's bytes as the body, what it measured in the `x-page-meta` header — and keeps a
+ * receipt. `begin` for a page is then held to that receipt, takes the address and the read
+ * time from it and never from the browser, and `finish` replaces an older read of the same
+ * address. The browser itself must never contact the page's site: a spec proves that by
+ * routing the site's host and counting.
+ *
  * PostgREST is READ-ONLY here, as it is in production: any non-GET is recorded in
  * `postgrestWrites` and answered 403 / 42501, so a test can assert that the interface changes
  * memory only through the verified server path.
  */
 import type { Page, Route } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 import { E2E_SUPABASE_URL } from './playwright.config.js';
 
@@ -59,7 +68,31 @@ export interface ScriptedFile {
   status: string;
   created_at: string;
   expires_at: string;
+  /** Milestone 5 part 2. Absent on a scripted row = an uploaded file (null / 0). */
+  source_url?: string | null;
+  source_host?: string | null;
+  fetched_at?: string | null;
+  values_missing?: number;
+  read_as_sent?: boolean;
+  removed_reason?: string | null;
 }
+
+/** What the scripted server finds at an address when it is asked to fetch it. */
+export type ScriptedPage =
+  | {
+      /** The bytes the site answered with. */
+      body: string | Buffer;
+      /** Default: text/html; charset=utf-8. */
+      contentType?: string;
+      /** Where it ended after redirects. Default: the address asked for. */
+      finalUrl?: string;
+      /** How long the site took, on top of any `filesDelayMs`. */
+      delayMs?: number;
+    }
+  /** The server refused the address or the page: 422, with this code and sentence. */
+  | { refused: string; message: string }
+  /** The site did not answer usefully: this status, retryable, with this sentence. */
+  | { failed: number; message: string };
 
 export interface FilesScript {
   /**
@@ -312,6 +345,8 @@ export interface MockOptions {
   memoryFailure?: { status: number; body: unknown };
   /** Milestone 5 part 1: files already attached to conversations. */
   files?: ScriptedFile[];
+  /** Milestone 5 part 2: what is at each address, as the scripted server would fetch it. */
+  pages?: Record<string, ScriptedPage>;
   filesScript?: FilesScript;
   /** Every call to the files endpoint waits this long first — a slow connection. */
   filesDelayMs?: number;
@@ -356,7 +391,16 @@ export interface MockState {
   ghlFailing: boolean;
   ghlDelayMs: number;
   /** Every POST to /functions/v1/files — the only way a file is attached or removed. */
-  readonly fileCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  readonly fileCalls: {
+    body: Record<string, unknown>;
+    authorization: string | null;
+    /** The request's query string: a page read is pinned to a region through it. */
+    query: string;
+  }[];
+  /** Every address the scripted server was asked to fetch, in order. */
+  readonly pageFetches: { url: string; requestId: string }[];
+  /** What is at each address; a test may change a page between two reads. */
+  readonly pages: Record<string, ScriptedPage>;
   /** The `conversation_files` rows; a test may change them mid-way. */
   readonly files: ScriptedFile[];
   /** Every page image that reached the endpoint. */
@@ -545,6 +589,8 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     ghlFailing: options.ghlFailing === true,
     ghlDelayMs: options.ghlDelayMs ?? 0,
     fileCalls: [],
+    pageFetches: [],
+    pages: { ...(options.pages ?? {}) },
     files: [...(options.files ?? [])],
     pageImages: [],
     filesDelayMs: options.filesDelayMs ?? 0,
@@ -562,8 +608,35 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       expected: number;
       stored: Set<number>;
       vision: number;
+      /** Milestone 5 part 2: the receipt this upload was claimed against, if it came by link. */
+      source: { url: string; host: string; fetchedAt: string } | null;
+      /** How many places the reader marked as left empty by the page. */
+      missing: number;
+      /** The reader marked the page as read as the site sent it. */
+      asSent: boolean;
     }
   >();
+  /** The scripted server's record of each fetch: what `begin` is checked against. */
+  const receipts = new Map<
+    string,
+    { finalUrl: string; host: string; byteSize: number; contentHash: string; fetchedAt: string }
+  >();
+  const NOT_LOADED = '[not in the page as fetched]';
+  const AS_SENT = '[read as the site sent it]';
+  /** As src/lib/files/text.ts does for a page's title: text, never markup. */
+  const cleanTitle = (raw: string, fallback: string): string => {
+    const cleaned = raw
+      .replace(/[\t\n\r]/g, ' ')
+      .replace(/</g, '(')
+      .replace(/>/g, ')')
+      .replace(/["`]/g, "'")
+      .replace(/&/g, '+')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (cleaned === '') return fallback;
+    const chars = Array.from(cleaned);
+    return chars.length <= 120 ? cleaned : `${chars.slice(0, 119).join('')}…`;
+  };
   let fileCall = 0;
   let fileSeq = 0;
   let chatCall = 0;
@@ -1238,9 +1311,19 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       await json(
         route,
         200,
-        state.files.filter(
-          (f) => f.conversation_id === id && (f.status === 'ready' || f.status === 'removed'),
-        ),
+        state.files
+          .filter(
+            (f) => f.conversation_id === id && (f.status === 'ready' || f.status === 'removed'),
+          )
+          .map((f) => ({
+            ...f,
+            source_url: f.source_url ?? null,
+            source_host: f.source_host ?? null,
+            fetched_at: f.fetched_at ?? null,
+            values_missing: f.values_missing ?? 0,
+            read_as_sent: f.read_as_sent ?? false,
+            removed_reason: f.removed_reason ?? null,
+          })),
       );
       return;
     }
@@ -1248,7 +1331,11 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     // ---- the files Edge Function (Milestone 5 part 1) ----
     if (path === '/functions/v1/files' && method === 'POST') {
       const body = request.postDataJSON() as Record<string, unknown>;
-      state.fileCalls.push({ body, authorization: request.headers()['authorization'] ?? null });
+      state.fileCalls.push({
+        body,
+        authorization: request.headers()['authorization'] ?? null,
+        query: url.search,
+      });
       fileCall += 1;
       if (state.filesDelayMs > 0) await new Promise((r) => setTimeout(r, state.filesDelayMs));
       const scripted = options.filesScript?.respond(body, fileCall);
@@ -1275,6 +1362,11 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         status: f.status,
         createdAt: f.created_at,
         expiresAt: f.expires_at,
+        sourceUrl: f.source_url ?? null,
+        sourceHost: f.source_host ?? null,
+        fetchedAt: f.fetched_at ?? null,
+        valuesMissing: f.values_missing ?? 0,
+        readAsSent: f.read_as_sent ?? false,
       });
       const notFound = {
         error: {
@@ -1283,6 +1375,85 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           retryable: false,
         },
       };
+      if (action === 'fetch_page') {
+        const asked = asText(body['url']);
+        const requestId = asText(body['requestId']);
+        // One id opens one page, once (migration 20261012020000, claim_web_fetch).
+        if (receipts.has(requestId) || state.pageFetches.some((f) => f.requestId === requestId)) {
+          await json(route, 409, {
+            error: {
+              code: 'FETCH_EXPIRED',
+              message: 'That page has to be opened again before it can be attached. Try again.',
+              retryable: true,
+            },
+          });
+          return;
+        }
+        state.pageFetches.push({ url: asked, requestId });
+        const found = state.pages[asked];
+        if (found === undefined) {
+          await json(route, 422, {
+            error: {
+              code: 'PAGE_REFUSED',
+              message: 'No website was found at that address. Check the link for a typing mistake.',
+              retryable: false,
+              refusal: 'site_not_found',
+            },
+          });
+          return;
+        }
+        if ('refused' in found) {
+          await json(route, 422, {
+            error: {
+              code: 'PAGE_REFUSED',
+              message: found.message,
+              retryable: false,
+              refusal: found.refused,
+            },
+          });
+          return;
+        }
+        if ('failed' in found) {
+          await json(route, found.failed, {
+            error: { code: 'PAGE_NOT_READ', message: found.message, retryable: true },
+          });
+          return;
+        }
+        if ((found.delayMs ?? 0) > 0) await new Promise((r) => setTimeout(r, found.delayMs));
+        const bytes = typeof found.body === 'string' ? Buffer.from(found.body, 'utf8') : found.body;
+        const final = new URL(found.finalUrl ?? asked);
+        const contentHash = createHash('sha256').update(bytes).digest('hex');
+        const contentType = found.contentType ?? 'text/html; charset=utf-8';
+        receipts.set(requestId, {
+          finalUrl: final.href,
+          host: final.host,
+          byteSize: bytes.length,
+          contentHash,
+          fetchedAt: new Date().toISOString(),
+        });
+        const meta = {
+          action: 'fetch_page',
+          fetchId: requestId,
+          host: final.host,
+          fileName: final.pathname.split('/').filter(Boolean).pop() ?? '',
+          contentType,
+          byteSize: bytes.length,
+          contentHash,
+        };
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'access-control-allow-origin': '*',
+            'access-control-expose-headers': 'x-page-meta',
+            'content-type': 'application/octet-stream',
+            'x-content-type-options': 'nosniff',
+            'content-disposition': 'attachment',
+            'x-page-meta': Buffer.from(JSON.stringify(meta), 'utf8').toString('base64url'),
+          },
+          body: bytes,
+        });
+        return;
+      }
       if (action === 'estimate') {
         const pages = Number(body['visionPages']);
         await json(route, 200, {
@@ -1313,6 +1484,23 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           return;
         }
         const hash = asText(body['contentHash']);
+        const fetchId = asText(body['fetchId']);
+        const receipt = fetchId === '' ? undefined : receipts.get(fetchId);
+        if (fetchId !== '' || asText(body['kind']) === 'html') {
+          // A page is attached only against the bytes the server itself fetched.
+          const matches =
+            receipt?.contentHash === hash && receipt.byteSize === Number(body['byteSize']);
+          if (!matches) {
+            await json(route, 409, {
+              error: {
+                code: 'FETCH_EXPIRED',
+                message: 'That page has to be opened again before it can be attached. Try again.',
+                retryable: true,
+              },
+            });
+            return;
+          }
+        }
         const same = state.files.find(
           (f) =>
             f.conversation_id === conversationId &&
@@ -1320,6 +1508,8 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
             (f as ScriptedFile & { content_hash?: string }).content_hash === hash,
         );
         if (same !== undefined) {
+          // The site was asked again and nothing had changed: that copy is as fresh as this read.
+          if (receipt !== undefined) same.fetched_at = receipt.fetchedAt;
           await json(route, 200, {
             action: 'begin',
             fileId: same.id,
@@ -1337,12 +1527,22 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           requestId,
           conversationId,
           contentHash: hash,
-          name: asText(body['name']),
+          // A page is called by its own title, cleaned; with none, by the site it came from.
+          name:
+            asText(body['kind']) === 'html' && receipt !== undefined
+              ? cleanTitle(asText(body['title']), receipt.host)
+              : asText(body['name']),
           kind: asText(body['kind']),
           byteSize: Number(body['byteSize']),
           expected: Number(body['totalPages']),
           stored: new Set(),
           vision: 0,
+          source:
+            receipt === undefined
+              ? null
+              : { url: receipt.finalUrl, host: receipt.host, fetchedAt: receipt.fetchedAt },
+          missing: 0,
+          asSent: false,
         });
         if (!state.conversations.some((c) => c.id === conversationId)) {
           state.conversations.unshift({
@@ -1371,8 +1571,14 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           return;
         }
         if (action === 'append') {
-          const pages = (body['pages'] ?? []) as { pageNo: number }[];
-          for (const page of pages) pending.stored.add(page.pageNo);
+          const pages = (body['pages'] ?? []) as { pageNo: number; text?: string }[];
+          for (const page of pages) {
+            if (!pending.stored.has(page.pageNo)) {
+              pending.missing += (page.text ?? '').split(NOT_LOADED).length - 1;
+              if ((page.text ?? '').includes(AS_SENT)) pending.asSent = true;
+            }
+            pending.stored.add(page.pageNo);
+          }
           await json(route, 200, { action: 'append', fileId, stored: pending.stored.size });
           return;
         }
@@ -1430,6 +1636,8 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           return;
         }
         const now = Date.now();
+        // A web page's text is kept a day; a document, thirty — wherever it came from.
+        const keptDays = pending.kind === 'html' ? 1 : 30;
         const row: ScriptedFile & { content_hash: string } = {
           id: fileId,
           conversation_id: pending.conversationId,
@@ -1441,12 +1649,37 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           vision_pages: pending.vision,
           status: 'ready',
           created_at: new Date(now).toISOString(),
-          expires_at: new Date(now + 30 * 86_400_000).toISOString(),
+          expires_at: new Date(now + keptDays * 86_400_000).toISOString(),
           content_hash: pending.contentHash,
+          source_url: pending.source?.url ?? null,
+          source_host: pending.source?.host ?? null,
+          fetched_at: pending.source?.fetchedAt ?? null,
+          values_missing: pending.missing,
+          read_as_sent: pending.asSent,
+          removed_reason: null,
         };
+        // A newer read of the same address takes the place of the older one.
+        let replaced = 0;
+        if (row.source_url !== null) {
+          for (const older of state.files) {
+            if (
+              older.conversation_id === row.conversation_id &&
+              older.status === 'ready' &&
+              older.source_url === row.source_url
+            ) {
+              older.status = 'removed';
+              older.name = null;
+              older.source_url = null;
+              older.source_host = null;
+              older.fetched_at = null;
+              older.removed_reason = 'replaced';
+              replaced += 1;
+            }
+          }
+        }
         state.files.push(row);
         pendingFiles.delete(fileId);
-        await json(route, 200, { action: 'finish', duplicate: false, file: view(row) });
+        await json(route, 200, { action: 'finish', duplicate: false, replaced, file: view(row) });
         return;
       }
       if (action === 'remove') {
@@ -1455,6 +1688,11 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         if (row?.status === 'ready') {
           row.status = 'removed';
           row.name = null;
+          // A removed row names nothing: not the file, and not where it came from.
+          row.source_url = null;
+          row.source_host = null;
+          row.fetched_at = null;
+          row.removed_reason = 'user';
           await json(route, 200, { action: 'remove', fileId, removed: true });
           return;
         }

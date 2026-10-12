@@ -8,6 +8,11 @@
  * and the same ledger as the chat: the client built here is the same wrapper, pointed at the
  * same `api_usage`, so a page read counts against the same daily and monthly limit as a turn.
  * A model with no price is refused here, at wiring, exactly as it would be at the call.
+ *
+ * Milestone 5 part 2: the endpoint also fetches a web page. That needs the runtime's DNS
+ * resolver, which is the one thing here that is not in the environment — it is passed in
+ * (`Deno` on the Edge Function). Without one, every name fails to resolve and nothing is
+ * fetched: no resolver means no way to check where a name points, so the default is closed.
  */
 import {
   createServiceClient,
@@ -22,6 +27,14 @@ import { loadLlmConfig } from '../llm/config.js';
 import { pricingFor } from '../llm/pricing.js';
 import { supabaseConversationStore, supabaseUsageStore } from '../llm/store.js';
 import type { Logger } from '../logger.js';
+import {
+  createPageFetchState,
+  createPageFetcher,
+  createResolver,
+  type DnsLike,
+  type PageFetchLike,
+  type PageResolver,
+} from '../pages/fetch.js';
 import type { FilesConfig } from './config.js';
 import { loadFilesConfig } from './config.js';
 import { createTurnDocuments, type TurnDocuments } from './context.js';
@@ -30,7 +43,27 @@ import { createFilesServiceClient, supabaseFileStore } from './store.js';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-export function createFilesPageDeps(env: Env, log: Logger): Result<FilesPageDeps, ConfigError> {
+/** What only the runtime can supply for fetching a page. */
+export interface PageRuntime {
+  /** `Deno` on the Edge Function: its `resolveDns` is the resolver. */
+  readonly dns?: DnsLike;
+  /** The network. Defaults to the global fetch; a test passes its own. */
+  readonly fetch?: PageFetchLike;
+}
+
+/**
+ * Each host's robots answer and which hosts are being rested. At module scope so a warm
+ * function keeps them between requests; the deps themselves are rebuilt on every request.
+ */
+const PAGE_STATE = createPageFetchState();
+
+const NO_RESOLVER: PageResolver = () => Promise.resolve({ ok: false, reason: 'failed' });
+
+export function createFilesPageDeps(
+  env: Env,
+  log: Logger,
+  runtime: PageRuntime = {},
+): Result<FilesPageDeps, ConfigError> {
   const supabase = loadSupabaseAuthConfig(env);
   if (!supabase.ok) return supabase;
   const llm = loadLlmConfig(env);
@@ -67,6 +100,12 @@ export function createFilesPageDeps(env: Env, log: Logger): Result<FilesPageDeps
     caps: llm.value.caps,
     visionPricing: visionPricing.value,
     config: config.value,
+    pages: createPageFetcher({
+      fetch: runtime.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+      resolve: runtime.dns === undefined ? NO_RESOLVER : createResolver(runtime.dns),
+      userAgent: config.value.pageUserAgent,
+      state: PAGE_STATE,
+    }),
     log,
   });
 }

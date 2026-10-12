@@ -167,6 +167,13 @@ that Part 2 does not lay a foundation that fights them:
 Working names, to be confirmed at Stage 4: `web_sources` (page-level provenance) and
 `web_facts` (field-level facts, append-only with supersede, as `memory_facts` in §4).
 
+*12 Oct 2026: Milestone 5 part 2 read websites without building these.* It reads one page
+from a pasted link into the conversation's own files (§4, "Pages read from a link"), keeps
+the text for a day and extracts no fields. Both points above hold as built: every stored
+part carries its source, time, method and confidence, and a page's text sits with attached
+files, not in the memory layer. This section stays as the design for a store of extracted
+facts, should one be asked for.
+
 ---
 
 ## 3. Integration and observability
@@ -640,6 +647,100 @@ tombstones files past `expires_at`; **pg_cron runs it daily at 03:17 UTC** (job
 `purge-conversation-files`, created by the migration; RUNBOOK §1e). A turn also ignores a file
 past its date, so the promise holds in the hours before the job runs. Code:
 `src/lib/files/` (store · page · context · vision), `web/src/lib/files/` (the readers).
+
+### Pages read from a link — columns on conversation_files, and web_fetches (Milestone 5 part 2, 12 Oct 2026)
+
+A page read from a link is **a `conversation_files` row like any other** (D93): same
+ownership, same policy, same text table, same wrapper in front of the model. It is not a
+second store. What a page has that a file does not is where it came from and when, and those
+are the server's to say. Migration `20261012020000_web_pages.sql`.
+
+**Added to `conversation_files`.**
+
+| Column | Holds |
+|---|---|
+| `source_url text` | The address that was actually read — after redirects, `https`, no credentials, no fragment, ≤ 2,048 chars. Null for an uploaded file, **and null again once the row is removed** |
+| `source_host text` | Its host. What the screen and the model are shown; never taken from the page |
+| `fetched_at timestamptz` | When the server fetched it. What "is this still current" is answered from |
+| `values_missing integer not null default 0` | Places the site leaves for a script to fill in, found empty in what was fetched — counted by the database at `finish` from the marks in the stored text. Above zero the page is shown, and described to the model, as *read in part* |
+| `read_as_sent boolean not null default false` | The page showed nothing until its scripts ran and was read with its `opacity:0` declarations ignored (SECURITY §3). Set by the database at `finish` when the reader's own first line, `[read as the site sent it]`, is in the stored text. True: the page says so under its title for as long as it is there, and its opening tag in front of the model says so too — what was read may include text a visitor never sees |
+
+`kind` gains `html`; `conversation_file_pages.extraction_method` gains `html_text`;
+`removed_reason` gains `replaced`. Constraints: `conversation_files_source_check` (address,
+host and time are all present or all absent, and the address is `https`);
+`conversation_files_html_source_check` (an `html` row that is not removed names its source —
+an uploaded `.html` file is still refused, D83, so `html` only arrives with a fetch behind
+it); `conversation_files_tombstone_check` **extended so a removed row has no address
+either**. Index `conversation_files_source_idx (conversation_id, source_url)` on ready rows.
+
+**`expires_at` for a page is one day, not thirty (D95).** A document reached by a link — a
+PDF, a spreadsheet — keeps the thirty days an attachment has. The number comes from the
+endpoint (`FILES_PAGE_RETENTION_DAYS`); the same nightly job enforces both.
+
+**`web_fetches` — the server's record of each read.** One row per `fetch_page` request.
+
+| Column | Holds |
+|---|---|
+| `id uuid` PK | The browser's id for one request to open a page. **Never reused: one id opens one page, once** |
+| `user_id` | Who asked. FK `auth.users`, on delete cascade |
+| `requested_url`, `requested_host` | What was asked for |
+| `final_url`, `final_host` | Where it ended after redirects. Null until the site answered |
+| `status` | `started` · `fetched` (bytes were handed to the browser) · `refused` (the address or the page was refused) · `failed` (no usable answer; may be asked again under a new id) |
+| `outcome` | A reason code from `src/lib/pages/limits.ts` (`^[a-z_]{1,48}$`). Never a sentence, never page content |
+| `http_status`, `content_type`, `byte_size`, `content_hash`, `hops`, `duration_ms` | How the site answered. The hash is the SHA-256 of the bytes handed over |
+| `created_at`, `fetched_at` | |
+
+`web_fetches_fetched_check`: a row cannot be `fetched` without its final address, size, hash
+and time. **No page text and no title are stored here.**
+
+**Who reads what.** `conversation_files` — unchanged: part 2 touched no policy, and the new
+columns are visible to exactly whoever can see the conversation. `web_fetches` — RLS enabled
+and forced with **no policy at all**: no browser session reads a row, its owner included.
+`authenticated` holds `SELECT` (the privilege says "you may ask"; with no policy row-level
+security answers "there is nothing for you" — the `conversation_file_pages` pattern, and what
+`tests/security/rls.test.ts` asserts of every table), `service_role` holds all, `anon`
+nothing. Proven in `tests/security/web-pages.test.ts`, including that *any* policy — even
+"a person may see their own" — makes the rows readable.
+
+**Functions (`service_role` only).**
+
+- `claim_web_fetch(p_id, p_user_id, p_url, p_host, p_per_minute, p_host_gap_ms)` → `(claimed,
+  existing, wait_ms)`. Decides, under an advisory lock on the person and then on the host,
+  whether a read may go ahead: `WF001` when the person has made `p_per_minute` reads in the
+  last minute; `wait_ms` when the host was read less than `p_host_gap_ms` ago by anyone
+  (nothing is claimed); **`existing` when the id is already on record — nothing is claimed,
+  whoever the id belongs to.**
+- `complete_web_fetch(…)` → boolean. Records how the read ended, scoped to the person who
+  asked. Also called when the browser's reader refuses a page it was handed, so that fetch
+  can no longer be attached.
+- `begin_conversation_file(…, p_fetch_id uuid default null)` — **dropped and recreated with a
+  thirteenth parameter.** With a fetch id the attachment is checked against the record —
+  this person's, `fetched`, within 15 minutes, **the same size and SHA-256** — and takes its
+  address, host and time from it; anything else, and any `html` row without one, raises
+  `FL007`. The same bytes already attached is still "the same file", and for a page it means
+  the site was asked again and nothing had changed: that row's `fetched_at` and `expires_at`
+  move forward.
+- `finish_conversation_file(…, p_gap_mark text default null, p_sent_mark text default
+  null)` → gains `replaced`. Counts the gap marks into `values_missing`, sets `read_as_sent`
+  when the sent mark is in the stored text, and **removes older ready copies of the same
+  address in the same conversation** (`removed_reason = 'replaced'`, audit `FILE_REPLACED`), so two copies
+  of one page never sit in front of the model saying different things.
+- `remove_conversation_file` — same signature; nulls the source columns; `replaced` is a
+  third reason. `purge_conversation_files` — also deletes `web_fetches` rows older than a day.
+
+All three new parameters have defaults and are passed by name, so the `files` function deployed
+before this migration keeps working between the migration and its own redeploy (RUNBOOK
+§1f). Code: `src/lib/pages/` (limits · guard · robots · fetch), `src/lib/files/` (store ·
+page · context · rules · meta), `web/src/lib/files/html*.ts` (the reader),
+`web/src/lib/links.ts`.
+
+**§2a's `web_sources` / `web_facts` were not built, and rule 12 is met differently.** That
+placeholder imagined a knowledge store of facts extracted from pages. What was asked for is
+narrower — read one page he pasted and answer about it — and nothing is extracted into
+fields: the text is kept whole, for a day, and every part of it carries the four things rule
+12 names. `source_url` and `fetched_at` are on the file row (one source per file),
+`extraction_method` and `confidence` on each part. If a knowledge store is ever wanted, §2a
+still describes it.
 
 ### tasks
 `id · title not null · description · assignee · due_date ·

@@ -799,6 +799,296 @@ The figure shown to the person before a scan is read is $0.027 a page (an estima
 before measuring; measured $0.013–$0.023), and the cap reserves $0.077 a page as the worst
 case. A 50-page scan is about $1.14 at the measured dense-page rate: 23% of the $5 daily cap.
 
+### Part 2 — Reading a web page from a link · probed, decided and BUILT 12 Oct 2026 — in the working tree, NOT committed, NOT deployed, awaiting review
+
+*The brief asked for a probe before any decision, "from the Supabase Edge runtime, not from
+your laptop and not from CI". This section is that probe, in full, and then what was built
+on it. The decisions the probe led to were proposed in `MEMORY.md` (12 Oct, "M5 part 2 ·
+Part A"), approved by the reviewer the same day with five calls of his own, and are now
+D93–D99. The criteria, the Part C mapping, real extracted output and measured cost follow
+the probe.*
+
+**How it was run.** A throwaway Edge Function (`web-probe`) holding a fixed list of 25
+addresses, answering only to a random token and taking no address as input, was deployed to
+the project, called, and **deleted the same hour** (the endpoint answers 404; the five product
+functions were not touched). It returned measurements, never a page into a log. Runtime:
+`supabase-edge-runtime-1.77.0` (Deno 2.1.4-compatible). Each address was fetched three ways:
+
+- **Sydney, honest agent** — region `ap-southeast-2`, `User-Agent: FunddCommandCentre/1.0
+  (+https://fundd.com.au; reads one page when a signed-in user pastes its link)`. This is
+  the configuration proposed for the product and is the main column below.
+- **Sydney, browser-like agent** — the same region with a Chrome `User-Agent`, once, to
+  measure what honesty costs. Not proposed for the product.
+- **Default region, honest agent** — no region pinned. The calls were made from the
+  developer's machine and the platform ran them in `ap-south-1` (Mumbai).
+
+"Rate figures" counts `d.dd%` in the visible text of the returned HTML; "filled in later"
+counts empty elements whose class or data attributes name a rate, price or amount — the
+places a script writes a figure after the page loads.
+
+| Target | Kind | Status | After redirects | Type | Size | ms | Text chars | Rate figures in the HTML | Filled in later | robots.txt | Browser-like agent | Default region |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| commbank.com.au `/home-loans/interest-rates.html` | lender rates | 200 | same | text/html | 204 KB | 31 | 39,472 | **3** | **12** | allowed | 200 | 200 |
+| nab.com.au `…/all-home-loan-interest-rates` | lender rates | 200 | same | text/html | 762 KB | 66 | 36,528 | 568 | 0 | allowed | 200 | 200 |
+| westpac.com.au `…/home-loans/all-interest-rates/` | lender rates | 200 | same | text/html | 318 KB | 44 | 63,334 | 566 | 0 | allowed | 200 | 200 |
+| anz.com.au `/personal/home-loans/interest-rates/` | lender rates | 200 | same | text/html | 447 KB | 117 | 47,027 | **3** | **293** | allowed | 200 | 200 |
+| macquarie.com.au `/home-loans/home-loan-rates.html` | lender rates | 200 | same | text/html | 204 KB | 62 | 35,103 | 269 | 0 | allowed | 200 | 200 |
+| ing.com.au `/rates-and-fees/home-loan-rates.html` | lender rates | 200 | same | text/html | 262 KB | 56 | 27,607 | 36 | **244** | allowed | 200 | 200 |
+| bankwest.com.au `/rates/home-loan-rates` | lender rates | 200 | same | text/html | 236 KB | 32 | 15,644 | 214 | 0 | allowed | 200 | 200 |
+| rba.gov.au `/statistics/cash-rate/` | RBA cash rate | 200 | same | text/html | 142 KB | 28 | 16,914 | 687 table cells | 0 | allowed | 200 | 200 |
+| bankwest.com.au `…/variable-home-loan-reference-rates.pdf` | lender PDF | 200 | same | application/pdf | 91 KB | 109 | 1,856 (1 page) | — | — | allowed | 200 | 200 |
+| nab.com.au `…/indicator-rates-for-home-lending.pdf` | lender PDF | 200 | same | application/pdf | 41 KB | 42 | 8,570 (4 pages) | — | — | allowed | 200 | 200 |
+| macquarie.com.au `…/MBL-Home-Loans-Terms-and-conditions.pdf` | lender PDF | 200 | same | application/pdf | 371 KB | 159 | 103,745 (45 pages) | — | — | allowed | 200 | 200 |
+| realestate.com.au `/property/20-windsor-st-perth-wa-6000/` | property | **429** | same | text/html | 1 KB | 68 | 0 | — | — | allowed | **429** | 429 |
+| realestate.com.au `/buy/in-perth,+wa+6000/list-1` | property | **429** | same | text/html | 1 KB | 62 | 0 | — | — | allowed | **429** | 429 |
+| domain.com.au listing `…bulwer-street-perth-wa-6000-17652392` | property | 200 | same | text/html | 376 KB | 283 | 6,409 | — | 0 | allowed | **403** | 200 |
+| domain.com.au `/property-profile/26-brisbane-terrace-perth-wa-6000` | property | 200 | same | text/html | 484 KB | 962 | 7,951 | — | 0 | allowed | **403** | 200 |
+| reiwa.com.au listing `/20-windsor-street-perth-5001474/` | property (WA) | 200 | same | text/html | 252 KB | 761 | 66,160 | — | 0 | allowed | 200 | **403** |
+| abc.net.au news article (9 Oct, mortgages) | news | 200 | same | text/html | 402 KB | 76 | 11,922 (article 4,144) | — | 0 | allowed for `*`; **AI assistants disallowed** | 200 | 200 |
+| afr.com article (12 Oct) | news, paywall | 200 | same | text/html | 249 KB | 10 | 4,194 (article **1,079**: teaser, then "Already a subscriber?") | — | 0 | allowed for `*`; **AI assistants disallowed** | 200 | 200 |
+| thewest.com.au article (premium) | news, paywall | 200 | same | text/html | 402 KB | 262 | 3,203 (article **895**; `isAccessibleForFree: false`, `content_tier: locked`) | — | 0 | allowed | 200 | 200 |
+| nabbroker.com.au `/` | login | 200 | same | text/html | 32 KB | 71 | 877 (public landing page) | — | 0 | none (404) | 200 | 200 |
+| brokers.bankwest.com.au `/` | login | 200 | **3 hops** → `www.bankwest.com.au/brokers` | text/html | 146 KB | 83 | 4,677 (public landing page) | — | 0 | none | 200 | 200 |
+| commbroker.com.au `/` | login | **no answer in 25 s** | — | — | — | 25,002 | — | — | — | no answer | 200 (16 KB login page) | no answer |
+| canstar.com.au `/home-loans/` | comparison | 200 | same | text/html | **1.82 MB** | 69 | 70,559 | 50 | 0 | allowed | 200 | 200 |
+| rba.gov.au `/this-page-does-not-exist-fundd-probe/` | missing page | **404** | same | text/html | 18 KB | 27 | 1,797 (an error page) | — | 0 | allowed | 404 | 404 |
+| `fundd-probe-does-not-exist-9d3f7a.com.au` | no such domain | **DNS failure** in 12 ms | — | — | — | — | — | — | — | — | DNS failure | DNS failure |
+
+The three PDFs were then put through Part 1's own reader (`npm run files -- extract`): all
+three are typed PDFs and every page came out as text, none needing vision.
+
+**What the probe found.**
+
+1. **Of the 25 addresses, 20 returned a page, and 15 of those carried their useful content
+   in what was returned** — four of seven lender rate pages, the RBA page, all three PDFs,
+   REIWA, both Domain pages, ABC, the two broker landing pages, Canstar. No renderer is
+   needed for those. The other five that returned a page are items 2 and 7; the five that
+   did not are realestate.com.au twice, CommBroker, the missing page and the missing domain.
+2. **Three of the seven lender rate pages return the page but not the rates: CBA, ANZ and
+   ING.** The headings, product names and conditions are in the HTML; the figures are empty
+   elements a script fills in (`<span class="productdata" data-item="rate"></span>`). Two of
+   the big four. Nothing in the probe set was an empty shell.
+3. **realestate.com.au refuses every request (429, Kasada)** whatever the agent says it is.
+   A renderer would not change that without evading the block, which is not proposed.
+4. **The region decides what Australian sites answer.** REIWA answered 200 from Sydney and
+   403 from Mumbai. A call from the client's browser runs in the region nearest him; a call
+   from anywhere else does not. The read has to be pinned to `ap-southeast-2`
+   (`forceFunctionRegion`, verified).
+5. **Pretending to be a browser loses more than it gains.** It turned Domain from 200 into
+   403 and gained only a broker login page. The honest agent is not the cost.
+6. **robots.txt permits every path in the set for an unnamed agent** — and three sites (ABC,
+   AFR/Nine, realestate.com.au) separately tell AI assistants acting for a user
+   (`ChatGPT-User`, `Claude-User`, `Perplexity-User`, `anthropic-ai`) to stay out entirely.
+   CBA and ING do the opposite and name them as welcome.
+7. **Paywalls answer 200.** AFR returns 1,079 characters and marks itself free
+   (`isAccessibleForFree: true`); The West marks itself locked. Status alone will not catch
+   either.
+8. **A missing page answers with 18 KB of ordinary-looking HTML.** The status is the only
+   thing that says it is an error.
+9. **The runtime can be guarded.** `Deno.resolveDns` works; a certificate is checked against
+   the name (a connection under the wrong name was refused); the fetch decompresses and the
+   byte count read is the decompressed size (145,383 bytes, both size headers stripped), so
+   a cap on the stream is a cap on a compression bomb. Loopback is routable from inside the
+   function (connection refused on port 80), the cloud metadata address is not (`EINVAL`),
+   and `http://2130706433/` and `http://0x7f.1/` are both loopback by the time the fetch
+   sees them — so the guard matters and has to judge the parsed address, not the string.
+10. **A 20 MB binary reply passes through the function gateway** (5, 12 and 20 MB tried).
+
+**Not probed, and why:** a page that needs a login the developer does not have (no
+credential exists for any broker portal, and none is needed for this part — what is measured
+is the public page in front of each); Google Drive and OneDrive links (Part 3); any page on a
+phone (the fetch is server-side and does not depend on the device).
+
+**Built, 12 Oct 2026 — after the reviewer approved the plan the same day (D93–D99).**
+
+| # | Criterion | How it is proven | 12 Oct |
+|---|---|---|---|
+| W1 | He pastes a link and the assistant reads **that one page**. Nothing is read because a link appeared: he presses "Read this page", or answers the one question asked on Send. No search, no crawl, no link on the page followed | `tests/unit/web/links.test.ts`, `uploads-links.test.ts`; `tests/e2e/links.spec.ts` ("nothing is opened until he says so", "a link he did not mean to be read") — the scripted server records every fetch it is asked for | ✅ |
+| W2 | **SSRF.** Private, reserved, loopback, link-local and cloud-metadata addresses are refused — written as a name, a number in any encoding, or reached by a redirect; the guard runs on every hop. **The tests fail when the guard is removed** | `tests/unit/pages/guard.test.ts` (171, table-driven); `tests/unit/pages/fetch.test.ts` — each case run again with a guard that passes everything, and then the address is requested | ✅ |
+| W3 | The fetch is bounded: 10 s / 20 s, five hops, 5 MB a page and 20 MB a document counted on the decompressed stream; over the cap is refused, never truncated and read. Ten reads a minute per person, two seconds between reads of one site, one id one read | `fetch.test.ts` incl. a real HTTP server (compression bomb, endless body, stalled body); `page-fetch.test.ts` "the limits"; migration replayed on PostgreSQL 17 | ✅ (the database half first runs in CI) |
+| W4 | robots.txt honoured, including rules addressed to AI assistants acting for a user; an unreadable robots file means the page is not read; the agent names itself with a contact address | `tests/unit/pages/robots.test.ts` (57), `fetch.test.ts` | ✅ |
+| W5 | **A page is data, never instructions — in the same wrapper part 1 built.** In the user turn, inside a wrapper it cannot forge, never in the system prompt, in a request with no tools; its site and read time are written by us. **Hidden markup:** comments, `alt`, `aria-label`, off-screen and zero-opacity text never reach the model | `context-web.test.ts`, `chat-pages.test.ts`, `files-html.test.ts` — 59 hidden canaries (hidden blocks, and text hidden inside a visible sentence, table or tab), none comes out, and a naive tag-stripper passes ≥ 25 of them. **The reader's one fallback has its own canary** (`injection-revealed.html`): 20 more hidden any other way do not come out, and the instruction hidden by `opacity:0` — which the fallback does read — reaches the request once, inside the wrapper, with its forged tags rewritten. **With the tag rewrite removed, 13 tests fail** (run 12 Oct) | ✅ |
+| W6 | **If a page cannot be read it says so plainly.** Every refusal is a sentence with the reason and the way round. Never a guess from the address, never an answer from memory, never a partial read presented as whole | every code in `src/lib/pages/limits.ts` has a sentence (`page-fetch.test.ts`); "read in part" and "read as the site sent it" on screen and in the model's context (`context-web.test.ts`, `links.spec.ts`); the unread-link rule (`chat-pages.test.ts`); live, below | ✅ |
+| W7 | A PDF, Word, Excel, CSV, text file or image at a link goes through **part 1's readers** — no second extraction path | `sniff.ts` / `extract.ts` unchanged for those kinds; `files-html.test.ts` "through the one door"; e2e "a PDF at a link is read by the same reader" (pdf.js in Chrome); three lender PDFs below | ✅ |
+| W8 | Provenance is the server's: address, site, read time, size and hash come from its own record of the fetch; an attachment with no record, somebody else's, different bytes or an old one attaches nothing | `page-fetch.test.ts` "begin — a page is attached only against the bytes the server fetched"; `tests/integration/web-pages.test.ts` | ✅ unit · CI for the database |
+| W9 | Retention and freshness: a page's text 24 hours, a document from a link 30 days, the raw HTML never; nothing cached; the read time on screen and in front of the model with the time now; read again replaces, or refreshes if unchanged; a removed page names nothing | migration `20261012020000`; `page-fetch.test.ts`; `web-pages.test.ts` (CI); SQL replay | ✅ unit · CI for the database |
+| W10 | **No page content in a log line, an error message or a trace; an address is logged as its host only** | canaries in the text, title, path and query through every path: `page-fetch.test.ts` "logging", `fetch.test.ts` (the fetcher has no logger), `web-pages.test.ts` (CI) | ✅ |
+| W11 | RLS: no policy was changed. A page's address is visible to whoever can see the conversation and nobody else; the record of fetches is readable by no session, its owner included. **Each fails without its protection** | `tests/security/web-pages.test.ts` (CI); its SQL replayed locally with the expected answer at every step | ✅ replay · CI is its first run |
+| W12 | 375 / 768 / 1280: no horizontal scroll, inputs ≥ 16 px, every new control a 44 px target and reachable by keyboard, progress shown on a slow connection, the read and any refusal announced, a 1,400-character address and a long title contained, reduced motion respected | `tests/e2e/links.spec.ts` × 3 widths (69 tests); screenshots `docs/assets/milestone-5/links-*.png` | ✅ 609 of 609 browser tests, zero skipped |
+| W13 | `npm run typecheck && npm run lint && npm run test:regress` green; CI green with zero skipped | the 12 Oct "M5 part 2 · build" entry in `MEMORY.md` | ✅ local, after review round 1: exit 0 — unit 2,742 passed (187 stack-backed tests skipped, no Docker) · coverage 92.5% lines / 88.94% branches · browser 609 · build checks clean. **CI not run — nothing is pushed** |
+
+**Every case in the brief's Part C, and where it is tested.**
+
+| Part C | Case | Test |
+|---|---|---|
+| SSRF | `localhost`, `127.0.0.1`, `::1`, `0.0.0.0` | `guard.test.ts` "refused, each for its own reason" + `classifyAddress` |
+| SSRF | Private ranges and their IPv6 equivalents | `guard.test.ts` `classifyAddress` (every range, both families; IPv4-mapped and NAT64 judged by the address inside; IPv4-compatible, 6to4 and Teredo refused outright) |
+| SSRF | Link-local, including the cloud metadata address | `guard.test.ts` (named case `169.254.169.254`, and `64:ff9b::a9fe:a9fe`) |
+| SSRF | A hostname that resolves to any of the above | `guard.test.ts` `checkResolvedAddresses`; `fetch.test.ts` "nothing reaches the network through the guard" — and "WITHOUT the guard the same private-resolving name is requested" |
+| SSRF | A public hostname that redirects to any of the above; the guard on every hop | `fetch.test.ts` "redirects — the guard runs again on every hop" — and "WITHOUT the guard that redirect is followed to the internal address" |
+| SSRF | **A hostname that resolves differently between the check and the fetch** | **Not prevented, and no test can show it prevented.** Made useless: https only, certificate checked against the name (probed on the runtime, finding 9 above; SECURITY §10). Pinning the connection is possible and was not built |
+| SSRF | `file://`, `ftp://`, `data:`, `javascript:`, `gopher://` | `guard.test.ts` (each by name) |
+| SSRF | Embedded credentials | `guard.test.ts`; shown back without the password: `links.test.ts`, e2e |
+| SSRF | A non-standard port | `guard.test.ts` |
+| SSRF | Decimal, octal or hex encoded IP | `guard.test.ts` (`2130706433`, `0x7f000001`, `0x7f.0.0.1`, `0x7f.1`, `017700000001`, `0177.0.0.1`, `127.1`, and the metadata address as `2852039166`) |
+| SSRF | A redirect loop | `fetch.test.ts` |
+| SSRF | A very long redirect chain | `fetch.test.ts` (stopped at five) |
+| Response | A page that never finishes loading | `fetch.test.ts` (scripted, and "a body that stops arriving" on a real server) |
+| Response | Claims one size and sends more; the cap enforced while streaming | `fetch.test.ts` "cut off at the cap, not at the claim" |
+| Response | A multi-gigabyte response | `fetch.test.ts` "having read only that much" |
+| Response | A compressed bomb | `fetch.test.ts`, real server: 60 MB of zeros in 58 KB, counted expanded |
+| Response | 404, 403, 500, 429 | `fetch.test.ts` `classifyStatus`; each sentence in `page-fetch.test.ts` |
+| Response | No content type, or a lying one | `fetch.test.ts` ("a page of text that CLAIMS to be a PDF", "no content type is still a page"); `files-html.test.ts` (the bytes decide) |
+| Response | A non-UTF-8 encoding | `files-html.test.ts` "bytes to characters" (BOM, header, `<meta>`, windows-1252, Shift_JIS) |
+| Response | A non-Latin script; right to left | `files-html.test.ts` on `non-latin.html`, `rtl.html`; e2e long title in three scripts |
+| Page | Instructions aimed at the assistant, incl. comments, `alt`, `aria-label`, off-screen, zero opacity | `files-html.test.ts` "text a reader of the page never sees" (59 places, incl. hidden inside a visible sentence or table) and "a page that fades its WHOLE self in" (the fallback's shape: 20 more, and the opacity-hidden instruction that IS read); `context-web.test.ts` three PROMPT INJECTION groups; `chat-pages.test.ts` (two whole turns); `web-pages.test.ts` (CI); e2e "a page that hides instructions in its markup", "a page that fades itself in" |
+| Page | Almost entirely tables | `files-html.test.ts` on `rate-table.html`, `rate-tabs.html`, `layout-table.html`; e2e asserts the rows sent |
+| Page | One large image, no text | `files-html.test.ts` on `image-only.html` → `page_no_text` |
+| Page | Behind a cookie or consent wall | `consent-wall.html` → refused; `cookie-banner.html` → banner dropped, page read |
+| Page | Mostly navigation and boilerplate | `mostly-nav.html` → the content; `only-nav.html` → refused |
+| Page | *(added in review)* Nested deeper than any real page, to put text where "hidden" is not tracked | `files-html.test.ts` "hostile structure" → refused whole, `page_malformed` |
+| Page | Empty, and valid HTML with no body text | `fetch.test.ts` "an empty 200"; `no-body-text.html` → `page_no_text` |
+| Page | `<meta refresh>` or a JavaScript redirect | `meta-refresh.html`, `js-redirect.html` → `page_forwards`, never followed |
+| Run | The same URL twice in one conversation | `uploads-links.test.ts` (one read; read again); `page-fetch.test.ts` (replaced / unchanged); e2e "read again" |
+| Run | Several URLs in one message | `links.test.ts`; e2e "several links" |
+| Run | A URL pasted while a read is in flight | `uploads-links.test.ts` "a second link waits its turn", "behind a file being attached" |
+| Run | The spend cap reached mid-read | A page costs no model call to read. On the question: `chat-pages.test.ts` "the spend cap is reached: told so, nothing saved, no partial answer". A scan at a link takes part 1's path (`uploads.test.ts`, `page.test.ts`) |
+| Run | The model call times out after the fetch succeeded | `chat-pages.test.ts` (retryable, nothing saved, the page still there) |
+| Run | A page removed while a question about it is in flight | `chat-pages.test.ts` |
+| Run | He pastes a URL and asks nothing | **Decided: not read until he presses** (D94). `links.test.ts` (`onlyLinks`, the question's second wording); e2e "a message that is only a link" |
+| Interface | Progress on a slow connection | e2e "a slow page: progress is shown and announced, Send waits, and it can be stopped" |
+| Interface | 375 / 768 / 1280, no horizontal scroll | every e2e test ends on `expectNoHorizontalScroll` |
+| Interface | Inputs at 16 px | e2e "text inputs stay at 16px" |
+| Interface | A very long URL or title | e2e "a very long address and a very long title" |
+| Interface | Screen reader hears a read and a refusal | e2e — the live region's text asserted for both |
+| Interface | Reduced motion | e2e "reduced motion" |
+
+**What the reader makes of real pages.** The bytes are the ones the Edge runtime fetched from
+Sydney during the probe; the reader is the app's own, run through `npm run pages -- extract`.
+
+| Page | Bytes | Result | Parts | Characters | Figures missing | Reader time |
+|---|---|---|---|---|---|---|
+| NAB — all home loan rates | 779,803 | read | 5 | 22,831 | 0 | 61 ms |
+| Westpac — all interest rates | 325,346 | read | 9 | 45,422 | 0 | 66 ms |
+| Macquarie — home loan rates | 208,604 | read | 5 | 22,449 | 0 | 75 ms |
+| Bankwest — home loan rates | 241,362 | read **as the site sent it** (every section starts at `opacity:0`); says so on screen and to the model | 5 | 11,188 (11,161 of the page, and the reader's own first line) | 0 | 25 ms |
+| RBA — cash rate target | 145,383 | read | 3 | 16,235 | 0 | 32 ms |
+| ANZ — home loan rates | 457,924 | **read in part** | 6 | 31,953 | **154** | 57 ms |
+| CBA — home loan rates | 208,547 | **read in part** | 10 | 32,303 | **12** | 39 ms |
+| ING — home loan rates | 268,773 | **read in part** | 2 | 9,233 | **144** | 59 ms |
+| Canstar — home loans | 1,908,273 | read | 18 | 55,013 | 0 | 139 ms |
+| REIWA — a sold listing | 258,441 | read | 3 | 5,544 | 0 | 31 ms |
+| Domain — a rental listing | 385,506 | read | 1 | 1,722 | 0 | 25 ms |
+| ABC News — an article | 411,342 | read by the reader; **refused by robots.txt before it is fetched** (D96) | 3 | 5,873 | 0 | 29 ms |
+| AFR — an article | 254,847 | **refused: paywall** | — | — | — | — |
+| The West — an article | 415,051 | **refused: paywall** | — | — | — | — |
+| NAB — indicator rates (PDF) | 41,923 | read by part 1's reader | 4 pages | 8,573 | — | 751 ms |
+| Bankwest — reference rates (PDF) | 92,731 | read by part 1's reader | 1 page | 1,856 | — | 683 ms |
+| Macquarie — terms and conditions (PDF) | 380,030 | read by part 1's reader | 45 pages | 103,789 | — | 895 ms |
+
+*Re-measured after review round 1 (the hidden-text fix):* every rate count is unchanged —
+NAB 513, Westpac 453, Macquarie 209, Bankwest 214 — and so is every character count above
+except ABC's, which lost a duplicated timestamp that sat in an `aria-hidden` span. ANZ
+gained a sentence that had been lost ("The information on this page does not apply to ANZ
+Plus products" began with a hidden non-breaking space, which used to hide the whole
+sentence) and lost two tab headings ("Variable interest rates", "Fixed interest rates":
+its tab list sits inside an `aria-hidden` wrapper — an open question for the reviewer,
+SECURITY §3).
+
+Four excerpts, exactly as stored and as the model is given them:
+
+```
+NAB · part "All home loan interest rates"
+## Variable home loan interest rates
+### NAB Base Variable Rate Home Loan
+Table: Table of interest rates for different home loan types of a NAB Base Variable Rate Home Loan.
+(blank)	Interest rate	Comparison rate
+Principal and interest	6.69% p.a.	6.69% p.a.
+
+RBA · part "Cash Rate Target"
+Effective Date	Change% points	Cash rate target %	Related Documents
+30 Sep 2026	+0.25	4.60	Statement
+12 Aug 2026	0.00	4.35	Statement Minutes
+17 Jun 2026	0.00	4.35	Statement Minutes
+
+ANZ · part "Home loan interest rates"  — read in part
+LVR 80% or less	[not in the page as fetched]disclaimer	[not in the page as fetched]
+LVR more than 80%	[not in the page as fetched]disclaimer	[not in the page as fetched]
+### ANZ Simplicity PLUS home loan
+A no-frills home loan with a competitive interest rate and basic features.
+
+REIWA · part "20 Windsor Street, Perth WA 6000"
+# 20 Windsor Street, Perth WA 6000
+Sold price: $1,520,000 Sold: 11 Mar 2026
+4 Bedrooms
+1 Bathroom
+Landsize 350m2
+
+Bankwest reference rates (PDF) · "Page 1"
+Variable Home Loan
+Reference Rates.
+Rates effective from 09 October 2026.
+Standard Variable Reference Rate - SVR Owner Occupied Principal and Interest	9. 25 % p.a.
+```
+
+*(The Bankwest PDF's own text layer splits that figure as "9. 25 %"; the reader does not
+repair what a document's text says.)*
+
+**Measured, not estimated (12 Oct, live, on the same price table as part 1's figures
+above).** Reading a page is no model call. The cost is the question:
+
+| What | Sent | Tokens in / out | Cost |
+|---|---|---|---|
+| Reading a web page, or a typed PDF at a link | — | none — fetched by the function, read in the browser | $0 |
+| First question, RBA cash rate (16,235 chars) | 16,800 chars | 20 + 14,899 cache-write / 128 | $0.0579 |
+| A follow-up on it (page cached) | | 20 + 14,899 cache-read / 122 | $0.0064 |
+| First question, NAB rates (22,831 chars) | 23,532 | 34 + 12,839 cache-write + 3,017 cache-read / 133 | $0.0511 |
+| A follow-up | | 34 + 15,856 cache-read / 136 | $0.0069 |
+| First question, ANZ rates, read in part (31,953 chars) | 32,806 | 26 + 13,125 cache-write + 3,017 cache-read / 142 | $0.0523 |
+| A follow-up | | 26 + 16,142 cache-read / 169 | $0.0075 |
+| First question, Macquarie T&Cs PDF (103,789 chars → the 48,000 budget) | 48,481 | 16 + 17,934 cache-write + 3,017 cache-read / 330 | $0.0732 |
+| A follow-up | | 16 + 20,951 cache-read / 337 | $0.0114 |
+| A message with a link that was never read | no page | 324 + 3,017 cache-read / 146 | $0.0041 |
+
+So one page costs **about five to seven cents for the first question and about one cent for
+each follow-up** while it is cached. The dearest measured here is $0.073, for a document cut
+to the 48,000-character budget (part 1 measured $0.095 for a denser one at the same budget);
+the budget is what bounds it. The first RBA figure includes writing the voice prefix to the
+cache (the cache was cold); the others found it warm.
+
+What the replies said, on the same run: RBA — "The cash rate target is currently 4.60%. It
+last changed on 30 Sep 2026 … as read on 12 Oct 2026". NAB — "6.69% p.a., with a comparison
+rate of 6.69% p.a. … accurate when the page was read today, but rates can change". ANZ —
+"That figure isn't available — the ANZ page was read in part … Reading the page again won't
+fix it … save the page as a PDF and attach it, or paste the rate in". A link never read —
+"I haven't opened that page … Pressing "Read this page" beside the message box will have it
+read … I won't guess at it or use a figure from memory". **These show what the model did on
+12 Oct; the tests above are the proof** (SECURITY §3 says why a live reply is not one).
+
+**Pages this client will paste that cannot be read**, in the order he is likely to meet them:
+
+1. **The rate figures on CBA, ANZ and ING.** Read in part: everything but the numbers. Two
+   of the big four. NAB, Westpac, Macquarie and Bankwest are complete.
+2. **realestate.com.au — every page.** It refuses any automated reader (429). Domain and
+   REIWA read.
+3. **Paywalled news: AFR, The West.** Refused as a paywall. Only the teaser is public.
+4. **Sites that tell AI assistants to stay out: ABC News** on the probe set, and any other
+   that does. Refused before the page is asked for (D96).
+5. **Anything behind a login:** a lender's broker portal, an aggregator's platform, his own
+   CRM, a Google Doc that is not public. The assistant cannot sign in and is not given a way.
+6. **A page drawn entirely by script,** with nothing in what the site sends. None was met on
+   the probe set; it would be refused as having no readable text.
+
+The way round is the same for all six and the product says it each time: open the page
+himself, save it as a PDF, attach it — part 1 reads that — or paste the text.
+
+**Could not be verified from this machine:** the two stack suites and the migration from
+zero (no Docker — CI is the first run; their SQL was replayed on PostgreSQL 17, 85
+assertions) · a real phone · a real screen reader (the live region's text is asserted, not
+heard) · the region pin from the deployed app (verified with `curl` during the probe) · a
+signed-in read on the live app (it writes to the production database, and nothing is
+deployed) · how often the three script-filled lenders change their markup.
+
 ---
 
 ## Milestone 6 — Talking to it, and your day · 350

@@ -34,6 +34,7 @@ import { extractInBrowser, hashInBrowser } from '../lib/files/lazy.js';
 import {
   CONVERSATION_FILE_COLUMNS,
   callFiles,
+  fetchPage,
   toAttachedFiles,
   type AttachedFile,
 } from '../lib/filesApi.js';
@@ -202,6 +203,21 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
           data.session?.access_token ?? latestSession.current.access_token,
           request,
           signal,
+        );
+      },
+      // Milestone 5 part 2: OUR server fetches the page. This browser never contacts the site.
+      fetchPage: async (request, signal, onProgress) => {
+        const { data } = await supabase.auth.getSession();
+        return fetchPage(
+          {
+            filesUrl: webConfig.filesUrl,
+            anonKey: webConfig.anonKey,
+            fetch: fetch.bind(globalThis),
+          },
+          data.session?.access_token ?? latestSession.current.access_token,
+          request,
+          signal,
+          onProgress,
         );
       },
       loadFiles,

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AuthTokenUser, StaffRow, VerifyDeps } from '../../../src/lib/auth/verify.js';
 import { ok, type Result } from '../../../src/lib/errors.js';
-import { createTurnDocuments, type TurnFile } from '../../../src/lib/files/context.js';
+import { createTurnDocuments, rulesFor, type TurnFile } from '../../../src/lib/files/context.js';
 import {
   INJECTION_PROBES,
   OBEYED_WORD,
@@ -61,6 +61,9 @@ const COMPLETION: Completion = {
   attempts: 1,
 };
 
+/** A fixed moment: the web rules carry the time now, so both sides must be given the same one. */
+const NOW = new Date('2026-10-12T06:30:00Z');
+
 /** The request the chat handler builds for one question in a conversation with no history. */
 async function chatRequest(file: TurnFile, message: string): Promise<CompletionRequest> {
   const calls: CompletionRequest[] = [];
@@ -92,9 +95,16 @@ async function chatRequest(file: TurnFile, message: string): Promise<CompletionR
       recentMessages: () => Promise.resolve(ok([])),
       appendTurn: () => Promise.resolve(ok({ userMessageId: 'u-1', assistantMessageId: 'a-1' })),
     },
-    documents: createTurnDocuments({
-      forTurn: () => Promise.resolve(ok({ files: [file], everHadFile: true })),
-    }),
+    documents: createTurnDocuments(
+      {
+        forTurn: () =>
+          Promise.resolve(
+            ok({ files: [file], everHadFile: true, everHadPage: file.source !== undefined }),
+          ),
+      },
+      undefined,
+      () => NOW,
+    ),
     log: capturingLogger().log,
   };
   const result = await handleChatTurn(deps, { token: 't', message, conversationId: CONV_ID });
@@ -125,6 +135,49 @@ describe('the probe sends what a chat turn sends', () => {
     expect(block).toContain(INJECTION);
     expect(request.messages.at(-1)).toEqual({ role: 'user', content: QUESTION });
     expect(request).not.toHaveProperty('tools');
+  });
+
+  it("a page read from a link: given the conversation's rules, it sends what the chat handler sends", async () => {
+    const page: TurnFile = {
+      ...PAYSLIP,
+      name: 'Home loan rates | Example Lender',
+      kind: 'html',
+      pages: [
+        {
+          pageNo: 1,
+          label: 'Top of the page',
+          content: `Two year fixed 5.79% p.a.\n${INJECTION}`,
+          method: 'html_text',
+          legibility: 'full',
+        },
+      ],
+      source: {
+        host: 'www.lender.example.org',
+        fetchedAt: '2026-10-12T06:14:00Z',
+        valuesMissing: 0,
+        readAsSent: false,
+      },
+    };
+    const rules = rulesFor(true, true, NOW) ?? '';
+    const probe = probeRequest(page, QUESTION, undefined, rules).request;
+    const chat = await chatRequest(page, QUESTION);
+    expect(probe.system).toEqual(chat.system);
+    expect(probe.messages).toEqual(chat.messages);
+    // The document rules, then the web rules with the time now — and the page labelled with
+    // its site and its read time by us, never by the page.
+    expect(probe.system.map((part) => part.text)).toEqual([buildVoicePrefix(), rules]);
+    expect(rules.startsWith(DOCUMENT_RULES)).toBe(true);
+    expect(rules).toContain('# Pages read from a link');
+    expect(rules).toContain('The time now is 12 Oct 2026, 2:30 pm Perth time.');
+    const block = textOfMessage(probe.messages[0]?.content);
+    expect(block).toContain('source="www.lender.example.org"');
+    expect(block).toContain('read="12 Oct 2026, 2:14 pm Perth time"');
+    expect(probe).not.toHaveProperty('tools');
+    // Left alone, the probe is still part 1's: a file's rules and nothing more.
+    expect(probeRequest(page, QUESTION).request.system.map((part) => part.text)).toEqual([
+      buildVoicePrefix(),
+      DOCUMENT_RULES,
+    ]);
   });
 
   it('a file with no pages sends the question alone', () => {

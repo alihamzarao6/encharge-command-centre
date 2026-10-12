@@ -43,6 +43,11 @@ export interface ExtractionOk {
   readonly notes: readonly string[];
   /** Releases whatever the extraction is holding open (a parsed PDF). Safe to call twice. */
   readonly dispose: () => void;
+  /**
+   * Milestone 5 part 2: a web page's own title, when it has one. A stranger's words: the
+   * server cleans them before they are stored or shown (sanitiseTitle).
+   */
+  readonly title?: string | null;
 }
 
 export interface ExtractionRefused {
@@ -59,6 +64,14 @@ export interface ExtractInput {
   readonly bytes: Uint8Array;
   readonly onProgress?: (done: number, total: number) => void;
   readonly signal?: AbortSignal;
+  /**
+   * Milestone 5 part 2: the bytes were fetched from a link by the server, not chosen from
+   * this device. Only then is a web page read (an uploaded .html file is still refused —
+   * D83). The bytes still decide what the thing is.
+   */
+  readonly fromLink?: boolean;
+  /** The server's cleaned `Content-Type` for those bytes: a hint for the encoding, no more. */
+  readonly contentType?: string | null;
 }
 
 // --- the two things only a browser can do, injected so the rest runs under Node ----------

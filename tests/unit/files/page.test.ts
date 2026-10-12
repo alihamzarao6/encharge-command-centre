@@ -737,15 +737,23 @@ describe('finish', () => {
         'conversationId',
         'createdAt',
         'expiresAt',
+        'fetchedAt',
         'id',
         'kind',
         'name',
         'pageCount',
+        'readAsSent',
+        'sourceHost',
+        'sourceUrl',
         'status',
         'uploadedBy',
+        'valuesMissing',
         'visionPages',
       ].sort(),
     );
+    // An uploaded file came from nowhere on the web.
+    expect(done.file).toMatchObject({ sourceUrl: null, sourceHost: null, fetchedAt: null });
+    expect(done.replaced).toBe(0);
   });
 
   it('is idempotent, and a file kept for 30 days says when it expires', async () => {

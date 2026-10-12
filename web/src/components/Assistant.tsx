@@ -57,6 +57,7 @@ import { ConversationList, type AdminPrivateRow } from './ConversationList.js';
 import { Thread, type LocalMessage } from './Thread.js';
 import { useThreadState, useThreadStore } from './ThreadContext.js';
 import { useAttachments } from './UploadsContext.js';
+import { useLinkReading } from './useLinks.js';
 
 interface Props {
   readonly session: Session;
@@ -88,6 +89,14 @@ export function Assistant({
   const thread = useThreadState();
   const { activeId, messages, threadState, sending, waiting, draft } = thread;
   const attachments = useAttachments();
+  // Milestone 5 part 2: the links in the draft, read only when he says so.
+  const links = useLinkReading({
+    draft,
+    setDraft: store.setDraft,
+    send: (text) => {
+      void store.send(text, null);
+    },
+  });
 
   const [conversations, setConversations] = useState<ConversationListRow[]>([]);
   /**
@@ -583,6 +592,7 @@ export function Assistant({
             }}
             onAttach={attachments.attach}
             sendBlockedNote={attachments.sendBlockedNote}
+            links={links}
           />
         )}
       </section>

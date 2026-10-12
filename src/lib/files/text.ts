@@ -92,6 +92,31 @@ export function sanitiseFileName(raw: unknown): string {
   return `${chars.slice(0, keep).join('')}…${extension.join('')}`;
 }
 
+/**
+ * A display label from a web page's own title (Milestone 5 part 2). A title is text a
+ * stranger wrote that ends up on screen, in a database row and in a prompt, exactly as a file
+ * name does — but it is prose, not a path, so slashes stay ("Home loans / Rates") and it is
+ * cut at a word where it can be. Empty or unusable → `fallback`, which is the page's host.
+ */
+export function sanitiseTitle(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  const cleaned = stripInvisible(raw.normalize('NFC'))
+    .replace(/[\t\n\r]/g, ' ')
+    .replace(/</g, '(')
+    .replace(/>/g, ')')
+    .replace(/["`]/g, "'")
+    .replace(/&/g, '+')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (meaningfulChars(cleaned) === 0) return fallback;
+  const max = FILE_LIMITS.maxNameChars;
+  const chars = Array.from(cleaned);
+  if (chars.length <= max) return cleaned;
+  const cut = chars.slice(0, max - 1).join('');
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
 /** The lowercase extension without the dot, or '' — a hint only; the bytes decide. */
 export function extensionOf(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? '';

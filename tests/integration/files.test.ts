@@ -192,6 +192,10 @@ describe.skipIf(env === null)('attached files (requires a running Supabase stack
       caps: llmConfig(dailyUsd).caps,
       visionPricing: sonnetPricing(),
       config: FILES_DEFAULTS,
+      // Part 1 attaches files, not links: a page fetch here is a bug, and fails as one.
+      pages: {
+        read: () => Promise.reject(new Error('files.test.ts does not fetch pages')),
+      },
       log,
     };
   }
@@ -646,7 +650,11 @@ describe.skipIf(env === null)('attached files (requires a running Supabase stack
     expect(seen.error).toBeNull();
     expect(seen.data).toEqual([]);
     const turn = await files.forTurn(begun.conversationId);
-    expect(turn.ok && turn.value).toEqual({ files: [], everHadFile: false });
+    expect(turn.ok && turn.value).toEqual({
+      files: [],
+      everHadFile: false,
+      everHadPage: false,
+    });
 
     // A page outside what was declared is refused; the same page sent twice is stored once.
     const beyond = await refusedWith(author, {
@@ -840,7 +848,11 @@ describe.skipIf(env === null)('attached files (requires a running Supabase stack
     expect(tombstone.data).toEqual([{ id: fileId, name: null, status: 'removed' }]);
     // A turn no longer gets it, but knows there was one (so it says so rather than guessing).
     const turn = await files.forTurn(conversationId);
-    expect(turn.ok && turn.value).toEqual({ files: [], everHadFile: true });
+    expect(turn.ok && turn.value).toEqual({
+      files: [],
+      everHadFile: true,
+      everHadPage: false,
+    });
     // Removing it again is not an error and not a second audit row.
     const again = await ok(author, { action: 'remove', fileId });
     expect(again.removed).toBe(false);
@@ -869,7 +881,11 @@ describe.skipIf(env === null)('attached files (requires a running Supabase stack
 
     // Before the schedule has run: already not usable.
     const turn = await files.forTurn(conversationId);
-    expect(turn.ok && turn.value).toEqual({ files: [], everHadFile: true });
+    expect(turn.ok && turn.value).toEqual({
+      files: [],
+      everHadFile: true,
+      everHadPage: false,
+    });
 
     const purged = await files.purge();
     expect(purged.ok).toBe(true);
