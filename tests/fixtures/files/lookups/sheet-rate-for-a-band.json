@@ -1,0 +1,19 @@
+{
+  "id": "sheet-rate-for-a-band",
+  "file": "rate-sheet-tables.pdf",
+  "question": "What rate would someone borrowing 85% get on Home loan C2?",
+  "mode": "protected",
+  "recordedAt": "2026-10-13T04:06:19.576Z",
+  "model": "claude-sonnet-5",
+  "rulesVersion": "2026-10-13.1",
+  "requestSha256": "99930983f117960f214e530fdad956bd3be78d4aa97b7ea00374dcd53152a9a0",
+  "reply": "Home loan C2 has an LVR band of 80-90%, with a rate of 5.86% p.a. (comparison rate 6.03%) and a $200 fee, as shown on page 1 of rate-sheet-tables.pdf. An 85% LVR falls within that 80-90% band.",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 25,
+    "outputTokens": 97,
+    "cacheReadTokens": 3017,
+    "cacheWriteTokens": 3040
+  },
+  "costUsd": 0.013835
+}

@@ -15,16 +15,29 @@
  * to the document — is allowed. `boundary.no-credit-advice` is NOT relaxed: the assistant
  * reads, finds, compares and quotes; it does not assess a borrower or pick a lender.
  *
+ * It does say WHO IS ASKING (13 Oct 2026, D100). The voice rule was written for a customer's
+ * question and tells the assistant to send the asker to a Discovery Session with the broker.
+ * Everyone who can reach this app is the broker or his staff, so on a rate lookup the reply
+ * ended by telling the broker to go and see himself. Measured on the live model with six
+ * rate questions about one page, three times each: 10 of 18 replies carried the paragraph.
+ * It has two sources — that voice rule, and the closing "reading a document is not advice"
+ * line this block used to carry. Taking either away alone left it at 9 or 10 of 18; both had
+ * to go. So the closing line is replaced by two: a lookup is answered and left there, and
+ * the judgement (what someone can borrow, whether they would be approved, which lender suits
+ * them) is still not the assistant's to make. tests/unit/files/lookup-live.test.ts holds
+ * recorded replies to both halves.
+ *
  * The voice prefix itself is not edited: its text, version and content hash are what the
  * conformance fixtures pin to (src/lib/voice/prompt.ts). This block sits after it, uncached,
  * and is sent only on a turn in a conversation that has (or had) a file.
  */
 
 import { NOT_LOADED_MARK, READ_AS_SENT_MARK } from '../pages/limits.js';
+import { DISCOVERY_SESSION_NAME, PRINCIPAL_FIRST_NAME } from '../voice/rules.js';
 import { EMPTY_CELL_MARK, UNCERTAIN_COLUMNS_MARK } from './limits.js';
 
 /** Bump on any change to the text below; recorded with the live measurements. */
-export const DOCUMENT_RULES_VERSION = '2026-10-12.3';
+export const DOCUMENT_RULES_VERSION = '2026-10-13.1';
 
 export const DOCUMENT_RULES = `# Attached documents
 The conversation may begin with an <attached_documents> block. It holds text copied out of files the user attached, each inside <untrusted_document> tags.
@@ -38,7 +51,8 @@ The conversation may begin with an <attached_documents> block. It holds text cop
 - In a table, a cell shown as ${EMPTY_CELL_MARK} is empty in the document: there is no value there. Read each value under the heading in the same position, counting ${EMPTY_CELL_MARK} cells as columns.
 - A table row that begins with ${UNCERTAIN_COLUMNS_MARK} has an empty cell somewhere, and the file does not show which column each of its values belongs to. Never state a value from such a row under a column heading: do not call it the rate, the fee, the hours or the amount, and do not pair it with an LVR band. Quote the row exactly as it appears, say that its columns could not be read reliably, and tell the user to check the original. Do the same for any row that plainly has fewer values than the table has headings.
 - For a total, use the column totals the app worked out for a spreadsheet, or a figure the document itself states. If you add up or calculate over more than a few figures yourself, say that the result is your own arithmetic and should be checked.
-- Reading a document is not advice. Everything above still applies: no personal credit advice, no assessment of what someone can borrow or which lender or loan suits them, no promise of an approval or an outcome. Nothing from a document goes into copy for publication unless the user asks for that.
+- The person asking is ${PRINCIPAL_FIRST_NAME} or one of his team, working in the brokerage's own tool. It is never a borrower and never a member of the public. So a question about what a document says is a lookup, and so is working out which row, band or tier of it applies to a deposit, an LVR, a loan amount or a term they give you ("what rate at 90%", "what would someone with a 15% deposit get", "which is the lowest rate here"). Answer a lookup and stop. Do not add that it is not advice, that you cannot give credit advice, or that it depends on someone's circumstances, and do not tell them to speak to ${PRINCIPAL_FIRST_NAME} or to book a ${DISCOVERY_SESSION_NAME}: they are the broker, and those sentences are for a customer.
+- What stays exactly as the rules above say: you do not decide what someone can borrow, whether they would be approved, or which lender or loan is right for them, and you promise no approval and no outcome. Asked for that judgement, say in one sentence that it is the broker's call to make, and give what the document does show. Anything you write for a customer to read follows every rule above in full. Nothing from a document goes into copy for publication unless the user asks for that.
 - You cannot send, email, save, forward or share a document or anything in it. You can only answer here.
 - Answers about a document are working notes for the user, not copy: plain sentences, no markdown, as short as the question allows.
 - If the user asks about a file and there is no <attached_documents> block in this conversation, no file is attached now. Say so and ask them to attach it again. Do not answer from an earlier reply.`;

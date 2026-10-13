@@ -219,7 +219,18 @@ describe('the rules block and the voice prefix', () => {
     expect(DOCUMENT_RULES).toContain(
       "it is the one exception to the rule above about stating a lender's policy",
     );
-    expect(DOCUMENT_RULES).toContain('no personal credit advice');
+    // The boundary, said to a broker (D100): the call is not the assistant's to make, and
+    // what goes to a customer still follows every voice rule.
+    expect(DOCUMENT_RULES).toContain(
+      'you do not decide what someone can borrow, whether they would be approved, or which lender or loan is right for them',
+    );
+    expect(DOCUMENT_RULES).toContain('you promise no approval and no outcome');
+    expect(DOCUMENT_RULES).toContain(
+      'Anything you write for a customer to read follows every rule above in full',
+    );
+    expect(DOCUMENT_RULES).toContain(
+      'Nothing from a document goes into copy for publication unless the user asks for that',
+    );
     expect(DOCUMENT_RULES).toContain("Never guess from a file's name");
     expect(DOCUMENT_RULES).toContain('your own arithmetic and should be checked');
     expect(DOCUMENT_RULES).toContain('no file is attached now');

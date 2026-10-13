@@ -1,0 +1,19 @@
+{
+  "id": "page-rate-for-a-deposit",
+  "file": "rate-table.html",
+  "question": "What rate would someone with a 15% deposit get?",
+  "mode": "protected",
+  "recordedAt": "2026-10-13T04:06:10.606Z",
+  "model": "claude-sonnet-5",
+  "rulesVersion": "2026-10-13.1",
+  "requestSha256": "13c26d36115861c1ec61af5788dd5136ca2bc9285fd4085286dd4772b021a5af",
+  "reply": "A 15% deposit means an LVR of 85%, which falls in the 80.01% to 90% band on the Example Basic Home Loan variable rate table (examplelender.com.au, read 13 Oct 2026). That band shows an interest rate of 6.44% p.a., comparison rate 6.47% p.a. The monthly fee cell for that band is blank in the document, so no fee is shown.\n\nNote: this was read today, so the rate should be current, but reading the page again later will confirm if it's changed.",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 19,
+    "outputTokens": 165,
+    "cacheReadTokens": 3017,
+    "cacheWriteTokens": 2645
+  },
+  "costUsd": 0.013356
+}

@@ -1,0 +1,55 @@
+{
+  "description": "BEFORE the fix of 13 Oct 2026 (D100): the live model's replies, word for word, to plain rate questions about tests/fixtures/web/rate-table.html read as a page from a link, with the document rules at 2026-10-12.3. Asked through `npm run pages -- ask`. Each one answers the question and then tells the broker what a customer would be told. Kept so tests/unit/files/lookup-live.test.ts can show its check fails on them. Never re-recorded: the rules that produced them are gone.",
+  "recordedAt": "2026-10-13T03:55:00.000Z",
+  "rulesVersion": "2026-10-12.3",
+  "replies": [
+    {
+      "question": "What rate would I get on a 500k loan with a 20% deposit?",
+      "model": "claude-sonnet-5",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 388,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5387
+      },
+      "costUsd": 0.007511,
+      "reply": "A 20% deposit means an LVR of 80%, which falls in the \"LVR 60.01% to 80%\" band on the Example Lender page: 6.14% p.a. (comparison rate 6.17% p.a.), monthly fee $0. That's from the Example Lender home loan interest rates page, read 13 Oct 2026, 11:55 am Perth time.\n\nA few things worth flagging though:\n\nThat comparison rate is calculated on a $150,000 loan over 25 years, not your $500,000 loan, so it won't reflect your actual cost — that's the lender's own warning on the page, not mine.\n\nThis is a rate from one lender's public page, not advice on what you'd actually be offered or approved for. What you qualify for depends on your full situation, and that's exactly what a licensed broker needs to look at properly rather than me guessing at it. If you want to know where you'd actually sit, that's worth a Discovery Session with Ross, who can look at the full picture across 40+ lenders rather than just one rate card.\n\nAlso worth noting: rates change, and this page says so itself (\"subject to change without notice\"). What I've quoted was accurate when read today, but I'd check it's still current before relying on it."
+    },
+    {
+      "question": "what is the rate if i borrow 90%",
+      "model": "claude-sonnet-5",
+      "usage": {
+        "inputTokens": 16,
+        "outputTokens": 302,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5387
+      },
+      "costUsd": 0.006194,
+      "reply": "From the Example Lender page (read 13 Oct 2026, 11:54 am Perth time): for LVR 90.01% to 95%, the variable rate is 6.84% p.a., monthly fee $10. The comparison rate cell for that row is blank in the document — no value shown.\n\nIf you mean exactly 90% LVR, that sits in the 80.01% to 90% band: 6.44% p.a., comparison rate 6.47% p.a., monthly fee blank in the document.\n\nA couple of things worth flagging: this page may have changed since it was read, so it's worth re-checking before relying on it, and the comparison rate is only accurate for the example of a $150,000 loan over 25 years per the page's own warning.\n\nI can't tell you what you'd actually be able to borrow or whether this loan suits your situation — that needs a proper look at your circumstances with Ross. Worth booking a Discovery Session for that: [booking link]"
+    },
+    {
+      "question": "What rate would someone with a 15% deposit get?",
+      "model": "claude-sonnet-5",
+      "usage": {
+        "inputTokens": 19,
+        "outputTokens": 290,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5387
+      },
+      "costUsd": 0.006023,
+      "reply": "A 15% deposit means an LVR of 85%, which falls in the \"80.01% to 90%\" band on the Example Lender page (read 13 Oct 2026, 11:54 am Perth time). That band shows:\n\nInterest rate: 6.44% p.a.\nComparison rate: 6.47% p.a.\nMonthly fee: (blank) — the page shows no value there, so there's no fee listed for that band.\n\nA few things worth flagging: this is one lender's page, not a recommendation, and rates are \"subject to change without notice\" per the page itself — so if this matters for a real decision, it should be checked against the live page again or confirmed directly. I also can't tell you whether this rate or lender actually suits your situation — that's exactly the kind of thing Ross would work through with you in a Discovery Session, looking at your full picture across Fundd's panel of 40+ lenders rather than just one."
+    },
+    {
+      "question": "What's the best rate on this page?",
+      "model": "claude-sonnet-5",
+      "usage": {
+        "inputTokens": 13,
+        "outputTokens": 359,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5387
+      },
+      "costUsd": 0.00704,
+      "reply": "From the Example Lender page (read 13 Oct 2026, 11:54 am Perth time), the lowest rate shown is the 2 year fixed owner occupier rate at 5.79% p.a. (comparison rate 6.44% p.a.).\n\nA few things worth flagging:\n\n- There are lower-LVR variable rates too (6.04% p.a. for LVR 60% or less), but none beat 5.79%.\n- The fixed rate comparison rates are based on a $150,000 loan over 25 years, and the page itself warns this comparison rate is only true for that example and may not include all fees and charges.\n- The LVR 80.01%–90% and 90.01%–95% variable rows have blank cells for monthly fee and comparison rate respectively — the page simply doesn't show a value there.\n- Rates are noted as subject to change without notice, and this page was read today, so it reflects that moment only.\n\nThis is just reading back what's on the page — not a recommendation on which rate or loan suits anyone. If you want to work out what's actually right for a situation, that's a conversation for a Discovery Session with Ross."
+    }
+  ]
+}

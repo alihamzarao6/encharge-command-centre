@@ -133,6 +133,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D97** | **The fetch is guarded as its own module (`src/lib/pages/guard.ts`): https only, port 443 only, no credentials, no numeric host of any encoding, no single-label or internal name; every address the name resolves to, in both families, must be public; all of it checked again on every redirect hop, at most five; 10 s to a first byte and 20 s in all; 5 MB a page and 20 MB a document, counted on the decompressed stream, and over the cap is a refusal, never a truncation. Ten reads a minute per person and two seconds between reads of one site, both decided in the database under a lock. One request id opens one page, once** | The client controls the address and the fetch runs inside our infrastructure. **A name that resolves publicly when checked and privately when fetched is not prevented; it is made useless** — the fetch is https with the certificate checked against the name, so an internal service would need a valid certificate for the attacker's domain (probed). Pinning the connection is possible on the runtime and means writing an HTTP client; not built. Five hops, not SECURITY §10's old three, because a real lender address takes exactly three and every hop is checked. The limits live in the database because a function instance's memory is not shared with the next instance | 12 Oct |
 | **D98** | **What "the page's text" is: the text of visible elements only — never an attribute, a comment, a script or a style — with navigation, page header and footer, sidebars, cookie banners, controls and link-only menus removed; tables as rows with their headings, an empty cell written `(blank)`; tab and accordion labels carried to their panels as headings; cut into parts at headings. Text the MARKUP declares hidden (the `hidden` attribute, `aria-hidden`, an inline style — including opacity under a tenth) is dropped, **decided for each piece of text, wherever it sits: a hidden span inside a visible sentence, a hidden cell in a visible table**; text hidden only by a CSS CLASS is read. A place the site leaves for a script to fill in is written `[not in the page as fetched]`, counted, and the page is shown and described to the model as read in part. Under 200 letters, a paywall, a login page, a bot challenge, a consent wall, a page that only forwards elsewhere, or a page nested deeper than the reader tracks: refused with the reason. **One exception: a page that shows next to nothing and has 400 or more letters behind an inline `opacity:0` and nothing else is read with those declarations — only those — ignored, is stored as `read_as_sent`, says so under its title, and is described that way to the model** | "Read class-hidden text" was the reviewer's choice on 12 Oct, after measurement: hiding by class cannot be judged without a browser engine, and on NAB and Bankwest it is where the labels of the rate tables are. No renderer was also his choice. **The exception is mine, and was reviewed on 12 Oct on one condition — a canary in the exact shape it triggers on (met; see the "review 1" entry).** It is `opacity:0` and nothing wider because that is what the real page does: Bankwest sends every section with its own inline `opacity:0`, the start of an entrance animation, so there is no single wrapper to lift, and anything wider would read `display:none` text on any page an attacker cares to fade. It is still a door: text hidden with `opacity:0` and never meant to fade in is read on such a page, and no reading of markup can tell the two apart — the wrapper (D87, D99) is what makes it harmless, and that is tested in that shape. **Both points were put to the reviewer after the canary round and he ruled the same day: fade-in pages stay readable** (Bankwest reads completely and is a page the client will use; the wrapper is proven, the fallback is narrow, the page is visibly marked) **and `aria-hidden` stays dropped** (it costs one lender's two tab labels on tables that have no figures in them anyway, and reading it would reopen a hiding place the canaries cover) | 12 Oct |
 | **D99** | **Nothing is cached: every read goes to the site. A page carries the time it was read on screen and in front of the model, which is also told the time now and must say when a page was read whenever it gives a figure from it. Reading the same address again replaces the older copy — or, if nothing changed, refreshes it. A page is data in the same wrapper as an attached file (D87), with two additions to the system prompt and none to the user turn: the rules for pages, and — whenever a message contains a link — that a link is only text, that the only pages read are the ones in the block, and that a rate from memory is a wrong answer** | The question a page raises that a file does not is "is this still true". Two copies of one rate page in front of the model would be two answers. The link rule exists because without it a question about an unopened link is answered from the address and from what the model remembers of the site — the confident stale rate the brief's third fixed decision forbids. `DOCUMENT_RULES` is byte-identical to part 1's, so part 1's recorded fixtures still hold | 12 Oct |
+| **D100** | **The document rules say WHO IS ASKING: Ross or one of his team, never a borrower and never a member of the public. A question about what a supplied document or page says — including which row, band or tier applies to a deposit, LVR, loan amount or term he gives — is a lookup: answered, with no sentence about credit advice and no pointer to a Discovery Session. The boundary is restated for a broker, not removed: the assistant still does not decide what someone can borrow, whether they would be approved or which lender suits them, and anything written for a customer follows every voice rule in full. Amends the closing line of D87; `boundary.no-credit-advice` and the cached voice prefix are untouched** (`DOCUMENT_RULES` 2026-10-13.1, `src/lib/files/rules.ts`) | The client is a mortgage broker and was being told, on his own tool, on his own rate question, that the assistant could not give personal credit advice and that he should book a Discovery Session with Ross. Measured on the live model, six rate questions about one page, three times each: 10 of 18 replies carried the paragraph. It had TWO sources — the voice rule (written for a customer: "point them to a Discovery Session") and the document rules' own closing line "Reading a document is not advice… no personal credit advice". Removing either alone left 9 or 10 of 18; removing both left 3. Replacing the closing line with who is asking: 0 of 18, and both judgement questions ("should my client go with this lender", "how much can they borrow") still declined, 6 of 6. The voice rule is not edited because it is client-sourced and its text, version and hash are what the 24 conformance fixtures pin to; the override sits where the reviewer already approved one (D87), in a block a document cannot write to | 13 Oct |
 
 ---
 
@@ -149,6 +150,45 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-13 — [fix · document rules] The assistant stops telling the broker to see a broker — committed; `chat` NOT redeployed
+
+**Did:** reproduced the reviewer's report with `npm run pages -- ask` on
+`tests/fixtures/web/rate-table.html`: "What rate would I get on a 500k loan with a 20%
+deposit?" was answered (6.14% p.a.) and then closed with *"that's exactly what a licensed
+broker needs to look at… worth a Discovery Session with Ross"*. Replaced the closing line of
+`DOCUMENT_RULES` with two (D100): who is asking, so a lookup is answered and left there; and
+the boundary, restated for a broker. Version `2026-10-13.1`. `LOOKUP_PROBES`, `judgeLookup`
+and `lookupRequest` in `src/lib/files/probe.ts`; `npm run files -- record` now records them
+too; six recordings in `tests/fixtures/files/lookups/` (four lookups, two judgements) and
+the four word-for-word BEFORE replies in `tests/fixtures/files/lookup-before.json`, held by
+`tests/unit/files/lookup-live.test.ts`. The three protected prompt-injection recordings were
+re-recorded because their request changed (all three still: not obeyed, answered); the three
+controls send no rules, so their request did not change and they are as they were.
+
+**Measured (live, `claude-sonnet-5`, the page path, six questions, every reply scored by
+`judgeLookup`):** before 10 of 18 replies with the paragraph (11 of 18 on the first run);
+after 0 of 18. Through `pages -- ask`, twice each: 10 of 12 before, 0 of 12 after. Mean
+lookup reply 256 → 139 output tokens. The two judgement questions were declined 6 of 6
+before and 6 of 6 after. With the old rules put back, 12 tests fail. Spend for the whole
+investigation, 159 calls: 1.08 USD.
+
+**Decided:** the reviewer's brief said it comes from the voice rules and not from page or file
+reading. Measured, it comes from both, and neither alone: voice rule removed → 10 of 18;
+document line removed → 9 of 18; both → 3 of 18. So the fix is in the document rules, which
+are ours, uncached, and already carry the D87 carve-out — not in the voice prefix, whose
+edit means a version bump and 24 re-recordings of a client-sourced rule.
+
+**Not covered:** a conversation with NO file and no page never receives the document rules,
+so text he pastes straight into the message box still gets the voice rule as written. Fixing
+that is a change to the voice prefix and wants the reviewer's yes.
+
+**Surprised by:** one after-reply (1 of 12) misread a blank cell — it gave the 80.01–90%
+band's comparison rate as blank when the page shows 6.47% and the blank is the monthly fee.
+Not seen in the before replies; n = 1; not chased here.
+
+**Next:** `supabase functions deploy chat` — the rules live in the function, so this is not
+live until it is redeployed. Not done: a production deploy is the user's call.
 
 ### 2026-10-13 — [M5 part 2 · closed] The user tested the deployed app
 

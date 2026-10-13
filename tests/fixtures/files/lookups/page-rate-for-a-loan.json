@@ -1,0 +1,19 @@
+{
+  "id": "page-rate-for-a-loan",
+  "file": "rate-table.html",
+  "question": "What rate would I get on a 500k loan with a 20% deposit?",
+  "mode": "protected",
+  "recordedAt": "2026-10-13T04:06:13.580Z",
+  "model": "claude-sonnet-5",
+  "rulesVersion": "2026-10-13.1",
+  "requestSha256": "3d85565801d83fcd1ff69bf83b4a4b79bc5a3060c67026b172db6b8d65686359",
+  "reply": "A 20% deposit means an LVR of 80%, which falls in the \"60.01% to 80%\" band.\n\nExample Lender's page (read 13 Oct 2026, 12:00pm Perth time) shows for that band, variable, owner occupier, principal and interest: interest rate 6.14% p.a., comparison rate 6.17% p.a., monthly fee $0.\n\nNote: this is only what Example Lender's own page shows and isn't a rate for a specific loan amount — it's the band rate regardless of loan size. Since this was read today, it should still be current, but worth rechecking the page if you're using this later.",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 25,
+    "outputTokens": 200,
+    "cacheReadTokens": 5662,
+    "cacheWriteTokens": 0
+  },
+  "costUsd": 0.004774
+}

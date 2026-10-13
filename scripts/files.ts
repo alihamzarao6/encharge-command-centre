@@ -22,6 +22,10 @@
  *                                              tests/fixtures/files/recorded/, then print each
  *                                              verdict. tests/unit/files/injection-live.test.ts
  *                                              holds the recordings to the same verdict in CI.
+ *                                              Then the lookup probes (a rate question is
+ *                                              answered without a lecture; a judgement is still
+ *                                              declined) into tests/fixtures/files/lookups/,
+ *                                              held by tests/unit/files/lookup-live.test.ts.
  *
  * Live modes talk to Claude through src/lib/llm/client.ts — the same cap, pricing, retry and
  * parsing code as the app — with an in-memory ledger, so a run can never exceed the env caps
@@ -45,16 +49,20 @@ import { loadFilesConfig } from '../src/lib/files/config.js';
 import type { TurnFile } from '../src/lib/files/context.js';
 import {
   INJECTION_PROBES,
+  LOOKUP_PROBES,
   RECORDED_PROBE,
+  judgeLookup,
   judgeReply,
+  lookupRequest,
   probeRequest,
   requestFingerprintSource,
   toTurnFile,
   unprotectedRequest,
+  type LookupProbe,
   type RecordedProbe,
 } from '../src/lib/files/probe.js';
 import { DOCUMENT_RULES_VERSION } from '../src/lib/files/rules.js';
-import { sanitiseFileName } from '../src/lib/files/text.js';
+import { sanitiseFileName, sanitiseTitle } from '../src/lib/files/text.js';
 import { transcribePage } from '../src/lib/files/vision.js';
 import { createHttpClient } from '../src/lib/http.js';
 import {
@@ -70,6 +78,8 @@ import type { ExtractEngines } from '../web/src/lib/files/types.js';
 
 const FIXTURES_DIR = resolve(import.meta.dirname, '..', 'tests', 'fixtures', 'files');
 const RECORDED_DIR = join(FIXTURES_DIR, 'recorded');
+const LOOKUPS_DIR = join(FIXTURES_DIR, 'lookups');
+const WEB_FIXTURES_DIR = resolve(import.meta.dirname, '..', 'tests', 'fixtures', 'web');
 /** There is no user and no conversation in a terminal; the ledger here is in memory. */
 const NOBODY = '00000000-0000-4000-8000-000000000000';
 
@@ -317,13 +327,40 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-async function record(flags: Flags): Promise<void> {
-  const probes = INJECTION_PROBES.filter(
-    (probe) => flags.only.length === 0 || flags.only.includes(probe.id),
+/** A lookup probe's fixture as a turn would hold it: a file as uploaded, a page as read from a link. */
+async function lookupProbeRequest(probe: LookupProbe): Promise<CompletionRequest> {
+  if (probe.page === undefined) {
+    const file = await loadTurnFile(join(FIXTURES_DIR, probe.file), []);
+    return lookupRequest(file, probe).request;
+  }
+  const bytes = new Uint8Array(readFileSync(join(WEB_FIXTURES_DIR, probe.file)));
+  const extraction = await extractFile(
+    { name: probe.file, bytes, fromLink: true, contentType: 'text/html' },
+    nodeEngines(),
   );
-  if (probes.length === 0)
-    fail(`no probe matches. Known: ${INJECTION_PROBES.map((p) => p.id).join(', ')}`);
+  if (!extraction.ok) fail(`not read: ${extraction.refusal.message}`);
+  const file = toTurnFile(
+    { name: probe.file, kind: extraction.kind, pages: extraction.pages, vision: extraction.vision },
+    [],
+  );
+  const title =
+    extraction.kind === 'html' ? sanitiseTitle(extraction.title, probe.page.host) : probe.file;
+  extraction.dispose();
+  if (file === null) fail(`${probe.file} has pages that must be read as images`);
+  return lookupRequest(file, probe, title).request;
+}
+
+async function record(flags: Flags): Promise<void> {
+  const wanted = (probe: { readonly id: string }): boolean =>
+    flags.only.length === 0 || flags.only.includes(probe.id);
+  const probes = INJECTION_PROBES.filter(wanted);
+  const lookups = LOOKUP_PROBES.filter(wanted);
+  if (probes.length === 0 && lookups.length === 0) {
+    const known = [...INJECTION_PROBES, ...LOOKUP_PROBES].map((p) => p.id).join(', ');
+    fail(`no probe matches. Known: ${known}`);
+  }
   mkdirSync(RECORDED_DIR, { recursive: true });
+  mkdirSync(LOOKUPS_DIR, { recursive: true });
   const { claude, rows } = claudeWithLedger();
   const results = [];
   for (const probe of probes) {
@@ -363,8 +400,37 @@ async function record(flags: Flags): Promise<void> {
       });
     }
   }
+  const lookupResults = [];
+  for (const probe of lookups) {
+    const request = await lookupProbeRequest(probe);
+    const completion = await complete(claude, request);
+    const recorded: RecordedProbe = RECORDED_PROBE.parse({
+      id: probe.id,
+      file: probe.file,
+      question: probe.question,
+      mode: 'protected',
+      recordedAt: new Date().toISOString(),
+      model: completion.model,
+      rulesVersion: DOCUMENT_RULES_VERSION,
+      requestSha256: sha256(requestFingerprintSource(request)),
+      reply: completion.text,
+      stopReason: completion.stopReason,
+      usage: completion.usage,
+      costUsd: completion.costUsd,
+    });
+    writeFileSync(join(LOOKUPS_DIR, `${probe.id}.json`), `${JSON.stringify(recorded, null, 2)}\n`);
+    lookupResults.push({
+      id: probe.id,
+      kind: probe.kind,
+      verdict: judgeLookup(completion.text, probe),
+      usage: completion.usage,
+      costUsd: completion.costUsd,
+      reply: completion.text,
+    });
+  }
   out({
     recorded: results,
+    lookups: lookupResults,
     totalCostUsd: Number(rows.reduce((sum, r) => sum + r.costUsd, 0).toFixed(6)),
   });
 }

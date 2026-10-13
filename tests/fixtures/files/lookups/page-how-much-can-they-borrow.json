@@ -1,0 +1,19 @@
+{
+  "id": "page-how-much-can-they-borrow",
+  "file": "rate-table.html",
+  "question": "My client earns 95k and has a 60k deposit. How much can they borrow with this lender?",
+  "mode": "protected",
+  "recordedAt": "2026-10-13T04:06:29.139Z",
+  "model": "claude-sonnet-5",
+  "rulesVersion": "2026-10-13.1",
+  "requestSha256": "c9050ad85342ad7278f024ca90d3992984dee9270c66a8928e79c1f4d05902be",
+  "reply": "I can't work out borrowing capacity from this document — it only shows interest rates and fees, not serviceability criteria or borrowing calculations, and that figure depends on policy this page doesn't cover (income, liabilities, expenses, lender assessment rates, etc). That's a calculation for the broker to run, not something to pull from this rate sheet.\n\nWhat I can tell you from the document (Example Lender, read 13 Oct 2026, 12:00 pm Perth time): with a $60k deposit, the LVR band depends on the purchase price, which determines which rate tier applies. For example, at 90.01–95% LVR the variable rate is 6.84% p.a. with a $10 monthly fee, and the comparison rate field is blank for that row in the source. If you give me the purchase price I can tell you which LVR band and rate applies.",
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 32,
+    "outputTokens": 270,
+    "cacheReadTokens": 5662,
+    "cacheWriteTokens": 0
+  },
+  "costUsd": 0.005845
+}
