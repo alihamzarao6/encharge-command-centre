@@ -553,12 +553,7 @@ describe.skipIf(env === null)('the connector in the database (requires a running
       expect(rows.rows.every((row) => !row.prosecdef)).toBe(true);
       const reader = rows.rows.find((row) => row.proname === 'connector_read');
       expect(reader?.proconfig).toEqual(
-        expect.arrayContaining([
-          'role=authenticated',
-          'request.jwt.claims=',
-          'request.jwt.claim.sub=',
-          'search_path=public',
-        ]),
+        expect.arrayContaining(['role=authenticated', 'search_path=public']),
       );
       // The door itself keeps the server's role: it must, to check the key and count the call.
       expect(rows.rows.find((row) => row.proname === 'connector_call')?.proconfig).toEqual([
@@ -959,11 +954,19 @@ describe.skipIf(env === null)('the connector in the database (requires a running
           ),
         );
         expect(active.rows[0]?.reply.outcome).toBe('ok');
-        // The identity it took on is gone again when it returns.
-        const after = await db.query<{ who: string; claims: string | null }>(
-          `select current_user as who, nullif(current_setting('request.jwt.claims', true), '') as claims`,
-        );
-        expect(after.rows[0]?.claims).toBeNull();
+        // Through the door, the identity the read took on is gone again by the time the door
+        // answers: the same transaction is the server again, and nobody.
+        const key = await issue(staff, 's');
+        const after = await asService(async () => {
+          await db.query(
+            `select public.connector_call($1, $2, 'tools/call', 'pipeline_summary', '{}'::jsonb, $3, 30, 1000)`,
+            [key, sha('s'), FINANCE],
+          );
+          return db.query<{ who: string; claims: string | null }>(
+            `select current_user::text as who, nullif(current_setting('request.jwt.claims', true), '') as claims`,
+          );
+        });
+        expect(after.rows[0]).toEqual({ who: 'service_role', claims: null });
       }));
 
     it("a signed-in person sees their own keys and calls, never another's — and never a digest", () =>

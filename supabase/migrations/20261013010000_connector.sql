@@ -338,10 +338,9 @@ language plpgsql
 security invoker
 set search_path = public
 set role = 'authenticated'
--- Named here so that what the body sets is undone when it returns: the caller gets its own
--- role AND its own identity back, and nothing after this function runs as the key's user.
-set request.jwt.claims = ''
-set request.jwt.claim.sub = ''
+-- The role is undone when the body returns. The identity it sets is NOT (a function may not
+-- name request.jwt.claims in its SET clause on Supabase: "permission denied to set
+-- parameter"), so connector_call puts the caller's own identity back straight after the read.
 as $$
 declare
   v_pipeline_name text;
@@ -773,6 +772,8 @@ declare
   v_data jsonb := null;
   v_outcome text := 'ok';
   v_records integer := null;
+  v_claims text := coalesce(current_setting('request.jwt.claims', true), '');
+  v_sub text := coalesce(current_setting('request.jwt.claim.sub', true), '');
 begin
   if p_per_minute is null or p_per_minute < 1 or p_per_day is null or p_per_day < 1 then
     raise exception 'limits must be positive' using errcode = '22023';
@@ -872,6 +873,10 @@ begin
     begin
       v_data := public.connector_read(
         v_key.user_id, p_pipeline_ghl_id, v_tool, coalesce(p_args, '{}'::jsonb));
+      -- The caller's own identity back: nothing after the read runs as the key's user.
+      -- (When the read fails, its savepoint undoes the identity along with everything else.)
+      perform set_config('request.jwt.claims', v_claims, true);
+      perform set_config('request.jwt.claim.sub', v_sub, true);
       v_outcome := coalesce(v_data ->> 'outcome', 'ok');
       v_records := (v_data ->> 'records')::integer;
     exception when others then
