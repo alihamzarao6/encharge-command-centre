@@ -3,7 +3,7 @@
 Internally this defines "done". Externally it defines what the client approves when they
 release each payment. **It matches the delivery plan agreed with the client on 1 Sep 2026
 (`docs/MEMORY.md` D77): eight milestones, 2,000 USD total. Milestones 1–3 are complete, signed
-off and paid — 600 received; 1,400 remains across milestones 4–8.** What is built is still
+off and paid — 600 received; 1,400 remains across milestones 4–8. Milestone 4 was closed by the reviewer and invoiced (recorded 13 Oct 2026).** What is built is still
 Scope v3 (22 Aug 2026, D23–D32). The six-stage map of 22 Aug (D26/D27 — 1320 total, 198 per
 stage, 528 at the end) is superseded: Stages 1–3 became Milestones 1–3 unchanged, and the old
 Stage 4–6 sections are struck through in place below rather than deleted. The five-phase
@@ -15,8 +15,8 @@ this file for the record.
 | 1 | CRM and ad tracking set up | 200 | ✅ Done, paid |
 | 2 | Foundations and the client's writing voice | 200 | ✅ Done, paid |
 | 3 | Memory and the app itself | 200 | ✅ Done, paid |
-| 4 | Your data on screen | 350 | **Next** |
-| 5 | Files, documents and research | 250 | |
+| 4 | Your data on screen | 350 | ✅ Closed by the reviewer, invoiced (13 Oct 2026) |
+| 5 | Files, documents and research | 250 | **In progress** — parts 1 and 2 shipped 12 Oct |
 | 6 | Talking to it, and your day | 350 | |
 | 7 | Advertising and social | 300 | |
 | 8 | Content and handover | 150 | |
@@ -630,7 +630,12 @@ the limit instead of losing work to it, but 3 requests a minute is still 3 reque
 
 ---
 
-## Milestone 4 — Your data on screen · 350 · ← NEXT
+## Milestone 4 — Your data on screen · 350 · CLOSED by the reviewer and invoiced (recorded 13 Oct 2026)
+
+*Status, 13 Oct 2026: the reviewer closed this milestone — all five parts, part 5 (phone and
+laptop) included — and it has been invoiced. Recorded on the reviewer's instruction. Nothing
+in this section is outstanding; the criteria below are kept as the definition it was built
+to, and the evidence for parts 1–4 is in `docs/MEMORY.md` (12, 13, 14 and 24 Sep).*
 
 Milestone 4 ends in **the client opening the app and seeing his business, not a chat box**:
 his numbers and lists up front, the assistant as a panel beside them, the Finance Pipeline live

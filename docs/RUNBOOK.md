@@ -390,8 +390,10 @@ Notes:
   site that read yesterday is refused today, check the region in the function's log before
   anything else.
 - **Two settings, both optional:** `FILES_PAGE_RETENTION_DAYS` (default 1) and
-  `PAGES_USER_AGENT`, on `files`. The agent's contact address is the client's own site —
-  **confirm that with him** (owed since 12 Oct). Nothing else about the fetch is a setting.
+  `PAGES_USER_AGENT`, on `files`. The agent's contact address is the client's own site,
+  `fundd.com.au` — **decided 13 Oct 2026 (D96); there is nothing to confirm.** Leave
+  `PAGES_USER_AGENT` unset: the built-in agent string already carries that address. Nothing
+  else about the fetch is a setting.
 - **No new secret, and nothing leaves that did not before** except the request to the site
   itself: no search, scraping or rendering service.
 - **"Why could it not read this page?"** — first `npm run pages -- check <url>` (the address

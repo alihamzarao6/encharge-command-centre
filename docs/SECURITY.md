@@ -810,8 +810,9 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
   Nothing is cached: every read goes to the site.
 - **What a site learns.** The address asked for, the time, an IP address belonging to
   Supabase in Sydney, and our agent string, which names Fundd. It does not learn who at Fundd
-  asked or why. The agent string's contact address is the client's own site — **a yes from
-  him is still owed** (it was proposed 12 Oct and is what the build uses).
+  asked or why. The agent string's contact address is the client's own site — **decided
+  13 Oct 2026: `fundd.com.au` is the contact address** (proposed 12 Oct; it is what the build
+  has used throughout, so nothing changes in the code).
 - **No other party.** No search service, no scraping, rendering or extraction service, no
   proxy. A page's text reaches Anthropic with a question, exactly as a file's does.
 

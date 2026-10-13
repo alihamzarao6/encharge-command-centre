@@ -9,7 +9,9 @@ Built on Supabase, the Claude API, n8n on Railway, GoHighLevel and Meta.
 **Docs version 3.0** — aligned to **Scope v3 (22 Aug 2026)**, `docs/MEMORY.md` D23–D32, for
 what is built, and to the **eight-milestone delivery plan agreed 1 Sep 2026 (D77)**.
 Milestones 1–3 (CRM and ad tracking; foundations and the client's writing voice; memory and
-the app itself) are complete, signed off and paid; Milestone 4 (Your data on screen) is next.
+the app itself) are complete, signed off and paid; Milestone 4 (Your data on screen) was closed
+by the reviewer and invoiced (13 Oct 2026); Milestone 5 (Files, documents and research) is in
+progress.
 The six-stage map of 22 Aug is superseded. The B2B
 outbound lead-research engine described by docs v2.0 was never asked for and is **out of
 scope** — parked under "out of current scope" headings, not deleted. The repo name keeps the
@@ -23,7 +25,7 @@ pre-rebrand business name.
 |---|---|---|
 | `CLAUDE.md` | Operating rules. Stack, commands, hard rules, MCP discipline | **Every session, first** |
 | `docs/MEMORY.md` | Working memory, decisions D1–D82, current state, open risks | **Every session, second** |
-| `tasks/TASKS.md` | The build checklist — eight milestones, Milestone 4 next in five parts. One item at a time | Every session, to pick the next task |
+| `tasks/TASKS.md` | The build checklist — eight milestones, Milestone 5 in progress. One item at a time | Every session, to pick the next task |
 | `docs/CLIENT-CONTEXT.md` | The client's business (§1), pipeline (§3), copy frameworks (§9), avatar (§10), operational rules (§11). Research rubrics parked in §5–§7 | Before writing any prompt — **the voice layer is built from §1, §9–§11** |
 | `docs/SCHEMA.md` | Data model, memory-layer ownership (`user_id` + `scope`), RLS pattern, migration discipline. Research tables parked | Stage 2 part 2, and any schema change |
 | `docs/SECURITY.md` | Threat model (T1–T11) and non-negotiable requirements, incl. prompt injection and the server-side-only Anthropic key rule | Stage 2, then before each stage gate |

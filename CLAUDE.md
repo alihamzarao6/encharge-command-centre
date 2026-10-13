@@ -23,11 +23,12 @@ brokerage that is **rebranding to Fundd** (`fundd.com.au`). Client contact: **Ro
 
 Delivered in **eight milestones** (D77; the six-stage map D26/D27 is superseded): 1 CRM and ad
 tracking set up · 2 Foundations and the client's writing voice · 3 Memory and the app itself —
-**1–3 complete, signed off and paid** · **4 Your data on screen — next**: the app as a working
+**1–3 complete, signed off and paid** · **4 Your data on screen — closed by the reviewer and
+invoiced (13 Oct 2026)**: the app as a working
 screen rather than a chat window, leads and pipeline live from GoHighLevel, lead detail, the
 client moves a lead between stages himself (the drop is the confirmation — D81 narrows D9),
-the same on phone and laptop (D78) · 5 Files, documents and research (website reading sits
-here) · 6 Talking to it, and your day · 7 Advertising and social · 8 Content and handover.
+the same on phone and laptop (D78) · **5 Files, documents and research — in progress** (website
+reading sits here; parts 1 and 2 shipped) · 6 Talking to it, and your day · 7 Advertising and social · 8 Content and handover.
 Also out of scope, stated to the client in writing (D82): a drag-and-drop dashboard builder,
 agent software that acts on its own, the Quickli calculator, the separate finance CRM.
 
