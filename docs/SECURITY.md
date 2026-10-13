@@ -893,6 +893,105 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
 
 ---
 
+## 12a. The connector — the Command Centre reachable from outside (MCP, stage 1, 13 Oct 2026)
+
+Every other endpoint in this system is called by the client's own browser, signed in. This
+one is called by somebody else's software, from the public internet, with a key as the only
+thing between it and the client's live pipeline. It is therefore built to do as little as
+possible and to refuse as early as possible. Decisions: `docs/MEMORY.md` D101–D110.
+
+**What it can do.** Four tools, all reads of the mirror: a summary, a list, one lead, a
+search. **What it cannot do, and why that is structural rather than a matter of care:**
+
+- *It cannot write to GoHighLevel.* The function's bundle holds no GoHighLevel client, no
+  token name and no address (`tests/security/connector.test.ts`, on the bundle itself).
+- *It cannot write to the mirror.* Each read runs in the database as the role a signed-in
+  browser has, which holds SELECT on the mirror and nothing else: an `update` from inside the
+  read function is "permission denied" at the database.
+- *It cannot administer anything.* Issuing and revoking keys live in a module the function
+  does not import; the function's database client is typed with one function and no tables.
+  There is no tool about users, keys, settings, spend, memory or the audit log.
+- *It cannot read another pipeline.* Every query names the one configured pipeline id (R22,
+  R25). A lead in another pipeline, a removed lead and an id that never existed get the same
+  answer, word for word: not found.
+- *It cannot read as anybody but the key's owner.* TypeScript never passes a user id. The
+  database finds the user from the key and runs the read as that user, under the mirror's
+  existing row-level-security policies — a stricter policy tomorrow narrows the connector
+  with no change to it.
+
+**The key.** `fcc_` + a 12-character public id + 43 characters carrying 256 random bits. What
+is stored is its SHA-256, in a table (`connector_key_secrets`) whose one policy is `false`: no
+signed-in session can read a digest, its own included. The key is shown once at issue and
+exists nowhere afterwards. It never reaches the database on a request — only its digest
+does — so it cannot appear in a query log. The digests are compared in the database by a
+function that always does 32 steps with no early exit; the row is found by the public id
+first, and an unknown id is compared against a dummy so the two cases take one path. *This is
+argued from the function's structure and held by a test on its source; it has not been
+measured, and a timing test over a network would prove less and fail at random.* What an
+attacker could learn from a perfect timing oracle is bits of a digest of 256 random bits —
+not a key.
+
+**The order of refusal** (`src/lib/connector/handler.ts`): not a POST → 405; anything in the
+query string → 400; a browser `Origin` not on the list → 403; no well-formed key in the
+`Authorization` header → 401, with no database call; a body over 64 KiB → 413; **then the key
+is checked in the database, before anything about the body is answered** — including that it
+was not JSON. An unauthenticated caller learns one thing: that it is not authenticated. All
+401s are the same bytes; which kind it was is in our log.
+
+**A key in a URL.** Refused, and the function is never handed the address, so it cannot log
+one. What cannot be undone from here: the request already crossed Vercel's and Supabase's
+edges, which keep their own request logs. The refusal therefore says the key should be
+treated as exposed and replaced.
+
+**Rate limit.** 30 a minute and 1,000 a day per key, counted in `connector_calls` under a
+per-key lock, in the same transaction as the key check. A refused request is not counted.
+Requests that never present a well-formed key are not rate limited by us at all — they cost
+no database call, and what stands in front of them is the platform.
+
+**What is logged.** One line per request — the key's public id (under the field `caller`,
+because the logger redacts any field whose name contains "key"), the method, the tool, the
+outcome, the status, the duration, the record count, the bytes sent — and one row per accepted
+request in `connector_calls`, with the lead's id for `get_lead`. Never a name, an email, a
+phone number, a note, a search's text, the key or the address. A connector key that reaches a
+log string anyway is redacted by pattern (`src/lib/logger.ts`).
+
+**What leaves this system, and what we do not control after it has.** A list or a search
+sends lead names, stages and dates. `get_lead` sends one person's name, email, phone, form
+answers and up to five notes. Those values were typed by strangers into a web form. They
+leave as JSON values behind one fixed sentence saying they are data, with the characters that
+hide text from a person removed (the file reader's own cleaning, §3 layer 4) and every length
+capped. **We do not, and cannot, detect an instruction written into a lead's name.** What we
+control is that this connector cannot act on one: it has no write tool. What the client's AI
+does next — with its own memory, its other connectors, its provider's retention — is outside
+this system, and the client has been told so in `docs/CONNECTOR-CLIENT.md`. Privacy Act
+note (CLAUDE.md §7): sending a lead's details to the client's AI provider is a disclosure of
+personal information to a third party, and possibly an overseas one (APP 6, APP 8). Whether
+and how that is covered — his privacy policy, his provider's terms — is the client's decision.
+It is raised in the build report for the reviewer to put to him; it is not decided here.
+
+**Bearer now; OAuth if Grok's screen wants it.** The MCP specification's OAuth route is
+optional and a custom scheme is allowed. A bearer key gives up consent screens, scopes,
+expiry and rotation by the client's AI. The handler does not know what a key is — it asks an
+`Authenticator` for a credential and takes its challenge header from it — so adding OAuth
+does not rework the endpoint. It would take: (1) an authorization server that speaks OAuth
+2.1 with PKCE and client-id metadata documents — Supabase Auth's own, if enabled on this
+project, or another — and a consent page in the web app, which is a change to auth and needs
+its own brief; (2) a protected-resource-metadata document at
+`/.well-known/oauth-protected-resource` on the public domain (a second rewrite) and its
+address in the 401 challenge; (3) a second authenticator that verifies an access token's
+signature, expiry and audience (the connector's own public address) and names the grant; (4)
+a migration letting a call be attributed to a grant as well as a key. The tools, the reads,
+the rate limit and the log are untouched. **Observed here:** the reference MCP Inspector,
+given our 401, went straight to starting an OAuth flow — which is what Grok's web screen may
+do too.
+
+**Not verified.** Anything about Grok's own behaviour: which protocol revision it speaks,
+whether its web screen accepts a pasted key, whether its servers send an `Origin`. The
+deployed function, the Vercel rewrite and the real pipeline: nothing here has been deployed.
+The 2026-07-28 ("no handshake") half of the protocol against a real client: the reference
+client still opens with `initialize`, so that half is tested against the specification's own
+examples only.
+
 ## 13. Pre-handover security checklist
 
 - [ ] All keys rotated; developer copies invalidated

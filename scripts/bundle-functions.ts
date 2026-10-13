@@ -33,6 +33,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'crm', entry: 'src/functions/crm/index.ts' },
   // Milestone 5 part 1: attaching a file to a conversation.
   { name: 'files', entry: 'src/functions/files/index.ts' },
+  // MCP connector, stage 1: the endpoint the client's own AI connects to.
+  { name: 'connector', entry: 'src/functions/connector/index.ts' },
 ];
 
 const BANNER = [

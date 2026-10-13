@@ -30,7 +30,8 @@
     "memory": "tsx scripts/memory.ts",
     "crm": "tsx scripts/crm.ts",
     "files": "tsx scripts/files.ts",
-    "pages": "tsx scripts/pages.ts"
+    "pages": "tsx scripts/pages.ts",
+    "connector": "tsx scripts/connector.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

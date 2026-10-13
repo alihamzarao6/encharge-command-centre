@@ -66,6 +66,7 @@ const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:secret|ntn)_[A-Za-z0-9]{16,}\b/g, // Notion
   /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, // Authorization header values
   /\bpa-[A-Za-z0-9_-]{16,}/g, // Voyage AI (Stage 3 memory layer)
+  /\bfcc_[a-hjkmnp-z2-9]{12}_[A-Za-z0-9_-]{43}/g, // a connector key (its 12-character id alone is public)
 ];
 
 const MAX_DEPTH = 8;

@@ -129,6 +129,7 @@ npm run files -- extract <file>   # M5 part 1: read a file with the app's own re
 npm run files -- ask <file> "<q>" # M5 part 1: LIVE — one answer from that file through the chat's own request; `-- read <page.jpg>` one page image transcribed; `-- record` re-records the prompt-injection and lookup probes
 npm run pages -- check <url>      # M5 part 2: what the address rules and DNS say about a link — no request to the site
 npm run pages -- extract <file|url> # M5 part 2: read a page with the app's own readers and print what came out; `-- fetch <url>` the guarded fetch from THIS machine (host/status/bytes/outcome, never the page); `-- ask <file|url> "<q>"` and `-- unread "<message with a link>"` are LIVE
+npm run connector -- help        # MCP connector (goodwill, off the milestone list): `-- issue <email> [--label "…"]` makes a key and shows it ONCE, `-- list [<email>]`, `-- revoke <key-id>`
 npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
 npm run web:build       # static build → web/dist
 npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits

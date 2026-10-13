@@ -431,6 +431,78 @@ Notes:
   Vercel. The migration can stay: the old functions run against it. To remove it, the
   reverse is written at the top of the migration file.
 
+### 1g. Deploying and running the connector (MCP, stage 1 — goodwill, built 13 Oct 2026)
+
+The Command Centre as a connector the client's own AI (Grok) connects to, to READ his Finance
+Pipeline. Not on the milestone list. One Edge Function (`connector`), one migration
+(`20261013010000_connector.sql`), one rewrite in `vercel.json`, one CLI (`npm run connector`).
+What it is and why: `docs/MEMORY.md` 13 Oct (D101–D110) and `docs/SECURITY.md` §12a. What the
+client is given: `docs/CONNECTOR-CLIENT.md`.
+
+**Deploy — the order §1f gives, because the web push is what makes `/mcp` exist:**
+
+1. Push a branch. CI green with zero skipped is the first time the migration runs from zero on
+   a real stack, and the first run of `tests/integration/connector.test.ts` (9) and of the 34
+   database-backed tests in `tests/security/connector.test.ts`. (Those 34 have run against a
+   plain PostgreSQL 17 here; the 9 have run nowhere.)
+2. `supabase db push` — 22 of 22.
+3. Secrets on the project. `GHL_PIPELINE_ID` is already set and is the only one the connector
+   needs. Optional, all with defaults: `CONNECTOR_PUBLIC_URL`, `CONNECTOR_ALLOWED_ORIGINS`,
+   `CONNECTOR_RATE_PER_MINUTE` (30), `CONNECTOR_RATE_PER_DAY` (1000), `CONNECTOR_TIMEOUT_MS`
+   (8000).
+4. `npm run functions:bundle && supabase functions deploy connector --no-verify-jwt`.
+   `--no-verify-jwt` is required: the bearer token is a connector key, not a Supabase session,
+   and with verification on the platform refuses every request before the function sees it.
+5. Fast-forward and push `main`. That is the web deploy, and the rewrite goes live with it.
+6. Check, with no key: `curl -i -X POST https://fundd-command-centre.vercel.app/mcp` → **401**
+   with `WWW-Authenticate: Bearer realm="Fundd Command Centre"`. The app's HTML, or a 404,
+   means the rewrite is not deployed. A 401 from Supabase's own gateway (a body that is not
+   JSON-RPC) means step 4 was run without `--no-verify-jwt`.
+7. Issue the key: `npm run connector -- issue rossb@fundd.com.au --label "Grok"`. It is shown
+   once. Hand it over out of band, with `docs/CONNECTOR-CLIENT.md`.
+
+**The address, and what changes when the client's domain lands.** Today the address is
+`https://fundd-command-centre.vercel.app/mcp` (the rewrite), or equally the function's own
+`https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/connector`. When his domain exists,
+three things change and none of them is code:
+
+1. Add the domain to the Vercel project (dashboard → Domains). The rewrite already serves
+   `/mcp` on every domain the project has.
+2. Set `CONNECTOR_PUBLIC_URL=https://<his domain>/mcp` — as a function secret, and in `.env`
+   so `npm run connector -- issue` prints the right address.
+3. Change the one address line in `docs/CONNECTOR-CLIENT.md` and send it to him.
+
+Keys issued before the change keep working at the new address.
+
+**Keys.** `npm run connector -- list` shows every key's 12-character id, whose it is, when it
+was last used and whether it is live — never a key. `npm run connector -- revoke <id>` switches
+one off; its next request is refused. A person may hold five live keys. A lost or exposed key
+is revoked and replaced; there is no way to show one again. Both are written to `audit_log`.
+
+**"His AI says not authorised."** `list`, and look at the key's state. The function's log line
+for the request carries `outcome: unauthenticated` and a `reason`: `missing`, `wrong_scheme`,
+`empty` or `malformed` (the header never held a whole key — he pasted part of it, or into the
+wrong box), `unknown_key`, `wrong_secret`, `revoked`, `user_inactive`. He is told only "not
+authorised"; the reason is ours.
+
+**"Too many requests."** 30 a minute and 1,000 a day per key, counted in `connector_calls`.
+`select method, tool, outcome, count(*) from connector_calls where created_at > now() -
+interval '1 hour' group by 1,2,3` says what his AI has been doing. Raise a limit with its
+setting, not in code.
+
+**"It told me something out of date."** The connector reads the mirror; it does not refresh
+it. The mirror is as old as the last Refresh pressed in the app. Every result says so in its
+`freshness`.
+
+**If Grok's connector screen asks for an address and no key** it is expecting OAuth. Nothing
+is broken. What adding it takes is in `docs/SECURITY.md` §12a — an authorization server, a
+metadata route, a second way to check a token, and a migration; the endpoint, the tools and
+the rate limit do not change.
+
+**Not built, on purpose:** any tool that changes anything (stage 2, a later brief), a settings
+screen for keys (Milestone 5 part 4 — the tables already fit it), the old two-endpoint SSE
+transport, a refresh of the mirror from the connector.
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.

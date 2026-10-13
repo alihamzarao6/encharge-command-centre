@@ -486,3 +486,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/files/index.ts"
 import_map = "./functions/files/deno.json"
+
+# MCP connector, stage 1: the endpoint the client's own AI connects to, served to the outside
+# at /mcp by the rewrite in vercel.json. verify_jwt is off because the bearer token on these
+# requests is a connector key, not a Supabase session: the library checks it against
+# `connector_keys` (by digest, in the database) and answers 401 itself.
+[functions.connector]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/connector/index.ts"
+import_map = "./functions/connector/deno.json"

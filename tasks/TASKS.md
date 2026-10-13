@@ -273,6 +273,35 @@ final 528.~~*
 
 ---
 
+## MCP CONNECTOR — the Command Centre as a connector his AI can reach · GOODWILL, NOT ON THE MILESTONE LIST
+
+*The client's request on a call, 13 Oct: "do whatever you want, I just want grok bot in my
+system/crm to handle everything". Built as goodwill and recorded as such; it replaces nothing
+on the milestone list and is not the Drive / OneDrive work of Milestone 5 part 3. Decisions:
+`docs/MEMORY.md` D101–D110. Two stages, so that if his AI cannot take a connector with a key
+at all, a small stage 1 is what it cost.*
+
+- [ ] **Stage 1 — reading only (brief "MCP connector, stage 1", 13 Oct) — BUILT, NOT COMMITTED,
+  NOT PUSHED, NOT DEPLOYED: awaiting review.** One Edge Function (`src/functions/connector/`,
+  `src/lib/connector/`), served at `/mcp` by a rewrite in `vercel.json`; migration
+  `20261013010000_connector.sql` (three tables, RLS forced; five functions, `service_role`
+  only); a key per user, shown once, SHA-256 at rest, revocable (`npm run connector -- issue |
+  list | revoke`); four read-only tools — `pipeline_summary`, `list_leads`, `get_lead`,
+  `search_leads` — read as the key's own user under the mirror's existing RLS, tied to the one
+  configured pipeline id; 30 requests a minute and 1,000 a day per key, counted in the
+  database; both protocol eras on one stateless endpoint (2026-07-28, and the `initialize`
+  handshake of 2025-11-25 / 2025-06-18 / 2025-03-26). The client's page:
+  `docs/CONNECTOR-CLIENT.md`. Numbers, the mutation runs and what is not verified:
+  `docs/MEMORY.md` 13 Oct "MCP connector · stage 1 · build". **Stays unticked until:** the
+  report is reviewed; CI is green with zero skipped (the migration from zero and two stack
+  suites have never run on a real stack); it is deployed per RUNBOOK §1g; **and the client
+  confirms his AI connects and answers.**
+- [ ] **Stage 2 — the actions** (moving a lead between stages, adding a note). *Its own brief,
+  only after he has confirmed stage 1 connects. Nothing of it is built — not disabled, not
+  behind a flag.*
+
+---
+
 ## Blocked / parked
 
 | Item | Reason | Since | Unblocked by |

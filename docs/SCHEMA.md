@@ -742,6 +742,50 @@ fields: the text is kept whole, for a day, and every part of it carries the four
 `extraction_method` and `confidence` on each part. If a knowledge store is ever wanted, §2a
 still describes it.
 
+### connector_keys, connector_key_secrets, connector_calls — the MCP connector (stage 1, 13 Oct 2026)
+
+Migration `20261013010000_connector.sql` (D101–D110). Goodwill work, not on the milestone
+list: the client's own AI reads the Finance Pipeline through a key.
+
+- **`connector_keys`** — one row per key, belonging to one user. `key_id` (12 characters,
+  public: what logs and `npm run connector -- list` show), `user_id`, `label`, `created_at`,
+  `created_by`, `last_used_at`, `revoked_at`, `revoked_by`. **Never the key and never its
+  digest.** A person may SELECT their own rows (`connector_keys_select_own`); nobody but
+  `service_role` writes. This is the shape a settings screen (Milestone 5 part 4) reads
+  without a migration.
+- **`connector_key_secrets`** — `connector_key_id` → `key_hash`, the SHA-256 of the whole key,
+  32 bytes. A table of its own so the project's rule holds — the signed-in role may SELECT
+  every table and row-level security decides — while no session can read a digest: its one
+  policy is `using (false)`.
+- **`connector_calls`** — one row per request a key was allowed to make: `method` (from a
+  fixed list — `other` for anything else, never the caller's text), `tool` (one of the four,
+  or null), `subject_id` (the lead's id, `get_lead` only), `outcome`, `records`,
+  `duration_ms`, `created_at`. It is what the rate limit counts and the record of what a key
+  did. No argument text, nothing a tool returned. Rows older than 30 days are deleted when the
+  same key next calls. A person may SELECT their own rows.
+
+All three: RLS enabled and forced, `anon` holds nothing, `authenticated` holds SELECT only.
+
+**Functions** (all `security invoker`, executable by `service_role` only):
+
+- `connector_call(key_id, key_hash, method, tool, args, pipeline_ghl_id, per_minute, per_day)`
+  — the one door. Key (constant-time digest comparison), user still active, limits under a
+  per-key lock, the record, and for a tool call the read. Returns jsonb, never a row. Takes no
+  user id.
+- `connector_read(user_id, pipeline_ghl_id, tool, args)` — the four reads, declared
+  `SET role = 'authenticated'` with `auth.uid()` set to the key's user: the mirror's own RLS
+  decides, and the role cannot write. Every query names the pipeline id. Called only by
+  `connector_call`.
+- `connector_digest_equal(a, b)` — 32 steps, no early exit.
+- `issue_connector_key`, `revoke_connector_key` — used by `npm run connector`; each writes an
+  `audit_log` row (`CONNECTOR_KEY_ISSUED` / `CONNECTOR_KEY_REVOKED`, ids only). Five live keys
+  a person at most (`CK002`); only active staff (`CK001`).
+
+**What a tool returns traces to:** `ghl_pipelines`, `ghl_stages`, `ghl_opportunities`,
+`ghl_contacts`, `ghl_custom_fields`, `ghl_sync_runs` (the part 1 sync), the seeded
+`ghl_field_map`, and `ghl_notes` (notes written through the app, part 4). Nothing is derived
+that those cannot back.
+
 ### tasks
 `id · title not null · description · assignee · due_date ·
 status (open|in_progress|done|cancelled) · priority ·
