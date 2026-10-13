@@ -281,8 +281,7 @@ on the milestone list and is not the Drive / OneDrive work of Milestone 5 part 3
 `docs/MEMORY.md` D101–D110. Two stages, so that if his AI cannot take a connector with a key
 at all, a small stage 1 is what it cost.*
 
-- [ ] **Stage 1 — reading only (brief "MCP connector, stage 1", 13 Oct) — BUILT, NOT COMMITTED,
-  NOT PUSHED, NOT DEPLOYED: awaiting review.** One Edge Function (`src/functions/connector/`,
+- [ ] **Stage 1 — reading only (brief "MCP connector, stage 1", 13 Oct) — BUILT, COMMITTED, CI GREEN AND DEPLOYED 13 Oct (`bfb5267` + `b082b96`; CI run 38416520857 on `main`; migration 22 of 22; `connector` live; `/mcp` answering). A key was issued to the client on 14 Oct (`w4xh5exkxba5`).** *(As first written: built, not committed, awaiting review.)* **Still unticked for one reason: the client has not yet confirmed his AI connects and answers.** One Edge Function (`src/functions/connector/`,
   `src/lib/connector/`), served at `/mcp` by a rewrite in `vercel.json`; migration
   `20261013010000_connector.sql` (three tables, RLS forced; five functions, `service_role`
   only); a key per user, shown once, SHA-256 at rest, revocable (`npm run connector -- issue |
