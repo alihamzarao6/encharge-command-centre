@@ -177,6 +177,7 @@ describe('failures', () => {
     if (result.ok) return;
     expect(result.error.code).toBe('RATE_LIMITED');
     expect(result.error.context['retryAfterMs']).toBe(7_000);
+    expect(result.error.message).toBe('Voyage rate limit reached');
     expect(e.usage.rows).toEqual([]);
   });
 

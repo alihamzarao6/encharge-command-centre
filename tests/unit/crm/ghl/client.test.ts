@@ -279,6 +279,9 @@ describe('the API failing', () => {
     if (result.ok) return;
     expect(result.error.code).toBe('RATE_LIMITED');
     expect(result.error.context['retryAfterMs']).toBe(3000);
+    // The message is what a failed run stores in ghl_sync_runs.error and every log line
+    // repeats: it must name who refused (14 Oct 2026 — it said "Anthropic").
+    expect(result.error.message).toBe('GoHighLevel rate limit reached');
     expect(c.calls).toHaveLength(3);
     expect(c.client.requestsMade()).toBe(3);
   });

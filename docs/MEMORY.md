@@ -169,6 +169,27 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-10-14 — [fix · rate-limit message] A 429 names who refused it
+
+**Asked for by the reviewer (14 Oct), approving both jobs:** "a GoHighLevel 429 stored as
+'Anthropic rate limit reached' is a log that lies". Its own commit, after Job 1 and Job 2.
+
+**Did:** `RateLimitedError` (`src/lib/llm/errors.ts`) takes its message from the `provider`
+its caller already put in the context: "GoHighLevel rate limit reached", "Voyage rate limit
+reached", and — with none given, the Claude client — "Anthropic rate limit reached" as before.
+**It was not one string's worth of wrong but three:** the GoHighLevel read client, the
+GoHighLevel write client and the Voyage embedder all raised it, and all three said Anthropic.
+That message is what a failed sync stores in `ghl_sync_runs.error`.
+
+**Tests:** one assertion per provider in the existing 429 test of each client (GoHighLevel
+read, write; Voyage; Claude unchanged). Before the fix three failed with "Anthropic rate limit
+reached"; after it, 270 passed in those files and the whole Claude client suite.
+
+**Also recorded, at the reviewer's request, in TASKS before the commits:** the sync's time
+limit ("KNOWN WALL": the `crm` function, from about 300 leads, the three ways to move it —
+superseding 12 Sep's "about 2,000"), and the blank-cell fix's open half ("PARTIAL": PDF tables
+and bold-cell headings get the rules, not the labels).
+
 ### 2026-10-14 — [Job 2 · a blank cell read as the comparison rate] Reproduced, then fixed in the reader AND the rules — working tree, NOT committed
 
 **Reproduced before anything was changed.** Through exactly the request `page-rate-for-a-deposit`

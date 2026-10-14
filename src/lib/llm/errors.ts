@@ -30,12 +30,27 @@ export class SpendCapError extends AppError {
   }
 }
 
-/** Anthropic answered 429. Nothing was billed. Retryable after the server's delay. */
+/** Who answered 429, in words, by the `provider` the caller puts in the context. */
+const RATE_LIMITED_BY: Readonly<Record<string, string>> = {
+  ghl: 'GoHighLevel',
+  voyage: 'Voyage',
+};
+
+/**
+ * A provider answered 429. Nothing was billed. Retryable after the server's delay.
+ *
+ * Written for Anthropic, then reused by the GoHighLevel and Voyage clients — whose 429s were
+ * stored and logged as "Anthropic rate limit reached" until 14 Oct 2026, a message that sends
+ * whoever reads it to the wrong account. The message names the `provider` given in the
+ * context; with none given it is Anthropic, as it always was for the Claude client.
+ */
 export class RateLimitedError extends AppError {
   public readonly retryAfterMs: number | null;
 
   public constructor(retryAfterMs: number | null, options: AppErrorOptions = {}) {
-    super('RATE_LIMITED', 'Anthropic rate limit reached', {
+    const provider = options.context?.['provider'];
+    const by = typeof provider === 'string' ? (RATE_LIMITED_BY[provider] ?? provider) : 'Anthropic';
+    super('RATE_LIMITED', `${by} rate limit reached`, {
       retryable: true,
       ...options,
       context: { ...(options.context ?? {}), retryAfterMs },

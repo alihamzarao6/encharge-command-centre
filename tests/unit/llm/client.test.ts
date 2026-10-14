@@ -340,6 +340,8 @@ describe('failure mid-flight — Part C items 4 and 8', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('RATE_LIMITED');
+    // Unchanged for the provider the class was written for.
+    expect(result.error.message).toBe('Anthropic rate limit reached');
     expect(h.fetch.calls).toHaveLength(3); // 1 + retries(2)
     expect(h.usage.rows).toHaveLength(0);
   });

@@ -216,6 +216,7 @@ describe('updateStage', () => {
     expect(refused.ok).toBe(false);
     if (refused.ok) return;
     expect(refused.error.code).toBe('RATE_LIMITED');
+    expect(refused.error.message).toBe('GoHighLevel rate limit reached');
     expect(capped.calls).toHaveLength(WRITE_RATE_LIMIT_RETRIES + 1);
     // Retry-After 60 s is capped to the write's maximum wait.
     expect(capped.sleeps.every((ms) => ms <= 12_000)).toBe(true);
