@@ -20,7 +20,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadSupabaseTestEnv } from '../helpers/supabaseEnv.js';
 import {
   OVERVIEW_OPPORTUNITY_LIMIT,
+  RUNS_READ,
+  RUN_COLUMNS,
   buildOverview,
+  withNewestApplied,
   type GhlContactRow,
   type GhlOpportunityRow,
   type GhlPipelineRow,
@@ -206,13 +209,19 @@ async function readLikeTheScreen(client: MirrorClient): Promise<OverviewInput> {
     .limit(OVERVIEW_OPPORTUNITY_LIMIT);
   const runs = await client
     .from('ghl_sync_runs')
-    .select(
-      'id, pipeline_ghl_id, status, started_at, applied_at, finished_at, error_code, contacts_failed, contacts_missing, contacts_rejected, opportunities_rejected',
-    )
+    .select(RUN_COLUMNS)
     .eq('pipeline_ghl_id', PIPELINE)
     .order('started_at', { ascending: false })
-    .limit(5);
-  for (const answer of [pipelines, stages, opportunities, runs]) {
+    .limit(RUNS_READ);
+  // 14 Oct 2026: the newest run that APPLIED, read on its own (withNewestApplied).
+  const applied = await client
+    .from('ghl_sync_runs')
+    .select(RUN_COLUMNS)
+    .eq('pipeline_ghl_id', PIPELINE)
+    .not('applied_at', 'is', null)
+    .order('applied_at', { ascending: false })
+    .limit(1);
+  for (const answer of [pipelines, stages, opportunities, runs, applied]) {
     expect(answer.error).toBeNull();
   }
   const ids = (opportunities.data ?? [])
@@ -229,7 +238,7 @@ async function readLikeTheScreen(client: MirrorClient): Promise<OverviewInput> {
     stages: stages.data ?? [],
     opportunities: opportunities.data ?? [],
     contacts: contacts.data ?? [],
-    runs: runs.data ?? [],
+    runs: withNewestApplied(runs.data ?? [], applied.data?.[0]),
     opportunityLimit: OVERVIEW_OPPORTUNITY_LIMIT,
   };
 }
@@ -358,6 +367,25 @@ describe.skipIf(env === null)('the overview against a real stack', () => {
   it('RLS hides nothing a member needs: the same view from the service-role rows', async () => {
     const asService = buildOverview(await readLikeTheScreen(service), now);
     expect(asService).toStrictEqual(view);
+  });
+
+  // Last: the rows this adds are newer than the snapshot's run, which the tests above read.
+  it('six failed runs written on top of it — an hour of outage on the schedule — and the numbers are still there', async () => {
+    for (let i = 6; i >= 1; i -= 1) {
+      await db.query(
+        `insert into public.ghl_sync_runs (pipeline_ghl_id, trigger, status, started_at, finished_at, error_code)
+         values ($1, 'schedule', 'failed', now() + make_interval(secs => $2), now() + make_interval(secs => $2), 'SCHEDULE_UNREACHABLE')`,
+        [PIPELINE, 7 - i],
+      );
+    }
+    const after = buildOverview(await readLikeTheScreen(staff), now);
+    expect(after.kind).toBe('ready');
+    expect(after.openTotal).toBe(5);
+    expect(after.freshness).toMatchObject({ kind: 'known', tone: 'fresh' });
+    expect(after.sync).toMatchObject({
+      lastFailed: true,
+      lastRun: { errorCode: 'SCHEDULE_UNREACHABLE' },
+    });
   });
 
   it('a mirror with no applied run reads as "not set up", never as zero leads', async () => {

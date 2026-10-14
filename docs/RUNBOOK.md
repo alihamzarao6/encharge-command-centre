@@ -480,6 +480,8 @@ one off; its next request is refused. A person may hold five live keys. A lost o
 is revoked and replaced; there is no way to show one again. Both are written to `audit_log`.
 
 **"His AI says not authorised."** `list`, and look at the key's state. The function's log line
+(kept by Supabase only from the 14 Oct logger fix onwards — §1h; before it, no function's
+lines were kept at all)
 for the request carries `outcome: unauthenticated` and a `reason`: `missing`, `wrong_scheme`,
 `empty` or `malformed` (the header never held a whole key — he pasted part of it, or into the
 wrong box), `unknown_key`, `wrong_secret`, `revoked`, `user_inactive`. He is told only "not
@@ -491,8 +493,11 @@ interval '1 hour' group by 1,2,3` says what his AI has been doing. Raise a limit
 setting, not in code.
 
 **"It told me something out of date."** The connector reads the mirror; it does not refresh
-it. The mirror is as old as the last Refresh pressed in the app. Every result says so in its
-`freshness`.
+it. Since 14 Oct the schedule refreshes it every ten minutes (§1h), so a copy older than about
+eleven minutes means the schedule is failing: the overview's red alert names the cause. Every
+result says how old the copy is in its `freshness`. (Its sentence still says the copy "is
+refreshed when someone presses Refresh" — that text is in the connector's tools, which this
+change did not touch; it is for the stage 2 brief.)
 
 **If Grok's connector screen asks for an address and no key** it is expecting OAuth. Nothing
 is broken. What adding it takes is in `docs/SECURITY.md` §12a — an authorization server, a
@@ -502,6 +507,89 @@ the rate limit do not change.
 **Not built, on purpose:** any tool that changes anything (stage 2, a later brief), a settings
 screen for keys (Milestone 5 part 4 — the tables already fit it), the old two-endpoint SSE
 transport, a refresh of the mirror from the connector.
+
+### 1h. The mirror keeps itself fresh — deploying and running the sync schedule (14 Oct 2026)
+
+Every ten minutes (minutes 3, 13, … 53 UTC) the database asks the `crm` function for a
+refresh. Why it works this way: `docs/MEMORY.md` 14 Oct (D111–D116); the table and the two
+SQL functions: `docs/SCHEMA.md` §3; the secret: `docs/SECURITY.md` §12. **The same change
+makes every Edge Function's log lines reach Supabase for the first time** (the logger wrote
+to stdout, which the Edge runtime discards), so all six functions are redeployed.
+
+**Deploy — §1f's order. The job is inert until the LAST step, so nothing fires half-built:**
+
+1. Push a branch. CI green with zero skipped: the first from-zero replay of
+   `20261014010000` with the real `pg_net`, Vault and `pg_cron`, and the first run of the API
+   half of `tests/security/ghl-schedule.test.ts` (the rest ran against a plain PostgreSQL 17).
+2. `supabase db push` — 23 of 23. Check: `select jobname, schedule, active from cron.job` →
+   `ghl-sync | 3-59/10 * * * * | t` beside the purge job. Within ten minutes
+   `select outcome from ghl_sync_dispatches order by id desc limit 1` → `not_configured`.
+3. Make the secret and set it on the functions, without printing it, in a file OUTSIDE the
+   repository so it can never be committed:
+   `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" > "$TEMP/schedule-secret"`
+   then `npx supabase secrets set CRM_SCHEDULE_SECRET="$(cat "$TEMP/schedule-secret")"`. Keep
+   the file for step 5 and delete it after.
+4. `npm run functions:bundle`, then `supabase functions deploy <name> --no-verify-jwt` for
+   **all six**: `crm` (the new action), and `chat`, `memory`, `admin`, `files`, `connector`
+   (the logger only). Check: an unauthenticated
+   `curl -s -X POST <project>/functions/v1/crm -d '{"action":"scheduled-sync"}'` → `401`
+   `{"error":{"code":"UNAUTHENTICATED","message":"Not authorised."…}}`.
+5. **Last:** Dashboard → Project Settings → Vault → add two secrets. `ghl_sync_schedule_url`
+   = `https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/crm`; `ghl_sync_schedule_secret` =
+   the contents of that file. (The dashboard, not SQL: a statement that fails is logged with
+   its text.) Delete the file.
+6. Wait for two ticks and read them — this is the acceptance evidence:
+   ```sql
+   select d.requested_at, d.outcome, d.http_status, d.error_code, r.status, r.duration_ms,
+          r.requests, r.opportunities_fetched, r.opportunities_inserted,
+          r.opportunities_updated, r.opportunities_removed, r.contacts_updated
+   from ghl_sync_dispatches d left join ghl_sync_runs r on r.id = d.run_id
+   order by d.id desc limit 4;
+   ```
+   A request is settled by the tick after it, so the newest row reads `requested`. Function
+   logs: Edge Functions → `crm` → Logs, search `crm: scheduled refresh`.
+7. Fast-forward and push `main`: the web deploy (the two screens' read and the open-screen
+   re-read).
+
+**How old can the copy be?** Working: about eleven minutes. Measure it:
+`select max(gap) from (select applied_at - lag(applied_at) over (order by applied_at) as gap
+from ghl_sync_runs where applied_at > now() - interval '1 day') g;`
+
+**The red alert says the last refresh failed — what each code means:**
+
+| Code | Means | Do |
+|---|---|---|
+| `UNAUTHENTICATED` | GoHighLevel rejected the token | New token: `supabase secrets set GHL_PRIVATE_INTEGRATION_TOKEN=…`. The next tick heals; nothing else to do |
+| `RATE_LIMITED`, `NETWORK`, `TIMEOUT`, `CIRCUIT_OPEN`, `HTTP_STATUS` | GoHighLevel refused for now or did not answer | Nothing. Each tick retries; an outage clears itself |
+| `STALE` | A run was interrupted and the next one retired it | Nothing, unless it repeats: then the function is being killed mid-run (time limit, near 370 leads) |
+| `SCHEDULE_REJECTED` | The function and Vault hold different secrets, or the function has none | Set both again from one value (steps 3 and 5) |
+| `SCHEDULE_CONTRACT` | The deployed `crm` does not know `scheduled-sync` — an older build | Redeploy `crm` from `main` |
+| `SCHEDULE_FUNCTION_MISSING` | 404: wrong address in Vault, or `crm` not deployed | Check `ghl_sync_schedule_url`, then the deploy |
+| `SCHEDULE_FUNCTION_ERROR` | `crm` failed before a run could start (misconfigured, or could not reach the database) | `crm` function logs, search `crm function misconfigured` |
+| `SCHEDULE_UNREACHABLE` | Nothing answered within 150 s | Supabase status; the function logs |
+| `SCHEDULE_NO_RUN` | Answered 200, no run: the address is not `crm` | Fix `ghl_sync_schedule_url` |
+
+**Pause and resume** — not by emptying Vault, which only records `not_configured` once:
+`select cron.alter_job((select jobid from cron.job where jobname = 'ghl-sync'), active := false);`
+(and `true` to resume).
+
+**Rotate the secret:** steps 3 and 5 with a new value, one straight after the other. A tick in
+between records `SCHEDULE_REJECTED`; the next one clears it.
+
+**When the interval must change.** A run is leads + ⌈leads ÷ 100⌉ + 2 requests, one after
+another, measured at 262–465 ms each.
+`select max(requests), max(duration_ms) from ghl_sync_runs where trigger = 'schedule' and
+started_at > now() - interval '7 days';` At **about 134 leads** the schedule alone is 10% of
+GoHighLevel's 200,000 a day: go to every 30 minutes (a new migration calling `cron.schedule`
+with the same job name). **From about 300 leads** a run can meet the function's 150-second
+limit at any interval — the Refresh button too — and the function is killed rather than
+failing in words: `tasks/TASKS.md` "KNOWN WALL" has the numbers and the three ways to move it.
+Watch `max(duration_ms)`: past 60,000 is the time to start. Whatever the interval, keep every
+multiple of it clear of 900 seconds by a few minutes: that is when an interrupted run is retired.
+
+**What is not watched by anything:** the scheduler itself (job disabled, Vault emptied, project
+paused). Then no row is written and the only sign is the copy's age: amber on the screens after
+an hour, red after a day, and his AI told the age on every answer.
 
 ### Adding a person — what the admin actually does
 

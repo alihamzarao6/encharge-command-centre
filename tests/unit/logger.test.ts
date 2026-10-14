@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { HttpStatusError, ValidationError } from '../../src/lib/errors.js';
 import {
   REDACTED,
+  consoleSink,
   createLogger,
+  defaultSink,
+  isEdgeRuntime,
   isSecretKey,
   parseLogLevel,
   redactString,
@@ -331,6 +334,91 @@ describe('createLogger', () => {
     }
     expect(written).toHaveLength(1);
     expect(JSON.parse(written[0] ?? '{}')).toMatchObject({ msg: 'to stdout' });
+  });
+});
+
+// 14 Oct 2026: on the live project no line any Edge Function wrote had ever been kept. The
+// runtime collects `console.*` and discards a direct write to stdout, which is what the
+// default sink did everywhere.
+describe('where a line goes when no sink is named', () => {
+  function fakeConsole(): { calls: string[]; target: Parameters<typeof consoleSink>[0] } {
+    const calls: string[] = [];
+    const method =
+      (level: string) =>
+      (line: string): void => {
+        calls.push(`${level} ${line}`);
+      };
+    return {
+      calls,
+      target: {
+        debug: method('debug'),
+        info: method('info'),
+        warn: method('warn'),
+        error: method('error'),
+      },
+    };
+  }
+
+  function stdoutDuring(run: () => void): string[] {
+    const written: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Uint8Array): boolean => {
+      written.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+      return true;
+    };
+    try {
+      run();
+    } finally {
+      process.stdout.write = original;
+    }
+    return written;
+  }
+
+  it('tells the Edge runtime from Node by the global the runtime defines', () => {
+    expect(isEdgeRuntime()).toBe(false);
+    expect(isEdgeRuntime({})).toBe(false);
+    expect(isEdgeRuntime({ Deno: {} })).toBe(true);
+  });
+
+  it('under the Edge runtime: console, and nothing to stdout', () => {
+    const { calls, target } = fakeConsole();
+    const written = stdoutDuring(() => {
+      defaultSink({ Deno: {} }, target)('{"msg":"kept"}', 'error');
+    });
+    expect(calls).toEqual(['error {"msg":"kept"}']);
+    expect(written).toEqual([]);
+  });
+
+  it('under Node: stdout, and nothing to console', () => {
+    const { calls, target } = fakeConsole();
+    const written = stdoutDuring(() => {
+      defaultSink({}, target)('{"msg":"cli"}', 'info');
+    });
+    expect(written).toEqual(['{"msg":"cli"}\n']);
+    expect(calls).toEqual([]);
+  });
+
+  it('gives each level its own console method, and the line is redacted like any other', () => {
+    const { calls, target } = fakeConsole();
+    const logger = createLogger({ level: 'debug', sink: consoleSink(target) });
+    logger.debug('d');
+    logger.info('i');
+    logger.warn('w');
+    logger.error('rejected', { authorization: `Bearer ${FAKE_PIT}`, note: FAKE_PIT });
+    expect(calls.map((call) => call.slice(0, call.indexOf(' ')))).toEqual([
+      'debug',
+      'info',
+      'warn',
+      'error',
+    ]);
+    expect(calls.join('\n')).not.toContain(FAKE_PIT);
+    const last = calls[3] ?? '';
+    expect(JSON.parse(last.slice(last.indexOf(' ') + 1))).toMatchObject({
+      level: 'error',
+      msg: 'rejected',
+      authorization: REDACTED,
+      note: REDACTED,
+    });
   });
 });
 

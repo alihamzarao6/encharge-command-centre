@@ -67,6 +67,33 @@ export type GhlSyncRunRow = {
 };
 /* eslint-enable @typescript-eslint/consistent-type-definitions */
 
+/** The run columns every mirror screen selects — one string, so the reads cannot drift. */
+export const RUN_COLUMNS =
+  'id, pipeline_ghl_id, status, started_at, applied_at, finished_at, error_code, contacts_failed, contacts_missing, contacts_rejected, opportunities_rejected' as const;
+/** How many of the newest runs a screen reads to say what is happening now. */
+export const RUNS_READ = 5;
+
+/**
+ * The run rows a mirror screen builds from: the newest few, plus the newest run that APPLIED
+ * when it is older than all of them.
+ *
+ * The newest few say what is happening now — a run in progress, a last run that failed. They
+ * cannot be trusted to say when the numbers on screen were written: since 14 Oct 2026 the
+ * mirror refreshes on a schedule, a failed attempt is a row, and an outage is a failed row
+ * every ten minutes. Five of them used to push the last good run out of the read, and both
+ * screens then said "Not set up yet" over a pipeline that was sitting in the database. So the
+ * newest applied run is read on its own and joined here, at the end, where `find` reaches it
+ * only when nothing newer applied.
+ */
+export function withNewestApplied(
+  runs: readonly GhlSyncRunRow[],
+  applied: GhlSyncRunRow | null | undefined,
+): readonly GhlSyncRunRow[] {
+  if (applied?.applied_at == null) return runs;
+  if (runs.some((run) => run.id === applied.id)) return runs;
+  return [...runs, applied];
+}
+
 export interface OverviewInput {
   readonly pipelines: readonly GhlPipelineRow[];
   readonly stages: readonly GhlStageRow[];
@@ -74,7 +101,7 @@ export interface OverviewInput {
   readonly opportunities: readonly GhlOpportunityRow[];
   /** The contacts behind the arrivals — whichever of them the sync managed to read. */
   readonly contacts: readonly GhlContactRow[];
-  /** Newest first. */
+  /** Newest first; the newest run that applied follows them when it is older (withNewestApplied). */
   readonly runs: readonly GhlSyncRunRow[];
   readonly opportunityLimit: number;
 }

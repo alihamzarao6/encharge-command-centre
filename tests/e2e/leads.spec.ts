@@ -262,6 +262,34 @@ test.describe('the board', () => {
     await expectNoHorizontalScroll(page);
   });
 
+  // 14 Oct 2026: the schedule makes an outage a failed run every ten minutes; this screen
+  // reads the newest runs exactly as the overview does, and had the same hole.
+  test('six failed refreshes on top of the last good one: every lead is still on the board', async ({
+    page,
+  }) => {
+    const ghl = populated();
+    ghl.runs = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        run({
+          id: `failed-${String(i)}`,
+          status: 'failed',
+          applied_at: null,
+          error_code: 'SCHEDULE_UNREACHABLE',
+          started_at: ago((i + 1) * 10 * MIN),
+          finished_at: ago((i + 1) * 10 * MIN - 2_000),
+        }),
+      ),
+      run({ id: 'good', started_at: ago(75 * MIN + 5_000), applied_at: ago(75 * MIN) }),
+    ];
+    await openLeads(page, '/leads/board', { ghl });
+    await expect(page.getByRole('heading', { name: 'Not set up yet' })).toHaveCount(0);
+    await expect(cards(page)).toHaveCount(5);
+    await expect(page.locator('.fresh')).toContainText('Last refreshed 1 hour ago');
+    await expect(page.getByRole('alert')).toContainText(
+      'The last refresh failed (SCHEDULE_UNREACHABLE)',
+    );
+  });
+
   test('a lead with no contact, a contact with no name, and one with no phone or email, all read sensibly', async ({
     page,
   }) => {

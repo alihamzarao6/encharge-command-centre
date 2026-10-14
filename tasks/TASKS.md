@@ -301,6 +301,62 @@ at all, a small stage 1 is what it cost.*
 
 ---
 
+## Keeping the data fresh, and one wrong number (brief of 14 Oct) — two jobs, each its own commit
+
+- [ ] **Job 1 — the mirror keeps itself current — BUILT, working tree, NOT committed.** A
+  `pg_cron` job (`ghl-sync`, every ten minutes) asks the `crm` function for the existing sync
+  through `pg_net`, authenticated by a secret of its own held in Vault and in the function's
+  secrets; the next tick turns a request that produced no run into a named failed row the
+  screens and the connector already show (migration `20261014010000`,
+  `src/lib/crm/schedule.ts`, `scheduled-sync` in `page.ts`). With it, as ruled 14 Oct: both
+  mirror screens find the newest applied run however many failures sit on top of it, and re-read
+  every two minutes while open; and the logger writes through `console` under the Edge runtime,
+  so every function's lines reach Supabase for the first time. Decisions D111–D116; numbers and
+  mutations in `docs/MEMORY.md` 14 Oct "build". **Stays unticked until:** the report is
+  reviewed; CI green with zero skipped; deployed per RUNBOOK §1h; and two consecutive scheduled
+  runs read back from the live project.
+- [ ] **Job 2 — a blank cell read as the comparison rate.** Reproduce first, with a committed
+  fixture. Built in the working tree; its own commit follows.
+- [ ] **Open item, named so it is not lost again:** every acceptance criterion that rested on a
+  function's log line was met in code and never true in production until the logger fix is
+  deployed — listed in `docs/MEMORY.md` 14 Oct "build". After the deploy, check one line from
+  each of the six functions arrives (RUNBOOK §1h step 6 shows how for `crm`).
+- [ ] **KNOWN WALL — the sync stops working somewhere between about 300 and 600 leads.**
+  **Supersedes the 12 Sep "revisit at about 2,000 contacts"**, which assumed GoHighLevel's
+  rate (10 requests a second); the sync actually makes its requests one after another.
+  - *What hits it:* the `crm` Edge Function. The Refresh button (`sync`) and the schedule
+    (`scheduled-sync`) both run the whole of `runGhlSync` (`src/lib/crm/ghl/sync.ts`) inside
+    one request. That request is cut off at the platform's wall-clock limit: 150 s on the
+    plan this project is on, 400 s on a paid plan (Supabase's published figures, not
+    measured here).
+  - *At what size:* a run makes leads + ⌈leads ÷ 100⌉ + 2 requests, in sequence. Measured on
+    the nine live runs (13 Sep – 12 Oct): 262–465 ms a request, mean 374 ms. At the mean the
+    150 s wall falls at **about 395 leads**; at the slowest run seen, **about 317**. **Plan
+    for 300.** "Leads" here means distinct contacts with an opportunity in the Finance
+    Pipeline, open or closed — the sync reads them all.
+  - *What it looks like when it happens:* not an error with a sentence. The function is
+    killed mid-run, the run row is left `running`, and the next tick retires it as
+    `STALE` 20 minutes later. Every tick then does the same, so the mirror stops changing.
+    The screens show "The last refresh failed (STALE)" and the copy ages.
+  - *Before it, the daily budget:* at every 10 minutes the schedule alone is 10% of
+    GoHighLevel's 200,000 requests a day at **about 134 leads**. Go to every 30 minutes then
+    (a migration calling `cron.schedule('ghl-sync', …)` again; about 409 leads at 30). That
+    buys budget, not time: the wall above does not move with the interval.
+  - *The rework (any one moves the wall; none is built):* (1) **fetch contacts in parallel**
+    within the rate limit — four at a time is roughly four times the leads, about 1,500.
+    The change is in the contact loop of `sync.ts`, with the pacing in `client.ts` made
+    concurrency-aware. (2) **read only the contacts whose opportunity changed** since the
+    last applied run, plus a full sweep now and then. GoHighLevel's contact search is a
+    `POST`, so `client.ts` stops being GET-only, and `tests/security/ghl.test.ts` needs a
+    reviewed exception. (3) **move the sync out of the Edge Function** to a worker with no
+    150 s wall — n8n on Railway is parked (D71).
+  - *Cheap until then (not done):* setting `GHL_MAX_CONTACTS_PER_RUN=300` on the function
+    would make an oversized pipeline fail with its own sentence ("refusing to sync a partial
+    set silently") instead of being killed. Check size weekly with RUNBOOK §1h "When the
+    interval must change".
+
+---
+
 ## Blocked / parked
 
 | Item | Reason | Since | Unblocked by |

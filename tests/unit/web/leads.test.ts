@@ -39,8 +39,10 @@ import {
 } from '../../../web/src/lib/leadsView.js';
 import {
   REMOVED_STAGE_SUFFIX,
+  RUNS_READ,
   UNKNOWN_STAGE_LABEL,
   UNNAMED_LEAD,
+  withNewestApplied,
   type GhlOpportunityRow,
   type GhlStageRow,
   type GhlSyncRunRow,
@@ -221,6 +223,44 @@ describe('the leads routes', () => {
     for (const path of ['/leads/', '/Leads', '/leads/BOARD', '/leads/a/b']) {
       expect(isCanonicalPath(path), path).toBe(false);
     }
+  });
+});
+
+// 14 Oct 2026: an outage on the schedule is a failed run every ten minutes. The leads screen
+// reads the newest RUNS_READ runs, exactly as the overview does, and had the same hole.
+describe('failed runs piling up on top of the last good one', () => {
+  const failures = Array.from({ length: RUNS_READ }, (_, i) =>
+    run({
+      id: `failed-${String(i)}`,
+      status: 'failed',
+      applied_at: null,
+      error_code: 'UNAUTHENTICATED',
+      started_at: new Date(NOW - (i + 1) * 10 * MIN).toISOString(),
+      finished_at: new Date(NOW - (i + 1) * 10 * MIN + 2_000).toISOString(),
+    }),
+  );
+  const good = run({
+    id: 'good',
+    started_at: new Date(NOW - 65 * MIN).toISOString(),
+    applied_at: new Date(NOW - 65 * MIN + 4_000).toISOString(),
+    finished_at: new Date(NOW - 65 * MIN + 4_000).toISOString(),
+  });
+
+  it('the read as it was: no leads and "not set up" — the defect', () => {
+    const view = buildLeads(input({ runs: failures }), NOW);
+    expect(view.kind).toBe('not-set-up');
+    expect(view.leads).toEqual([]);
+  });
+
+  it('with the newest applied run joined: every lead, the age of the copy, and the key named', () => {
+    const view = buildLeads(input({ runs: withNewestApplied(failures, good) }), NOW);
+    expect(view.kind).toBe('ready');
+    expect(view.leads).toHaveLength(5);
+    expect(view.freshness).toMatchObject({ tone: 'stale', label: 'Last refreshed 1 hour ago' });
+    expect(view.sync).toMatchObject({
+      lastFailed: true,
+      lastRun: { errorCode: 'UNAUTHENTICATED' },
+    });
   });
 });
 

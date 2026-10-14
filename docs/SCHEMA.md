@@ -248,6 +248,40 @@ from the folder the live form writes to — seeded from the 12 Sep 2026 read and
 `lead_type` / `lead_source` / `pipeline_stage` enums would force invented values and cannot
 hold a stage GHL added (M4 part 1 decision).
 
+### The sync schedule — ghl_sync_dispatches (14 Oct 2026, D111–D116)
+
+The mirror refreshes itself every ten minutes, at minutes 3, 13, … 53 UTC (migration
+`20261014010000_ghl_sync_schedule.sql`). `pg_cron` job **`ghl-sync`** runs
+`public.dispatch_ghl_sync()`, which asks the `crm` Edge Function for a run through `pg_net`
+(action `scheduled-sync`); the run itself is the part-1 sync with `trigger = 'schedule'` and
+no `triggered_by`. No second lock: overlap is still `ghl_sync_runs_one_running` and
+`begin_ghl_sync_run`.
+
+The address and the scheduler's secret are in **Vault** (`ghl_sync_schedule_url`,
+`ghl_sync_schedule_secret`), read at call time; the job's stored command is the bare call.
+With either entry missing — or an address that is not `https://`, or a secret under 32
+characters — the job asks for nothing and records `not_configured` once.
+
+| Table | Key | Holds |
+|---|---|---|
+| `ghl_sync_dispatches` | `id` (identity) | `requested_at · outcome (requested\|started\|already_running\|failed\|not_configured) · request_id (pg_net) · pipeline_ghl_id (the newest run's, at request time) · http_status · error_code · run_id → ghl_sync_runs (on delete set null) · settled_at`. Kept 30 days. RLS forced; staff SELECT; no write policy |
+
+`dispatch_ghl_sync()` first settles every request older than three minutes with
+`settle_ghl_sync_dispatch(id, http_status)`: a run with `trigger = 'schedule'` that started
+within five minutes of the request means it worked; HTTP 409 means a refresh already held the
+slot (not a failure); anything else writes a **`failed` row into `ghl_sync_runs`** —
+`started_at` = when it was asked, no `applied_at`, `error_code` naming the cause
+(`SCHEDULE_REJECTED` 401/403 · `SCHEDULE_CONTRACT` 400 · `SCHEDULE_FUNCTION_MISSING` 404 ·
+`SCHEDULE_FUNCTION_ERROR` 5xx · `SCHEDULE_NO_RUN` 2xx with no run · `SCHEDULE_UNREACHABLE` no
+answer), `errors = [{kind: 'schedule', id: <dispatch id>, code}]` — so the screens' alert and
+the connector's freshness sentence fire through what already reads that table. Neither
+function writes a `running` row. Both are owner-only (revoked from `anon`, `authenticated` and
+`service_role`). It also deletes this job's `cron.job_run_details` rows older than seven days.
+
+Index `ghl_sync_runs_applied_idx (applied_at desc) where applied_at is not null`: the newest
+applied run, which the connector and (since this change) both mirror screens look up on its
+own. The run log grows by about 144 rows a day.
+
 ### GoHighLevel writes — Milestone 4 part 4 (24 Sep 2026)
 
 The first writes from the running system to GoHighLevel: a stage move and a contact note,

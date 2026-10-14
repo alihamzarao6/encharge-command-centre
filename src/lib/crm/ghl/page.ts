@@ -37,6 +37,18 @@
  * live, is refused without a write if the opportunity is outside the configured pipeline
  * (R22, R25), and answers in a sentence written for the person holding the phone — a
  * refused or failed write always says the lead was NOT moved and where it is.
+ *
+ * THE SCHEDULE (14 Oct 2026, D111–D116): a fourth action, `scheduled-sync`, for the database's
+ * scheduler and nobody else. It has no session, so it is not verified as staff; it carries a
+ * secret of its own in a header of its own (src/lib/crm/schedule.ts), and without the right
+ * one it is a 401 before anything is read. It runs the same `runSync` with `trigger:
+ * 'schedule'` and no user. It does NOT consult the cooldown — at one request every ten minutes
+ * it cannot hammer GoHighLevel, and consulting it would let a press at 09:59 cancel the 10:00
+ * run. The lock is the only thing that can refuse it, and a refusal there is not a failure:
+ * the mirror is being refreshed that second by whoever holds the slot. A scheduled run DOES
+ * count towards the button's cooldown, because the cooldown reads the newest run of any kind.
+ * Every scheduled request writes one structured line: when it started, what it fetched, what
+ * it changed, how long it took and how it ended — ids and counts, never a person's details.
  */
 import { verifyStaffAccess, type VerifyDeps } from '../../auth/verify.js';
 import type { Result } from '../../errors.js';
@@ -47,6 +59,7 @@ import {
   describeCooldown,
   type CooldownRun,
 } from '../cooldown.js';
+import { SCHEDULED_SYNC_ACTION, changesOf, scheduleSecretMatches } from '../schedule.js';
 import {
   NOTE_MAX_LENGTH,
   type Actor,
@@ -75,6 +88,8 @@ export interface CrmRequestBody {
 export interface CrmPageInput {
   readonly token: string | null | undefined;
   readonly body: CrmRequestBody;
+  /** The scheduler's credential, from its own header. A browser never sends one. */
+  readonly scheduleSecret?: string | null | undefined;
 }
 
 export interface CrmSyncReply {
@@ -88,6 +103,19 @@ export interface CrmSyncReply {
   readonly contactsUnread: number;
   /** GHL ids and codes only. */
   readonly errors: readonly SyncErrorEntry[];
+}
+
+/** What the scheduler hears back, and what `pg_net` keeps of it: ids and counts. */
+export interface CrmScheduledReply {
+  readonly action: 'scheduled-sync';
+  readonly status: 'success' | 'partial';
+  readonly runId: string;
+  readonly durationMs: number;
+  readonly opportunitiesFetched: number;
+  readonly contactsFetched: number;
+  readonly contactsUnread: number;
+  /** Rows inserted, changed or marked removed. 0 = GoHighLevel had not moved. */
+  readonly changed: number;
 }
 
 export interface CrmMoveReply {
@@ -134,7 +162,10 @@ export interface CrmErrorBody {
 export type CrmErrorStatus = 400 | 401 | 403 | 409 | 410 | 422 | 429 | 500 | 502 | 503 | 504;
 
 export type CrmPageResult =
-  | { readonly status: 200; readonly body: CrmSyncReply | CrmMoveReply | CrmNoteReply }
+  | {
+      readonly status: 200;
+      readonly body: CrmSyncReply | CrmScheduledReply | CrmMoveReply | CrmNoteReply;
+    }
   | { readonly status: CrmErrorStatus; readonly body: CrmErrorBody };
 
 export interface CrmPageDeps {
@@ -147,6 +178,11 @@ export interface CrmPageDeps {
   readonly move: (actor: Actor, request: MoveRequest) => Promise<MoveOutcome>;
   readonly note: (actor: Actor, request: NoteRequest) => Promise<NoteOutcome>;
   readonly log: Logger;
+  /**
+   * The schedule's secret as this function holds it. Absent or null = not configured, and
+   * then `scheduled-sync` is refused whatever is sent.
+   */
+  readonly scheduleSecret?: string | null;
   /** Defaults to SYNC_COOLDOWN_MS; a test shortens it. */
   readonly cooldownMs?: number;
   readonly now?: () => number;
@@ -230,8 +266,80 @@ export async function handleCrmRequest(
   }
 }
 
+/** The one line every scheduled request writes. Grep for it; `outcome` says how it ended. */
+export const SCHEDULED_LOG_MESSAGE = 'crm: scheduled refresh';
+
+/**
+ * When it started, what it fetched, what it changed, how long it took, how it ended. A failed
+ * run is an error, a partial or a skipped one a warning — the level is how loud it is.
+ */
+function logScheduled(deps: CrmPageDeps, report: SyncReport, startedAtMs: number): void {
+  const fields = {
+    trigger: 'schedule',
+    outcome: report.status === 'refused' ? 'skipped' : report.status,
+    runId: report.runId,
+    startedAt: new Date(startedAtMs).toISOString(),
+    durationMs: report.durationMs,
+    staleMarked: report.staleMarked,
+    fetched: report.fetch,
+    changed: report.apply === null ? null : changesOf(report.apply),
+    errorCode: report.error?.code ?? null,
+    errorCount: report.errors.length,
+  };
+  if (report.status === 'failed') deps.log.error(SCHEDULED_LOG_MESSAGE, fields);
+  else if (report.status === 'success') deps.log.info(SCHEDULED_LOG_MESSAGE, fields);
+  else deps.log.warn(SCHEDULED_LOG_MESSAGE, fields);
+}
+
+async function routeScheduled(deps: CrmPageDeps, input: CrmPageInput): Promise<CrmPageResult> {
+  const held = deps.scheduleSecret ?? null;
+  if (!(await scheduleSecretMatches(input.scheduleSecret, held))) {
+    // One answer for every cause; which cause it was is here and nowhere else.
+    const sent = typeof input.scheduleSecret === 'string' && input.scheduleSecret !== '';
+    deps.log.error('crm: scheduled refresh refused', {
+      reason: held === null ? 'not_configured' : sent ? 'mismatch' : 'nothing_sent',
+      alert: 'ghl_schedule_refused',
+    });
+    return failure(401, 'UNAUTHENTICATED', 'Not authorised.');
+  }
+
+  const startedAtMs = (deps.now ?? Date.now)();
+  const report = await deps.runSync({ trigger: 'schedule', triggeredBy: null });
+  logScheduled(deps, report, startedAtMs);
+
+  if (report.status === 'refused') {
+    return failure(409, 'SYNC_RUNNING', 'A refresh is already running.', true);
+  }
+  if (report.status === 'failed') {
+    const code = report.error?.code ?? 'UNKNOWN';
+    const described = describeSyncFailure(code);
+    return failure(502, code, described.message, described.retryable, report.runId ?? undefined);
+  }
+  if (report.runId === null) {
+    return failure(500, 'INTERNAL', 'The refresh finished without a run record.');
+  }
+  return {
+    status: 200,
+    body: {
+      action: 'scheduled-sync',
+      status: report.status,
+      runId: report.runId,
+      durationMs: report.durationMs,
+      opportunitiesFetched: report.fetch.opportunities_fetched,
+      contactsFetched: report.fetch.contacts_fetched,
+      contactsUnread:
+        report.fetch.contacts_failed +
+        report.fetch.contacts_missing +
+        report.fetch.contacts_rejected,
+      changed: report.apply === null ? 0 : changesOf(report.apply).total,
+    },
+  };
+}
+
 async function route(deps: CrmPageDeps, input: CrmPageInput): Promise<CrmPageResult> {
   const action = input.body.action;
+  // Before the staff check, because the scheduler is not staff and has no session.
+  if (action === SCHEDULED_SYNC_ACTION) return routeScheduled(deps, input);
   if (action !== 'sync' && action !== 'move' && action !== 'note') {
     return failure(400, 'BAD_REQUEST', 'action must be sync, move or note.');
   }

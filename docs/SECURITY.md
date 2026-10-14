@@ -885,6 +885,28 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
   browser's part: a `requestId`, ids, and a note body; no token, no GoHighLevel URL, and
   `npm run web:check` still greps the bundle for the `pit-` shape. The response's `contact`
   sub-object (name, email) is stripped by the Zod schema before it can reach a log line.
+- **14 Oct 2026: the sync runs on a schedule, and the scheduler has a secret of its own**
+  (D111; migration `20261014010000`, `src/lib/crm/schedule.ts`). `pg_cron` calls
+  `dispatch_ghl_sync()` every ten minutes; it POSTs `scheduled-sync` to the `crm` function
+  through `pg_net` with `CRM_SCHEDULE_SECRET` in the header `x-crm-schedule-secret`. The
+  function compares SHA-256 digests with no early exit, accepts nothing when it holds no
+  secret (or one under 32 characters), and gives every cause one answer — 401 "Not
+  authorised." — with the cause in its log line only. The secret opens one door: start the
+  existing sync, under the existing lock; the cooldown does not apply to it, and it opens no
+  other action (a session is still required for `sync`, `move`, `note`). **Not the
+  service-role key**, which the platform's guide puts in the cron command: that would put the
+  key that opens every table into `cron.job`, which stores commands as text (rule 17). Where
+  the secret is: the function's secrets; Vault (`ghl_sync_schedule_secret`, decrypted view
+  readable by `postgres` and `service_role` only — `anon` and `authenticated` hold nothing on
+  the `vault` schema, verified on the live project 14 Oct); the request header; `pg_net`'s
+  queue row until the worker sends it. Where it is not: the cron command (the bare call), any
+  migration, `ghl_sync_dispatches`, `ghl_sync_runs`, any log field, the web bundle, the CORS
+  allow-list. `tests/security/ghl-schedule.test.ts` asserts each of those, plus: one reader of
+  `CRM_SCHEDULE_SECRET`; the two SQL functions executable by no API role (the service role
+  included) and not `SECURITY DEFINER`; no browser role able to read Vault, the queue or the
+  responses; and neither `net` nor `vault` answered by the API. The address is in Vault too and
+  must be `https://`. **Rotation:** a new value in both places in one sitting (RUNBOOK §1h);
+  a mismatch is not silent — the next tick records `SCHEDULE_REJECTED` on the screen.
 - The token lives in `.env`, in the `crm` function's Supabase secrets, and in the n8n
   credential store. It was sent over WhatsApp and the message was deleted after receipt.
 - Rotate at handover. Ross can revoke it from the same GHL screen at any time.

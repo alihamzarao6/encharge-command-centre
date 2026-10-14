@@ -466,6 +466,79 @@ test.describe('data states', () => {
     await shot(page, 'overview-failed');
   });
 
+  // 14 Oct 2026: on a schedule, an outage is a failed run every ten minutes. Five of them used
+  // to push the last good run out of the read, and this screen said "Not set up yet".
+  test('six failed refreshes on top of the last good one: the numbers stay, with their age and the cause', async ({
+    page,
+  }) => {
+    const ghl = populated();
+    ghl.runs = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        run({
+          id: `failed-${String(i)}`,
+          status: 'failed',
+          applied_at: null,
+          error_code: 'UNAUTHENTICATED',
+          started_at: ago((i + 1) * 10 * MIN),
+          finished_at: ago((i + 1) * 10 * MIN - 2_000),
+        }),
+      ),
+      run({ id: 'good', started_at: ago(75 * MIN + 5_000), applied_at: ago(75 * MIN) }),
+    ];
+    await openOverview(page, { ghl });
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('5');
+    await expect(page.getByRole('heading', { name: 'Not set up yet' })).toHaveCount(0);
+    await expect(page.locator('.fresh')).toContainText('Ageing: Last refreshed 1 hour ago');
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText('The last refresh failed (UNAUTHENTICATED)');
+    await expect(alert).toContainText('rejected our access key');
+    await expectNoHorizontalScroll(page);
+  });
+
+  test('a screen left open shows what the schedule fetched, without a tap', async ({ page }) => {
+    await page.clock.install();
+    const state = await openOverview(page);
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('5');
+    // The schedule refreshes the mirror with nobody at the screen: one more lead, a new run.
+    state.ghl.opportunities.push(opp('o9', 'stage-04', { ghl_created_at: ago(MIN) }));
+    state.ghl.runs.unshift(
+      run({
+        id: 'scheduled',
+        started_at: ago(6_000),
+        applied_at: ago(1_000),
+        finished_at: ago(1_000),
+      }),
+    );
+    // Two minutes is useMirror's REREAD_MS. Nothing is pressed, and the tab never loses focus.
+    await page.clock.fastForward(2 * MIN + 1_000);
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('6');
+    await expect(page.locator('.fresh')).toContainText(/Updated (just now|\d minutes? ago)/);
+  });
+
+  test('a re-read nobody asked for says nothing when it fails: the numbers and their age stay', async ({
+    page,
+  }) => {
+    await page.clock.install();
+    const state = await openOverview(page);
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('5');
+    state.ghlFailing = true;
+    const failedRead = page.waitForResponse(
+      (response) => response.url().includes('/rest/v1/ghl_sync_runs') && response.status() === 500,
+    );
+    await page.clock.fastForward(2 * MIN + 1_000);
+    await failedRead;
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('5');
+    // It recovers on its own once the read works again.
+    state.ghlFailing = false;
+    state.ghl.opportunities.push(opp('o9', 'stage-04', { ghl_created_at: ago(MIN) }));
+    await page.clock.fastForward(2 * MIN + 1_000);
+    await expect(page.locator('.tile__value').nth(0)).toHaveText('6');
+    // Checked last, on purpose: a failure that spoke would have left its banner standing, since
+    // a later read that works does not take a banner down.
+    await expect(page.getByText(/Couldn.t read your pipeline/)).toHaveCount(0);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
   test('a refresh that fails on the server says why, and the failure stays on the page', async ({
     page,
   }) => {

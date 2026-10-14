@@ -821,7 +821,14 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           );
           break;
         case 'ghl_sync_runs':
-          rows = [...ghl.runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
+          // Two reads (14 Oct 2026): the newest runs, and the newest run that APPLIED on its
+          // own — however many failed runs sit on top of it.
+          rows =
+            url.searchParams.get('applied_at') === 'not.is.null'
+              ? ghl.runs
+                  .filter((r) => r.applied_at !== null)
+                  .sort((a, b) => (b.applied_at ?? '').localeCompare(a.applied_at ?? ''))
+              : [...ghl.runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
           break;
         default:
           break;

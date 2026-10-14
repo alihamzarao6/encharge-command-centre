@@ -21,9 +21,9 @@ file means every later session works from a wrong picture.
 | Brand | Client is rebranding **Encharge Capital → Fundd** (`fundd.com.au`). GHL stays white-labelled at `app.enchargecapital.com`. Notifications go to `rossb@fundd.com.au`. **Funnel live on `ross.fundd.com.au`, email sends from `send.fundd.com.au` (7 Sep, D80)** |
 | Active milestone | **Milestone 5 — Files, documents and research (250) — IN PROGRESS (parts 1 and 2 shipped 12 Oct; part 3 Drive / OneDrive and part 4 settings each on their own brief). Alongside it, OFF the milestone list and as goodwill: the MCP connector, stage 1 (brief of 13 Oct). Milestone 4 — Your data on screen (350) — is CLOSED by the reviewer and invoiced (recorded 13 Oct 2026): all five parts, part 5 included; nothing owed. How Milestone 4 was built, for the record: parts 1–3 (the read-and-sync layer, the shell + overview, the board + list — 12, 13, 14 Sep entries) are committed and pushed (`069ba7c`, CI green); part 4 — the lead detail, stage moves and notes, the FIRST WRITES to GoHighLevel (24 Sep entry) — is committed and pushed (`15db99d` + `8c29221`; CI run 35954883737 green on `8c29221`, all three jobs, zero skipped) and deployed (the live web bundle names `8c29221` as its build commit — read from the bundle 12 Oct; the reviewer confirms migration `20260924010000_ghl_writes.sql` and the `crm` redeploy separately, it could not be checked from this machine). Part 5 (phone and laptop) was closed with the milestone by the reviewer (13 Oct) — it is not owed. Two test records sit in the client's GoHighLevel account (24 Sep entry, Data). Milestone 5 part 1 — reading files and documents — was started on 12 Oct on the reviewer's instruction with Milestone 4 unsigned, reviewed, committed (`0aaac43` + `c11f04f`), CI green and DEPLOYED the same day: migration `20261012010000` applied (20 of 20), the purge cron job confirmed, `files` v1 and `chat` v14 live (12 Oct entries; D83–D92). **Milestone 5 part 2 — reading a web page from a link — was probed, decided with the reviewer and BUILT the same day; reviewed (two rounds, 12 Oct), committed, CI green and **DEPLOYED the same day**: `main` = `origin/main` = `f320ba9`; migration `20261012020000` applied (21 of 21); `files` v2 and `chat` v15 live; the live web bundle names `f320ba9`. **Tested on the live app by the user on 13 Oct; Part 2 closed** (12 Oct "M5 part 2 · build" and "review 1"; D93–D99).** Definition D78, criteria `PHASE-ACCEPTANCE.md` Milestone 4, five parts in `TASKS.md`; task detail arrives with each part's own brief. *(What is live, as last recorded 30 Aug: `chat` v9, `memory` v3, `admin` v2, 17 migrations applied, Vercel serving the Milestone 3 bundle.)* |
 | Last completed | **Milestone 4 — Your data on screen: closed by the reviewer and invoiced (recorded 13 Oct 2026).** *(Invoiced; the 350 is not recorded here as received.)* Before it: **Milestone 3 — Memory and the app itself. Complete, signed off, paid.** Milestones 1–3 together: **600 received of 2,000; 1,400 remains across milestones 4–8** (D77). *(The 22 Aug record shows 198 received for Stage 1 — see the note in D77.)* |
-| Next task | **The client connects his AI (Grok) with the key issued 14 Oct (`w4xh5exkxba5`) and reports back; a tool call with a real key against the live pipeline has still not been made by anyone. Stage 2 only after he confirms. The connector shipped 13 Oct (`b082b96`, deployed — see the "shipped" entry).** *(Before it shipped:)* **The reviewer reads the MCP connector stage 1 report (built 13 Oct, in the working tree: NOT committed, NOT pushed, NOT deployed). Before anything else: `git push origin main` for `9c34fba` and `1092671`, which the tool permission layer refused on 13 Oct — the user's to run. Then, on the reviewer's yes: commit the connector, push a branch, CI, `db push`, deploy `connector`, push `main` (RUNBOOK §1g); the client connects his AI; stage 2 only after he confirms. Milestone 5 part 3 on its own brief.** *(Milestone 5 part 2 was ticked on 13 Oct when the user tested the deployed app. How it shipped, for the record:* in the order RUNBOOK §1f gives: wait for CI green with zero skipped (migration `20261012020000` from zero and two new stack suites have never run on a stack); `supabase db push`; deploy `files` and `chat`; push `main` last — that push is the web deploy. **Neither of these is owed any longer (13 Oct):** `fundd.com.au` is decided as the contact address the page reader gives to sites (D96), and Milestone 4 — part 5 included — was closed by the reviewer and invoiced.*)* |
+| Next task | **The reviewer reads the report on "Keeping the data fresh, and one wrong number" (brief of 14 Oct). Both jobs are BUILT in the working tree, NOT committed, NOT pushed, NOT deployed (14 Oct entries "Job 1 · build" and "Job 2"). After review: two commits (Job 1, then Job 2), a branch push, CI, then RUNBOOK §1h — which redeploys all six functions — and the live proof of two consecutive scheduled runs.** Alongside it: **The client connects his AI (Grok) with the key issued 14 Oct (`w4xh5exkxba5`) and reports back; a tool call with a real key against the live pipeline has still not been made by anyone. Stage 2 only after he confirms. The connector shipped 13 Oct (`b082b96`, deployed — see the "shipped" entry).** *(Before it shipped:)* **The reviewer reads the MCP connector stage 1 report (built 13 Oct, in the working tree: NOT committed, NOT pushed, NOT deployed). Before anything else: `git push origin main` for `9c34fba` and `1092671`, which the tool permission layer refused on 13 Oct — the user's to run. Then, on the reviewer's yes: commit the connector, push a branch, CI, `db push`, deploy `connector`, push `main` (RUNBOOK §1g); the client connects his AI; stage 2 only after he confirms. Milestone 5 part 3 on its own brief.** *(Milestone 5 part 2 was ticked on 13 Oct when the user tested the deployed app. How it shipped, for the record:* in the order RUNBOOK §1f gives: wait for CI green with zero skipped (migration `20261012020000` from zero and two new stack suites have never run on a stack); `supabase db push`; deploy `files` and `chat`; push `main` last — that push is the web deploy. **Neither of these is owed any longer (13 Oct):** `fundd.com.au` is decided as the contact address the page reader gives to sites (D96), and Milestone 4 — part 5 included — was closed by the reviewer and invoiced.*)* |
 | Blocked on | 2.2.13 backups: **free plan has no automated backups** — client cost decision (Pro vs scripted `pg_dump`), restore drill owed before Stage 2 sign-off (needs Docker or the DB password). Local `supabase start` needs Docker (not on this machine). R9 and R21 remain open but do not block |
-| Last regression run | **CI run 38416520857 on `main` (`b082b96`, the connector), all three jobs green; browser 612 passed. The same commit was green on the branch first (38414978649), after one red run on `bfb5267` — a migration error only a real Supabase stack shows (13 Oct "shipped" entry). Zero skipped not confirmed by count.** Before that: **Local, 13 Oct, working tree on top of `1092671` (the MCP connector, stage 1):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,985 passed, 230 skipped (19 stack-backed files, no Docker) in 116 files**, coverage **93.03% lines / 89.6% branches / 93.19% functions / 92.16% statements** (floor 80 / 75 / 80 / 80; `src/lib/connector` alone 99% lines / 96.39% branches) · the connector's tests: **189 unit** in six files (handler 116 · tools 31 · config and body 12 · admin 11 · store 10 · keys 9), **7 static security**, and **43 that need a database — 34 security, 9 integration**. **The 34 were run here, against a throwaway PostgreSQL 17** with this migration replayed on top of the two real GoHighLevel migrations: 41 of 41 in that file. **The 9 integration tests have run nowhere.** · `web:build` + `web:check` 0 hits · `functions:bundle` six functions (connector 78 kB) · gitleaks: history clean; the directory scan's 11 findings are all in the gitignored `.env` and `.env.local`, none in a tracked or new file. Browser suite not run: nothing under `web/` changed. **CI not run — nothing is pushed.** Before that: **Local, 13 Oct, on `9c34fba` (the document-rules fix, D100):** `npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,789 passed, 187 skipped (18 stack-backed files, no Docker) in 108 files**, coverage **92.52% lines / 88.93% branches / 92.7% functions / 91.59% statements**. **CI has NOT run on it: `git push origin main` was refused by the tool permission layer on 13 Oct, so `9c34fba` and the docs commit after it are local only — the push is the user's to make.** Before that: **CI run 38268474750 on `main` (`f320ba9`), all three jobs green, zero skipped: unit 2,726 · integration 133 · security 70 · browser 609; coverage 92.5% lines / 88.92% branches.** The same commit was green on the branch first (run 38266903780); that was the first execution of migration `20261012020000` from zero and of the two new stack suites. *(Two earlier branch runs were red on one integration assertion each — both the test's, not the code's; 12 Oct "shipped" entry.)* Before that: **Local, 12 Oct (M5 part 2 after review round 1, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,742 passed, 187 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.5% lines / 88.94% branches / 92.6% functions / 91.56% statements** (floor 80 / 75 / 80 / 80) · browser **609 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 18.1 minutes (`links.spec.ts` 69 + the 540 existing) · production build 590.53 kB JS + 33.80 kB CSS (the page reader in the lazily loaded `extract` chunk, 53.38 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 85 assertions. **CI not run — nothing is pushed.** *(Before that round:* **Local, 12 Oct (M5 part 2, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,655 passed, 186 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.48% lines / 88.86% branches / 92.58% functions / 91.54% statements** (floor 80 / 75 / 80 / 80; `src/lib/pages` alone 98.54% / 93.58%) · browser **606 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 14.7 minutes (`links.spec.ts` 66 + the 540 existing), and the three specs touching the files changed last re-run afterwards, 207 of 207 · production build 589.92 kB JS + 33.80 kB CSS (the page reader is in the lazily loaded `extract` chunk, 52.78 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 79 assertions. New tests: 730 in nine new unit files (guard 171 · robots 57 · fetch 118 · page-fetch 65 · context-web 35 · chat-pages 15 · files-html 186 · links 47 · uploads-links 36), 66 browser, and 24 that only CI can run (integration 14, security 10). **CI not run — nothing is pushed.***)* *(Last CI:* run 38205144578 on `fd1a7ec`, 12 Oct — all three jobs green, zero skipped: unit 1,903 · integration 118 · security 60 · browser 540.*)* Earlier: **CI run 38201198962 (`c11f04f`, 12 Oct): all three jobs green, zero skipped — unit 1,903 · integration 118 · security 60 · browser 540; coverage 91.24% lines / 87.55% branches.** First run of migration `20261012010000` from zero and of the two files stack suites. *(Run 38200249819 on `0aaac43` failed one integration assertion — a test string, fixed in `c11f04f`.)* **Local, 12 Oct (M5 part 1, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped (16 stack-backed files, no Docker) in 95 files**, coverage **91.19% lines / 87.56% branches / 91.76% functions / 90.16% statements** · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (`files.spec.ts` 93 + the 447 existing) · production build 566.98 kB JS + 32.10 kB CSS, `web:check` 0 hits · `functions:bundle` five functions. **CI not run — nothing is pushed.** *(Previous:* CI run 35954883737 (`8c29221`, 24 Sep), all three jobs green, zero skipped: unit 1,507 · integration 102 · security 48 · browser 447.*)* Earlier runs, newest first: **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
+| Last regression run | **Local, 14 Oct, working tree on `76e5fc7` with both jobs: typecheck and lint clean; unit 3,064 passed, 274 skipped (20 stack-backed files, no Docker); coverage 93.09% lines / 89.64% branches; browser 624 passed, 0 failed, 0 skipped, at 375 / 768 / 1280 (an earlier full run is void: a mutation of `html.ts` was live when it built the app); `web:check` 0 hits; six functions bundle. Not CI — nothing is pushed.** Before that: **CI run 38473629246 on `main` (`76e5fc7`): three jobs green; unit 2,962, stack 142 + 111, browser 612, no skipped in any total.** Before that: **CI run 38416520857 on `main` (`b082b96`, the connector), all three jobs green; browser 612 passed. The same commit was green on the branch first (38414978649), after one red run on `bfb5267` — a migration error only a real Supabase stack shows (13 Oct "shipped" entry). Zero skipped not confirmed by count.** Before that: **Local, 13 Oct, working tree on top of `1092671` (the MCP connector, stage 1):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,985 passed, 230 skipped (19 stack-backed files, no Docker) in 116 files**, coverage **93.03% lines / 89.6% branches / 93.19% functions / 92.16% statements** (floor 80 / 75 / 80 / 80; `src/lib/connector` alone 99% lines / 96.39% branches) · the connector's tests: **189 unit** in six files (handler 116 · tools 31 · config and body 12 · admin 11 · store 10 · keys 9), **7 static security**, and **43 that need a database — 34 security, 9 integration**. **The 34 were run here, against a throwaway PostgreSQL 17** with this migration replayed on top of the two real GoHighLevel migrations: 41 of 41 in that file. **The 9 integration tests have run nowhere.** · `web:build` + `web:check` 0 hits · `functions:bundle` six functions (connector 78 kB) · gitleaks: history clean; the directory scan's 11 findings are all in the gitignored `.env` and `.env.local`, none in a tracked or new file. Browser suite not run: nothing under `web/` changed. **CI not run — nothing is pushed.** Before that: **Local, 13 Oct, on `9c34fba` (the document-rules fix, D100):** `npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,789 passed, 187 skipped (18 stack-backed files, no Docker) in 108 files**, coverage **92.52% lines / 88.93% branches / 92.7% functions / 91.59% statements**. **CI has NOT run on it: `git push origin main` was refused by the tool permission layer on 13 Oct, so `9c34fba` and the docs commit after it are local only — the push is the user's to make.** Before that: **CI run 38268474750 on `main` (`f320ba9`), all three jobs green, zero skipped: unit 2,726 · integration 133 · security 70 · browser 609; coverage 92.5% lines / 88.92% branches.** The same commit was green on the branch first (run 38266903780); that was the first execution of migration `20261012020000` from zero and of the two new stack suites. *(Two earlier branch runs were red on one integration assertion each — both the test's, not the code's; 12 Oct "shipped" entry.)* Before that: **Local, 12 Oct (M5 part 2 after review round 1, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,742 passed, 187 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.5% lines / 88.94% branches / 92.6% functions / 91.56% statements** (floor 80 / 75 / 80 / 80) · browser **609 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 18.1 minutes (`links.spec.ts` 69 + the 540 existing) · production build 590.53 kB JS + 33.80 kB CSS (the page reader in the lazily loaded `extract` chunk, 53.38 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 85 assertions. **CI not run — nothing is pushed.** *(Before that round:* **Local, 12 Oct (M5 part 2, working tree):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 · typecheck clean · lint clean · `vitest run --coverage` **2,655 passed, 186 skipped (18 stack-backed files, no Docker) in 106 files**, coverage **92.48% lines / 88.86% branches / 92.58% functions / 91.54% statements** (floor 80 / 75 / 80 / 80; `src/lib/pages` alone 98.54% / 93.58%) · browser **606 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 in 14.7 minutes (`links.spec.ts` 66 + the 540 existing), and the three specs touching the files changed last re-run afterwards, 207 of 207 · production build 589.92 kB JS + 33.80 kB CSS (the page reader is in the lazily loaded `extract` chunk, 52.78 kB), `web:check` 0 hits · `functions:bundle` five functions · the migration and both stack suites' SQL replayed on PostgreSQL 17, 79 assertions. New tests: 730 in nine new unit files (guard 171 · robots 57 · fetch 118 · page-fetch 65 · context-web 35 · chat-pages 15 · files-html 186 · links 47 · uploads-links 36), 66 browser, and 24 that only CI can run (integration 14, security 10). **CI not run — nothing is pushed.***)* *(Last CI:* run 38205144578 on `fd1a7ec`, 12 Oct — all three jobs green, zero skipped: unit 1,903 · integration 118 · security 60 · browser 540.*)* Earlier: **CI run 38201198962 (`c11f04f`, 12 Oct): all three jobs green, zero skipped — unit 1,903 · integration 118 · security 60 · browser 540; coverage 91.24% lines / 87.55% branches.** First run of migration `20261012010000` from zero and of the two files stack suites. *(Run 38200249819 on `0aaac43` failed one integration assertion — a test string, fixed in `c11f04f`.)* **Local, 12 Oct (M5 part 1, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1,907 passed, 162 skipped (16 stack-backed files, no Docker) in 95 files**, coverage **91.19% lines / 87.56% branches / 91.76% functions / 90.16% statements** · browser **540 passed, 0 failed, 0 skipped** at 375 / 768 / 1280 (`files.spec.ts` 93 + the 447 existing) · production build 566.98 kB JS + 32.10 kB CSS, `web:check` 0 hits · `functions:bundle` five functions. **CI not run — nothing is pushed.** *(Previous:* CI run 35954883737 (`8c29221`, 24 Sep), all three jobs green, zero skipped: unit 1,507 · integration 102 · security 48 · browser 447.*)* Earlier runs, newest first: **Local, 14 Sep (M4 part 3, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1432 passed, 125 skipped (13 stack-backed files, no Docker) in 73 files**, coverage **93.95% lines / 88.44% branches / 94.46% functions / 92.64% statements** · browser **366 passed, 0 failed, 3 skipped by design** at 375 / 768 / 1280 (`leads.spec.ts` 84 + the six earlier suites) · `functions:bundle` four functions. *(Previous:* **Local, 13 Sep (M4 part 2, working tree):** typecheck clean · lint clean · `vitest run --coverage` **1389 passed, 121 skipped (stack suites, no Docker) in 70 files**, coverage **92.47% lines / 88.09% branches / 94.26% functions / 93.85% statements** · browser: the five existing suites **201/201** at 375 / 768 / 1280 against the new shell, `overview.spec.ts` **78/78 + 3 skipped by design** (a phone/tablet-only case each way) · production build 491,990 B JS + 21,033 B CSS, `web:check` 0 hits · `functions:bundle` four functions. **CI on the pushed Part 1 (`85a368f`, run 34737358058): unit + browser jobs green, integration job 1 assertion (`custom_fields_removed` 2 ≠ 1) → fixed in `b9e35e1`; the security suite then failed on `pg_policies.roles` coming back as text → cast in `096b396`. **CI run 34739663881 (`096b396`) fully green, all three jobs, zero skipped — Part 1's gate met.** *(Previous:* CI run 33184069083 (`55dcbb2`, 28 Aug) fully green — all three jobs: `typecheck · lint · gitleaks · tests + coverage gate`, `supabase local · migrations from zero · schema + RLS suites`, `web build · playwright at 375 / 768 / 1280`. This is the first execution of the part-4 stack suites (`users.test.ts` including the two-connection last-admin race, `conversations.test.ts`, `rls.test.ts` 9 + 10) — they skip locally for want of Docker.** **Local, 28 Aug (Stage 3 part 4):** typecheck clean · lint clean · unit **1114/1114** in 45 files, 0 failed, coverage **93.5% lines / 88.13% branches / 94.3% functions / 92.21% statements** (floor 80/75/80/80) · browser **138/138** at 375 / 768 / 1280 · voice conformance **24 prompts · 291 checks · 0 failing**, prompt v2026-08-25.4 unchanged · production build 462,156 B JS + 15,257 B CSS (was 442,811 + 13,081), `web:check` 0 hits with the real keys in the environment. **86 tests in 9 files skipped: the stack-backed suites — no Docker on this machine, CI is the evidence.** *(Previous green CI: run 33045965704 (`e762c69`, 27 Aug) — unit 1021/1021, `db reset` from zero with 14 migrations, integration 45/45, security 33/33, browser 81/81, zero skipped.)* **Local 27 Aug (Stage 3 part 3):
 | Known broken | **M4 part 2 is LIVE (13 Sep):** part-1 migration applied to the live project (through the Supabase MCP because the CLI/management token in `.env` answers 401; applied verbatim, then the version row was corrected from the MCP's `20260913061442` to `20260912010000` in the SQL editor — `list_migrations` now matches the repo, 18 of 18); `crm` v1 deployed (MCP); the four `GHL_*` secrets set by the reviewer in the dashboard; **first Refresh from the app succeeded** — run row `success`, trigger `api`, 13 requests, 10 opportunities, 10 contacts, 15 definitions, 6,050 ms — and the overview shows 10 open / 7 Appointment Booked / 2 New Lead / 1 Contacted, equal to `npm run crm -- read` taken the same minute (PHASE-ACCEPTANCE M4 item 3, first evidence). The `.env` management token needs replacing before the next CLI deploy. Supabase project **ACTIVE_HEALTHY**, Postgres 17.6.1.155, **15 migrations applied (28 Aug — `20260828010000` confirmed against the live catalog: both `app_users` policies present, `is_active_staff` security definer, the three functions `service_role`-only)**; **`chat` v8, `memory` v2, `admin` v1 all ACTIVE**; Vercel production alias serving 463,625 bytes with 0 React dev markers and no key of any kind. Notion databases exist but hold no rows and have no views |
 | **Urgent, unrelated to any task** | **R18 — a live Anthropic API key was published in plain text on the client's old Command Centre prototype. Rotation is still unconfirmed.** Chase it; it is not blocked by anything |
 
@@ -144,6 +144,13 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D108** | **Logging: one line per request (the key's public id as `caller`, method, tool, outcome, status, duration, records, bytes) and one row per accepted request in `connector_calls` (plus the lead id for `get_lead`). Never a name, email, phone, note, search text, key, header or address — the handler is not handed the address at all** | Rule 20. The field is `caller` because the logger redacts any field whose name contains "key"; the recorded method comes from a fixed list so a caller cannot write into the ledger | 13 Oct |
 | **D109** | **Every result says when the mirror was last refreshed, how old that is, and in what words: under an hour stated, an hour to a day "may have changed", over a day "do not present it as current"; a failed attempt since is said. A pipeline never copied is an error, not an empty list. The connector refreshes nothing** | The mirror is as old as the last Refresh pressed in the app. An AI told "7 open leads" says it as though it were now. A refresh writes the mirror and spends GoHighLevel's shared rate limit, and stage 1 writes nothing — which leaves a gap: his AI cannot make the data current. In the report | 13 Oct |
 | **D110** | **A read happens as the key's own user under the mirror's EXISTING row-level security: `connector_call` (as the server) checks the key and the limits and never receives a user id; `connector_read` is declared `SET role = 'authenticated'` with `auth.uid()` set to the key's user, and every query names the one configured pipeline id** | The existing read path is the browser's own select under RLS, and a connector has no browser session. Running the same policies as the same role means a deactivated user's key reads nothing even with every check above it removed, a future per-user policy narrows the connector untouched, and a write from inside a read is "permission denied" at the database. Probed on PostgreSQL 17 before it was decided; refused from a `SECURITY DEFINER` function, which is why the outer one is not | 13 Oct |
+| **D111** | **The mirror refreshes on a schedule: `pg_cron` (job `ghl-sync`) runs `dispatch_ghl_sync()`, which POSTs `scheduled-sync` to the existing `crm` function through `pg_net`; the run is the part-1 sync with `trigger = 'schedule'`. The caller proves itself with a secret of its own (`CRM_SCHEDULE_SECRET`, header `x-crm-schedule-secret`, SHA-256 compared with no early exit) held as a function secret and in Vault with the address; the cron command is the bare call. Inert until both Vault entries exist** | The service-role key would also have worked and is the platform's own example, but it would put the key that opens every table into the database and into `cron.job`, which stores commands as text (rule 17). This secret opens one door. n8n is not deployed (D71); the database's scheduler is the only one there is | 14 Oct |
+| **D112** | **Every ten minutes, at minutes 3, 13, … 53 UTC** | Hourly ends every healthy cycle exactly on the 60-minute amber line; fifteen makes the next tick after an interrupted run land on the 900-second stale threshold to within milliseconds. At ten: refused at 600 s, retired and rerun at 1,200 s. 144 runs × (leads + 3) requests = 1,728 a day today, 0.9% of GoHighLevel's 200,000. Change to 30 minutes at about 134 leads; from about 300 leads (395 at the measured mean, 317 at the slowest run) the `crm` function's 150 s limit is the wall at any interval — TASKS "KNOWN WALL", which supersedes the 12 Sep "about 2,000". Perth keeps no daylight saving | 14 Oct |
+| **D113** | **A failure with a run row is shown by what exists (the screens' red alert, the connector's sentence); a scheduled request that produced NO run is settled by the next tick into a `failed` row in `ghl_sync_runs` with a code naming the cause (`SCHEDULE_REJECTED / _CONTRACT / _FUNCTION_MISSING / _FUNCTION_ERROR / _NO_RUN / _UNREACHABLE`). `ghl_sync_dispatches` records each tick. The scheduler stopping altogether is covered by age alone** | The existing indicator is enough for the first class and blind to the second (function redeployed without the action, secrets out of step, unreachable) — a green line ageing slowly. Writing a FAILED row (never `running`) reuses the alert and the sentence without touching either, and cannot take the sync's slot. No push channel exists (D57); a GoHighLevel notification would be a write | 14 Oct |
+| **D114** | **The lock alone governs the schedule and the button; nothing is added to it. The schedule does not consult the 60-second cooldown; a scheduled run counts towards the button's** | One request per ten minutes cannot hammer GoHighLevel, and consulting the cooldown would let a press at 09:59 cancel the 10:00 run. Either one arriving while the other holds the slot gets 55006 → 409: for the tick that is a skip, not a failure. The button is unavailable about 66 s in every 600, and in those seconds the copy is under 66 s old | 14 Oct |
+| **D115** | **No refresh tool on the connector** | Possible without giving the SELECT-only role anything (the connector function would call `scheduled-sync`), but the connector would then hold a credential that causes writes, "this connector cannot act" (D107) would get an exception a stranger-typed lead name could ask for, and the test forbidding a writing tool would have to be loosened — for at most ten minutes of freshness | 14 Oct |
+| **D116** | **The run row is the log of a scheduled run; each scheduled request also writes one structured line (`crm: scheduled refresh`: started, fetched, changed, duration, outcome — ids and counts). The logger writes through `console` under the Edge runtime, for all six functions** | Measured 14 Oct: no line any function wrote had ever reached Supabase — the runtime discards stdout. The reviewer extended the fix from `crm` to every function because the logger is shared. A healthy tick is 3 lines, about 2.1 KB: ~300 KiB a day | 14 Oct |
+| **D117** | **Both mirror screens read the newest APPLIED run on its own (`withNewestApplied`) and re-read every two minutes while open and visible, quietly** | Five failed runs in a row used to push the last good run out of the screens' five-row read and show "Not set up yet" over a full pipeline — on a schedule, 50 minutes of an outage. An open screen did not see a refresh it did not start. Ruled by the reviewer 14 Oct: this and nothing else on those screens | 14 Oct |
 
 ---
 
@@ -160,6 +167,237 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-14 — [Keeping the mirror fresh · Job 1 · build] The mirror refreshes itself every ten minutes — working tree, NOT committed, NOT pushed, NOT deployed
+
+**Ruled by the reviewer (14 Oct), before the build:** all five Part A decisions approved as
+proposed (D111–D115). (a) the screens: yes, narrowly — the run read finds the newest APPLIED run
+however many failures sit on top of it, plus a periodic re-read; nothing else on those screens
+(D117). (b) logging: yes, and for every function, since the logger is shared (D116). (c) Job 2's
+recordings may be made again; a rules-text change bumps the version, and the credit-advice
+result is measured live again (0 of 18) before Job 2 is called done.
+
+**Did:** migration `20261014010000_ghl_sync_schedule.sql` (`pg_net`; `ghl_sync_dispatches`, RLS
+forced; `settle_ghl_sync_dispatch` and `dispatch_ghl_sync`, owner only; an index for the newest
+applied run; job `ghl-sync`, `3-59/10 * * * *`) · `src/lib/crm/schedule.ts` (the secret's one
+reader, the comparison, `changesOf`) · `scheduled-sync` in `src/lib/crm/ghl/page.ts` (before the
+staff check; no cooldown; one structured line per request) · `wiring.ts`, the `crm` adapter
+(passes the header; not in CORS) · `src/lib/logger.ts` (`console` under the Edge runtime) ·
+`web/src/lib/overviewView.ts` (`withNewestApplied`, `RUN_COLUMNS`, `RUNS_READ`), the two screens'
+reads, `useMirror` (a quiet re-read every two minutes while visible). Docs: SCHEMA §3, SECURITY
+§12, RUNBOOK §1h (and §1g corrected), TASKS, `.env.example`.
+
+**Tests (local, 14 Oct):** `npm run typecheck && npm run lint && npm run test:regress` exit 0 —
+**3,043 passed, 274 skipped** (20 stack-backed files, no Docker), in 100 files; coverage **93.08%
+lines / 89.62% branches** / 93.25% functions / 92.21% statements. New: 10 secret and summary
+tests, 26 endpoint tests (`page-schedule.test.ts`), 4 logger, 7 screen-view tests;
+`tests/integration/ghl-schedule.test.ts` **35 — run here for real** against a plain PostgreSQL 17
+with the real sync migration and stubs for `pg_net`, Vault and `pg_cron`; `tests/security/
+ghl-schedule.test.ts` 19 (11 static run everywhere; 4 catalog run here against the same PostgreSQL;
+4 through the API are CI's); 4 browser
+tests (passed at 1280 here), plus the overview and leads stack tests extended to the new read.
+**Mutations: 22, each removing one protection, every one caught**, every file restored and
+hash-checked — in TypeScript: the secret check (4 tests fail), an unconfigured function
+accepting an empty secret (3), the schedule consulting the cooldown (1), a skip reported as a
+failure (3), the default sink back to stdout (1), the line without what changed (2), the screens
+without the newest applied run (4); in SQL, on a copy replayed into a throwaway database: a
+started run not counting (3), 409 as a failure (1), no failed row written (13), its own failed
+rows read as success (1), the window widened (1), any run counting (1), a seconds-old request
+settled (1), http accepted (2), a short secret accepted (2), unconfigured recorded every tick (1),
+history never pruned (1), the secret written into a row (3), the functions left executable (1);
+in the browser: no re-read (2), a loud re-read (1). *One survived its first run and was right to:
+the "says nothing" test checked for the error state, not the banner; tightened, re-run, caught.*
+
+**Log volume (measured, one real tick through the handler at the default level):** a healthy
+tick 3 lines, 2,139 bytes → 432 lines, about 301 KiB a day; a rejected key the same plus the
+client's own alert line; a skipped tick 2 lines. A press of Refresh: 3 lines, 1,847 bytes.
+
+**Found, not fixed — met in code, never true in production (until this deploys):** no Edge
+Function's log line has ever been kept, so every criterion that rested on one was proven in
+tests and absent live: (1) M4 part 1, the "loud 401" — `GHL_TOKEN_REJECTED_MESSAGE` "visible in
+the logs on the first request" (client.ts; TESTING.md "the loud 401"); the run row and the
+screen's alert WERE true; (2) M4 parts 2–4, the endpoint's per-request lines (`crm: sync
+requested from the app`, `move` / `note` requested, the write failures, the breaker's `circuit
+opened`) — the `ghl_writes` and `audit_log` rows the acceptance rested on were true; (3) M5 part
+1 F9, "each upload is logged: who, kind, size, pages, extraction time, outcome"; (4) M5 part 2
+W10, "an address is logged as its host only"; (5) the connector, D108 / SECURITY §12a "one line
+per request" and RUNBOOK §1g's `reason` — the `connector_calls` row was true; (6) the chat,
+memory and admin functions' misconfiguration and failure lines. The negative halves ("no key /
+no page text in any log line") were true trivially. **Open item:** after the deploy, see one
+line from each of the six functions arrive. Also found: `begin_ghl_sync_run` would fail with
+"integer out of range" on a run left `running` for 25 days (duration in ms overflows) — the
+schedule retires one within 20 minutes, so it can no longer arise unless the job is off; and a
+GoHighLevel 429 is stored as "Anthropic rate limit reached" (the shared `RateLimitedError`).
+
+**Not verified:** anything on the live project (nothing deployed); the migration with the real
+`pg_net`, Vault and `pg_cron` (CI's first run); that `anon` and `authenticated` hold nothing on
+`pg_net`'s tables (asserted, CI's first run); that `console` lines reach Supabase's log store
+(after deploy); whether an Edge Function keeps running after pg_net gives up (the timeout is
+set to the function's own limit so it never has to).
+
+**Next:** Job 2. Then the report; commit, push, CI and deploy only after it is reviewed.
+
+### 2026-10-14 — [Keeping the mirror fresh · Part A] Decisions PROPOSED, written before any code — nothing built, nothing committed
+
+**What this is.** Brief of 14 Oct, "Keeping the data fresh, and one wrong number": two
+unrelated jobs, in order, each its own commit. Job 1 — the mirror refreshes itself on a
+schedule, because the client's AI reads it through the connector and cannot press Refresh.
+Job 2 — one reply in twelve misread a blank cell in a rate table. This entry is Job 1's Part A
+and what was found before either job. **Awaiting the reviewer's yes. Three rulings are asked
+for at the end; D111–D116 go into §2 only once they are given.**
+
+**Checked before starting, not assumed.** `main` = `origin/main` = `76e5fc7`, tree clean. CI
+run 38473629246 on `76e5fc7`: three jobs green — unit 2,962 passed in 93 files; stack 142 and
+111 passed in 15 and 8 files; browser 612 passed; no "skipped" in any job's totals. The live
+web bundle names `76e5fc7`. Live migrations: 22 of 22, the repo's list. Functions: `connector`
+v2 (13 Oct 14:48 UTC), `chat` v17 (13 Oct 14:22 UTC), `crm` v6 (24 Sep 04:43 UTC) — nothing
+under `src/lib/crm` or `src/functions/crm` has changed since that deploy.
+
+**Measured on the live project (read-only; ids and counts).** Nine runs ever, every one
+pressed by hand, every one a success. The last applied 12 Oct 04:22 UTC: **2,641 minutes old
+at 14 Oct 00:24 UTC**, which is the copy his AI is reading today. A run is leads + 3 requests
+(12 at 9 leads, 17 at 14) and takes 3.7–6.9 s, median 5.8 — about 0.4 s a request. `pg_cron`
+1.6.4 and Vault 0.3.1 are installed; `pg_net` 0.20.4 is available, not installed.
+`cron.timezone` is GMT; the one job (the purge) runs as `postgres` and fired at 03:17:00.1.
+`log_statement = ddl`. `anon` and `authenticated` hold nothing on `vault` or `cron`. n8n is
+not deployed (D71): the database's scheduler is the only one this system has.
+
+**Found first, and each changes the plan.**
+1. *No log line our code writes reaches Supabase.* 24 hours, 11 function requests, 22 entries
+   in the function log: every one is "booted" or "shutdown". `src/lib/logger.ts` writes with
+   `process.stdout.write`; the Edge runtime keeps `console.*`. So the "LOUD" line for a
+   rejected GoHighLevel key has never been visible on the live project, in any function.
+2. *Five failed runs in a row blank both screens.* The overview and the leads screen read the
+   newest FIVE run rows and take freshness from the first of them that applied
+   (`Overview.tsx`, `Leads.tsx`: `.limit(5)`; `buildOverview` / `buildLeads`). With none in
+   the five, both show "Not set up yet" and no leads. By hand that needs five failed presses.
+   On a schedule it is 50 minutes of a GoHighLevel outage or of a dead key.
+3. *An open screen does not see a scheduled refresh.* `useMirror` re-reads when the tab
+   regains focus or while it has seen a run in progress. Left open it would turn amber after
+   an hour beside a mirror that is minutes old.
+4. *Part 1's "revisit at about 2,000 contacts" is too generous for the Edge Function.* At the
+   measured 0.4 s a request, the function's 150-second limit (Supabase's published figure for
+   this plan; not measured) is reached near 370 leads — for the schedule and for the Refresh
+   button alike.
+
+**A1 · How the schedule reaches the sync (proposed D111).** `pg_cron` runs one SQL function;
+it calls the existing `crm` Edge Function through `pg_net`; a new action, `scheduled-sync`,
+runs the same `runGhlSync` with `trigger: 'schedule'` and no user (the column and the check
+constraint have allowed both since part 1). **The caller authenticates with a secret of its
+own, not the service-role key**: 32 random bytes, held as a function secret
+(`CRM_SCHEDULE_SECRET`) and in Vault, sent in a header of its own, compared as SHA-256
+digests without an early exit. It opens one door — start a sync, under the existing lock —
+and returns ids and counts. The service-role key would have worked and is what Supabase's
+own guide shows; it would put the key that opens everything inside the database, against
+rule 17. Where the secret is: the function's environment; Vault (decrypted view readable by
+`postgres` and `service_role`, verified); the request header; `pg_net`'s queue row for the
+moment before it is sent. Where it is not: the cron command (which is only `select
+public.dispatch_ghl_sync()`, and is what `cron.job` and its history store), any migration,
+the web bundle, any log field. The endpoint address is in Vault too, so the migration names
+no project and **the job is inert until both Vault entries exist** — in CI, locally, and on
+the live project until the last deploy step. Two things CI must prove, since `pg_net` is not
+installed anywhere I can reach: that `anon` and `authenticated` cannot read its queue or its
+responses, and that neither schema is reachable through the API.
+
+**A2 · How often (proposed D112): every 10 minutes, at minutes 3, 13, … 53.** A plain
+period in UTC; Perth has no daylight saving, so nothing ever shifts. Cost today: 144 runs a
+day × 12 requests = 1,728 a day, 0.9% of GoHighLevel's 200,000, and 12 requests against a
+window of 100 per 10 seconds. *Why not hourly, which the brief leans to:* the amber line is
+at exactly 60 minutes, so an hourly schedule ends every healthy cycle in amber and teaches
+him to ignore it; at 10 minutes amber means six refreshes in a row did not land. *Why not
+15:* an interrupted run is retired after 900 seconds, and 15 minutes is 900 seconds — the
+next tick would be refused or not depending on which side of a few hundred milliseconds it
+fell. At 10 the next tick is refused (600 s) and the one after retires it and runs (1,200 s),
+300 s clear on both sides. **When it must change:** at about 136 leads the schedule alone is
+10% of the daily allowance — go to 30 minutes, which holds to about 410; near 370 leads the
+function's time limit is the wall whatever the interval, and that is where the incremental
+read part 1 named becomes necessary. The run log grows by 144 rows a day (about 52,000 a
+year); the connector's "last applied" lookup gets an index in the same migration.
+
+**A3 · When it fails, and when it fails ten times (proposed D113).** *A failure that leaves
+a run row* (401, 429 after the retries, GoHighLevel down, the apply failing) is already
+visible in both places a person looks: the red "The last refresh failed (CODE)" alert on the
+overview and the leads screen, which for a rejected key says the key needs replacing; and
+the connector, which adds "the most recent refresh attempt failed" to every answer his AI
+gives. That happens within ten minutes of the cause, and the next tick retries by itself, so
+an outage heals with nobody doing anything. Ten in a row is ten rows, 100 minutes: the alert
+from the first, amber from the sixth, red at a day. **The existing indicator is enough for
+that class and not for the other one:** *a failure that leaves no row* — the function
+redeployed without the action (400), deleted (404), its secret and Vault's out of step
+(401), misconfigured (500), unreachable. Then nothing says anything but a slowly ageing
+green line, and pressing Refresh makes it look cured. So the same SQL function, before it
+asks for a run, settles the previous request: if a scheduled run started, good; if the
+function answered "already running", good; otherwise it writes a **failed row into the run
+log**, with a code that names the cause (`SCHEDULE_REJECTED`, `SCHEDULE_CONTRACT`,
+`SCHEDULE_FUNCTION_MISSING`, `SCHEDULE_FUNCTION_ERROR`, `SCHEDULE_UNREACHABLE`), so the alert
+and the connector's sentence fire through what already exists. One small table,
+`ghl_sync_dispatches`, holds what each tick did. Not a lock: it never writes a `running`
+row. **What nothing here covers:** the scheduler itself stopping (job disabled, Vault
+emptied, project paused). The backstop is age alone — amber at an hour, red at a day.
+**And nothing reaches a person who opens neither the app nor his AI:** there is no sender
+(D57) and a GoHighLevel notification would be a write.
+
+**A4 · The schedule, the button and the 60 seconds (proposed D114).** The lock decides, and
+nothing is added to it. A tick while someone's refresh is running gets the database's 55006:
+no row, recorded as "already running", not a failure — the mirror is being refreshed that
+second. A press while a scheduled run is going gets the existing 409 and the button reads
+"Refresh running…". **The schedule does not consult the cooldown** — it cannot hammer at one
+request per ten minutes, and consulting it would let a press at 09:59 cancel the 10:00 run.
+**A scheduled run does count towards the button's cooldown**, because the cooldown reads the
+newest run of any kind and that is left alone: for about 66 seconds in every 600 the button
+is unavailable and says for how long, and in those seconds the copy is under 66 seconds old.
+
+**A5 · A refresh tool on the connector (proposed D115): no.** The four tools run inside a
+function declared `SET role = 'authenticated'`, which holds SELECT and nothing else, and a
+test fails if a fifth, writing tool is listed. A refresh could be added without giving that
+role anything: the connector function would call `scheduled-sync` with the schedule's
+secret, and the write would still happen in `crm` as the server. What it costs: the connector
+would hold a credential that causes writes; "this connector cannot act" (D107) would become
+"cannot act, except"; a lead's name is text a stranger typed into his AI's context, and it
+would then have something to ask for; and the security test that forbids a writing tool
+would have to be loosened. For at most ten minutes of freshness. Not added.
+
+**A6 · The record of each run (proposed D116).** The run row is the log: `ghl_sync_runs`
+with `trigger = 'schedule'` already carries when it started, what it fetched, what changed,
+how long it took and how it ended, in ids and counts. Plus one structured line per scheduled
+request — written with `console`, in the `crm` function only, because of finding 1.
+
+**Edge cases, and what each one does.** Tick during a press, or two ticks overlapping: the
+lock (A4). 401: failed row, alert naming the key, the connector's sentence, an error line
+that now lands; retried every ten minutes so a replaced key heals itself. 429: `http.ts`
+retries with backoff and `Retry-After`; still refused → the run fails (or is partial, if it
+was one contact) and the next tick is the retry. Down for an hour: six failed rows, then the
+next tick succeeds — a full sync has no backlog. Interrupted halfway: the apply is one
+transaction, so applied or untouched; next tick refused, the one after retires it as STALE
+and runs. Function redeployed underneath: A3's second class. Empty pipeline: a success with
+zero leads. Never run yet: no dispatch to settle, nothing reported. Daylight saving: none.
+
+**How stale his AI can be, if this is built as proposed.** Working: under 11 minutes (10,
+plus a run of at most 7 s, plus the hand-off — to be measured on the live project). After one
+failed run 21; after an interrupted one 31; after an hour's outage about 71. With a dead key
+there is no bound, and both the screen and his AI say so within ten minutes.
+
+**Rulings asked for.**
+(a) *The screens.* Findings 2 and 3 are in files the brief fences off. Proposed: the newest
+applied run is read on its own, and an open screen re-reads every few minutes. Without it the
+schedule is still correct, and a 50-minute outage shows him "Not set up yet".
+(b) *The log.* Proposed: `crm` only, now; the other five functions are their own task.
+(c) *Job 2's fixtures* — below.
+
+**Job 2, as far as it could be taken for nothing.** The observed reply came through the page
+reader on `tests/fixtures/web/rate-table.html`. Read with the app's own reader, the row is
+`LVR 80.01% to 90% · 6.44% p.a. · 6.47% p.a. · (blank)` — the blank is in the fee column,
+where the page has it. So on the evidence so far it is **the model half**, and it is **not
+the recorded limitation**: that one is in the typed-PDF reader, which has no cells and places
+values by geometry; this is an HTML table whose rows carry all four cells. The row beneath
+has its blank one column to the left. **Not reproduced yet** — that is the first step of the
+job and needs live calls. *The ruling:* the lookup recordings pin the request byte for byte,
+so any fix for the model half changes what is sent for that page and the four recordings
+made against it would have to be made again, with the document rules, their version and the
+voice prefix untouched. If "its fixtures must keep passing" rules that out, the model half
+cannot be fixed inside the brief and the job stops at the reproduction.
+
+**Next:** the reviewer's answer. Then Job 1 Part B to these decisions, on its own.
 
 ### 2026-10-13 — [MCP connector · stage 1 · shipped] Committed, CI green, deployed; a key issued to the client
 

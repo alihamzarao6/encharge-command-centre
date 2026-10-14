@@ -29,11 +29,14 @@ import {
   type LeadsInput,
   type LeadsView,
 } from '../../web/src/lib/leadsView.js';
-import type {
-  GhlOpportunityRow,
-  GhlPipelineRow,
-  GhlStageRow,
-  GhlSyncRunRow,
+import {
+  RUNS_READ,
+  RUN_COLUMNS,
+  withNewestApplied,
+  type GhlOpportunityRow,
+  type GhlPipelineRow,
+  type GhlStageRow,
+  type GhlSyncRunRow,
 } from '../../web/src/lib/overviewView.js';
 
 /* eslint-disable @typescript-eslint/consistent-type-definitions,
@@ -232,13 +235,19 @@ async function readLikeTheScreen(client: MirrorClient): Promise<LeadsInput> {
     .limit(100);
   const runs = await client
     .from('ghl_sync_runs')
-    .select(
-      'id, pipeline_ghl_id, status, started_at, applied_at, finished_at, error_code, contacts_failed, contacts_missing, contacts_rejected, opportunities_rejected',
-    )
+    .select(RUN_COLUMNS)
     .eq('pipeline_ghl_id', PIPELINE)
     .order('started_at', { ascending: false })
-    .limit(5);
-  for (const answer of [pipelines, stages, opportunities, contacts, fieldMap, runs]) {
+    .limit(RUNS_READ);
+  // 14 Oct 2026: the newest run that APPLIED, read on its own (withNewestApplied).
+  const applied = await client
+    .from('ghl_sync_runs')
+    .select(RUN_COLUMNS)
+    .eq('pipeline_ghl_id', PIPELINE)
+    .not('applied_at', 'is', null)
+    .order('applied_at', { ascending: false })
+    .limit(1);
+  for (const answer of [pipelines, stages, opportunities, contacts, fieldMap, runs, applied]) {
     expect(answer.error).toBeNull();
   }
   return {
@@ -247,7 +256,7 @@ async function readLikeTheScreen(client: MirrorClient): Promise<LeadsInput> {
     opportunities: opportunities.data ?? [],
     contacts: contacts.data ?? [],
     fieldMap: fieldMap.data ?? [],
-    runs: runs.data ?? [],
+    runs: withNewestApplied(runs.data ?? [], applied.data?.[0]),
     opportunityLimit: LEADS_OPPORTUNITY_LIMIT,
   };
 }

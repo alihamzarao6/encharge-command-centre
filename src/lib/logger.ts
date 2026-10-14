@@ -236,9 +236,38 @@ function truncate(value: string): string {
 // Logger
 // ---------------------------------------------------------------------------------------
 
-const defaultSink: LogSink = (line) => {
+const stdoutSink: LogSink = (line) => {
   process.stdout.write(`${line}\n`);
 };
+
+type ConsoleLike = Readonly<Record<Exclude<LogLevel, 'silent'>, (line: string) => void>>;
+
+/**
+ * A sink that writes through `console`, one method per level, so the platform that collects
+ * the lines also records how serious each one is.
+ */
+export function consoleSink(target: ConsoleLike = console): LogSink {
+  return (line, level) => {
+    target[level](line);
+  };
+}
+
+/** The Supabase Edge runtime is Deno and defines `Deno`; Node does not. */
+export function isEdgeRuntime(scope: object = globalThis): boolean {
+  return 'Deno' in scope;
+}
+
+/**
+ * Where a line goes when the caller names no sink. Under Node — the CLI scripts and the
+ * tests — it is stdout, one JSON object per line. Under the Edge runtime it is `console`,
+ * because that runtime keeps what `console.*` writes and DISCARDS a direct write to stdout.
+ * Measured on the live project on 14 Oct 2026: 24 hours, 11 function requests, 22 entries in
+ * the function log, every one of them "booted" or "shutdown". Until then no line any of the
+ * six functions wrote had ever been kept — the rejected-key alert included.
+ */
+export function defaultSink(scope: object = globalThis, target: ConsoleLike = console): LogSink {
+  return isEdgeRuntime(scope) ? consoleSink(target) : stdoutSink;
+}
 
 export function parseLogLevel(value: string | undefined, fallback: LogLevel = 'info'): LogLevel {
   if (value === undefined) {
@@ -254,7 +283,7 @@ function isLogLevel(value: string): value is LogLevel {
 
 export function createLogger(options: LoggerOptions = {}): Logger {
   const level = options.level ?? 'info';
-  const sink = options.sink ?? defaultSink;
+  const sink = options.sink ?? defaultSink();
   const clock = options.clock ?? ((): Date => new Date());
   const bindings: LogFields = options.bindings ?? {};
   const name = options.name;

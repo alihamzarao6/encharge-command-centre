@@ -59,7 +59,7 @@ import {
   stageNameOf,
   type PendingMove,
 } from '../lib/moveView.js';
-import { formatCount } from '../lib/overviewView.js';
+import { RUNS_READ, RUN_COLUMNS, formatCount, withNewestApplied } from '../lib/overviewView.js';
 import { leadsPath, type LeadsRoute } from '../lib/routes.js';
 import { supabase } from '../lib/supabase.js';
 import { Board, type MoveInFlight } from './Board.js';
@@ -89,7 +89,7 @@ function storage(): Storage | null {
 
 /** Every read for both views, together — six selects under RLS as the signed-in person. */
 async function readLeads(): Promise<MirrorRead<LeadsInput>> {
-  const [pipelines, stages, opportunities, contacts, fieldMap, runs] = await Promise.all([
+  const [pipelines, stages, opportunities, contacts, fieldMap, runs, applied] = await Promise.all([
     supabase.from('ghl_pipelines').select('ghl_id, name, last_changed_at').limit(20),
     supabase
       .from('ghl_stages')
@@ -115,13 +115,19 @@ async function readLeads(): Promise<MirrorRead<LeadsInput>> {
       .limit(100),
     supabase
       .from('ghl_sync_runs')
-      .select(
-        'id, pipeline_ghl_id, status, started_at, applied_at, finished_at, error_code, contacts_failed, contacts_missing, contacts_rejected, opportunities_rejected',
-      )
+      .select(RUN_COLUMNS)
       .order('started_at', { ascending: false })
-      .limit(5),
+      .limit(RUNS_READ),
+    // The newest run that APPLIED, on its own, exactly as the overview reads it: the rows
+    // above can all be failures while the leads below are still the last good copy.
+    supabase
+      .from('ghl_sync_runs')
+      .select(RUN_COLUMNS)
+      .not('applied_at', 'is', null)
+      .order('applied_at', { ascending: false })
+      .limit(1),
   ]);
-  const answers = [pipelines, stages, opportunities, contacts, fieldMap, runs];
+  const answers = [pipelines, stages, opportunities, contacts, fieldMap, runs, applied];
   if (answers.some((a) => a.status === 401)) return { kind: 'unauthenticated' };
   if (answers.some((a) => a.error !== null)) return { kind: 'error' };
   return {
@@ -132,7 +138,7 @@ async function readLeads(): Promise<MirrorRead<LeadsInput>> {
       opportunities: opportunities.data ?? [],
       contacts: contacts.data ?? [],
       fieldMap: fieldMap.data ?? [],
-      runs: runs.data ?? [],
+      runs: withNewestApplied(runs.data ?? [], applied.data?.[0]),
       opportunityLimit: LEADS_OPPORTUNITY_LIMIT,
     },
   };

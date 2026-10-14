@@ -8,7 +8,9 @@
  *     was already on screen (only a first read with nothing to show is the error state);
  *   - the clock: "12 minutes ago" recomputed every minute; every second while a cooldown is
  *     counting down, so the button's re-enabling is never a surprise;
- *   - a re-read when the tab becomes visible, and a 4-second poll while a run is in progress;
+ *   - a re-read when the tab becomes visible, a 4-second poll while a run is in progress, and
+ *     a quiet re-read every two minutes while the screen is open — the mirror refreshes itself
+ *     on a schedule now (14 Oct 2026), and a screen left open must show that without a tap;
  *   - Refresh: the POST to the crm endpoint, the banner for its answer, the re-read after it,
  *     and the cooldown (src/lib/crm/cooldown.ts) computed from the run rows so the
  *     button is disabled BEFORE the server would refuse — and the server's own refusal shown
@@ -64,6 +66,12 @@ export interface Mirror<TView> {
 export const POLL_MS = 4_000;
 /** How often "x minutes ago" is recomputed while the screen is open. */
 export const TICK_MS = 60_000;
+/**
+ * How often an open, visible screen re-reads the mirror on its own. The schedule refreshes it
+ * every ten minutes whether or not anyone is looking; without this a screen left open would
+ * count up to "Last refreshed 1 hour ago" in amber beside a copy that is minutes old.
+ */
+export const REREAD_MS = 2 * 60_000;
 /** The cooldown countdown's own tick, only while it is counting. */
 const COUNTDOWN_MS = 1_000;
 
@@ -113,29 +121,46 @@ export function useMirror<TInput, TView extends MirrorViewBase>(
     };
   }, []);
 
-  const load = useCallback(async (): Promise<void> => {
-    const answer = await read();
-    if (!alive.current) return;
-    if (answer.kind === 'unauthenticated') {
-      await onSessionExpired();
-      return;
-    }
-    if (answer.kind === 'error') {
-      // Whatever was on screen stays: a failed re-read must not blank a screen that was fine
-      // a second ago. Only a first read with nothing to show is the error state.
-      setState((current) => (current === 'ready' ? current : 'error'));
-      setBanner({ tone: 'warn', text: readFailedMessage });
-      return;
-    }
-    const at = Date.now();
-    setInput(answer.input);
-    setView(build(answer.input, at));
-    setNow(at);
-    setState('ready');
-  }, [read, build, onSessionExpired, readFailedMessage]);
+  const load = useCallback(
+    async (options: { readonly quiet?: boolean } = {}): Promise<void> => {
+      const answer = await read();
+      if (!alive.current) return;
+      if (answer.kind === 'unauthenticated') {
+        await onSessionExpired();
+        return;
+      }
+      if (answer.kind === 'error') {
+        // A re-read nobody asked for says nothing when it fails: what is on screen stays, its
+        // age keeps counting, and the next pass tries again.
+        if (options.quiet === true) return;
+        // Whatever was on screen stays: a failed re-read must not blank a screen that was fine
+        // a second ago. Only a first read with nothing to show is the error state.
+        setState((current) => (current === 'ready' ? current : 'error'));
+        setBanner({ tone: 'warn', text: readFailedMessage });
+        return;
+      }
+      const at = Date.now();
+      setInput(answer.input);
+      setView(build(answer.input, at));
+      setNow(at);
+      setState('ready');
+    },
+    [read, build, onSessionExpired, readFailedMessage],
+  );
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // The schedule refreshes the mirror with nobody at the screen; an open, visible screen
+  // picks that up on its own. A hidden tab does not ask — it re-reads when it is shown.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load({ quiet: true });
+    }, REREAD_MS);
+    return () => {
+      clearInterval(timer);
+    };
   }, [load]);
 
   // The input is unchanged, the clock is not: rebuild on every tick.

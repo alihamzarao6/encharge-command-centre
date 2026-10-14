@@ -21,8 +21,11 @@ import { useCallback, type ReactElement } from 'react';
 import {
   ARRIVALS_SHOWN,
   OVERVIEW_OPPORTUNITY_LIMIT,
+  RUNS_READ,
+  RUN_COLUMNS,
   buildOverview,
   formatCount,
+  withNewestApplied,
   type OverviewInput,
 } from '../lib/overviewView.js';
 import { supabase } from '../lib/supabase.js';
@@ -43,7 +46,7 @@ interface Props {
  * screen with the message, not a dashboard of zeros.
  */
 async function readOverview(): Promise<MirrorRead<OverviewInput>> {
-  const [pipelines, stages, opportunities, runs] = await Promise.all([
+  const [pipelines, stages, opportunities, runs, applied] = await Promise.all([
     supabase.from('ghl_pipelines').select('ghl_id, name, last_changed_at').limit(20),
     supabase
       .from('ghl_stages')
@@ -59,19 +62,26 @@ async function readOverview(): Promise<MirrorRead<OverviewInput>> {
       .limit(OVERVIEW_OPPORTUNITY_LIMIT),
     supabase
       .from('ghl_sync_runs')
-      .select(
-        'id, pipeline_ghl_id, status, started_at, applied_at, finished_at, error_code, contacts_failed, contacts_missing, contacts_rejected, opportunities_rejected',
-      )
+      .select(RUN_COLUMNS)
       .order('started_at', { ascending: false })
-      .limit(5),
+      .limit(RUNS_READ),
+    // The newest run that APPLIED, on its own: the rows above can all be failures, and the
+    // numbers on screen are still the last good copy (withNewestApplied).
+    supabase
+      .from('ghl_sync_runs')
+      .select(RUN_COLUMNS)
+      .not('applied_at', 'is', null)
+      .order('applied_at', { ascending: false })
+      .limit(1),
   ]);
-  const answers = [pipelines, stages, opportunities, runs];
+  const answers = [pipelines, stages, opportunities, runs, applied];
   if (answers.some((a) => a.status === 401)) return { kind: 'unauthenticated' };
   if (
     pipelines.error !== null ||
     stages.error !== null ||
     opportunities.error !== null ||
-    runs.error !== null
+    runs.error !== null ||
+    applied.error !== null
   ) {
     return { kind: 'error' };
   }
@@ -100,7 +110,7 @@ async function readOverview(): Promise<MirrorRead<OverviewInput>> {
       stages: stages.data,
       opportunities: opportunities.data,
       contacts: contacts.data,
-      runs: runs.data,
+      runs: withNewestApplied(runs.data, applied.data[0]),
       opportunityLimit: OVERVIEW_OPPORTUNITY_LIMIT,
     },
   };

@@ -12,6 +12,7 @@ import {
 import { ok, type ConfigError, type Result } from '../../errors.js';
 import { createHttpClient } from '../../http.js';
 import type { Logger } from '../../logger.js';
+import { readScheduleSecret } from '../schedule.js';
 import { createGhlClient } from './client.js';
 import { loadGhlConfig } from './config.js';
 import { addNote, moveLead } from './moves.js';
@@ -55,5 +56,7 @@ export function createCrmPageDeps(env: Env, log: Logger): Result<CrmPageDeps, Co
       );
     },
     log,
+    // The scheduler's credential, read at request time like every other secret here.
+    scheduleSecret: readScheduleSecret(env),
   });
 }

@@ -44,6 +44,7 @@ const EXPECTED_TABLES = [
   'ghl_opportunities',
   'ghl_pipelines',
   'ghl_stages',
+  'ghl_sync_dispatches',
   'ghl_sync_runs',
   'ghl_writes',
   'memory_chunks',

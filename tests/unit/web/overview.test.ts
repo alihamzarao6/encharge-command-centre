@@ -19,6 +19,7 @@ import {
   OVERVIEW_OPPORTUNITY_LIMIT,
   REMOVED_STAGE_SUFFIX,
   RUNNING_BELIEVED_FOR_MS,
+  RUNS_READ,
   STALE_AFTER_MS,
   UNKNOWN_STAGE_LABEL,
   UNNAMED_LEAD,
@@ -27,6 +28,7 @@ import {
   formatArrival,
   formatCount,
   freshnessOf,
+  withNewestApplied,
   type GhlContactRow,
   type GhlOpportunityRow,
   type GhlStageRow,
@@ -420,6 +422,80 @@ describe('what the screen says about the data it shows', () => {
     });
     expect(view.freshness).toMatchObject({ label: 'Updated 10 minutes ago' });
     expect(view.openTotal).toBe(5);
+  });
+
+  // 14 Oct 2026: the mirror refreshes on a schedule, so an outage is a failed run every ten
+  // minutes. The screen reads the newest RUNS_READ runs; five failures used to push the last
+  // good one out, and the overview said "Not set up yet" over a full pipeline.
+  describe('failed runs piling up on top of the last good one', () => {
+    const failures = (count: number): GhlSyncRunRow[] =>
+      Array.from({ length: count }, (_, i) =>
+        run({
+          id: `failed-${String(i)}`,
+          status: 'failed',
+          applied_at: null,
+          error_code: 'SCHEDULE_UNREACHABLE',
+          started_at: new Date(NOW - (i + 1) * 10 * MIN + 30_000).toISOString(),
+          finished_at: new Date(NOW - (i + 1) * 10 * MIN + 35_000).toISOString(),
+        }),
+      );
+    const good = run({
+      id: 'good',
+      started_at: new Date(NOW - 75 * MIN - 5_000).toISOString(),
+      applied_at: new Date(NOW - 75 * MIN).toISOString(),
+      finished_at: new Date(NOW - 75 * MIN).toISOString(),
+    });
+
+    it('the read as it was: five failures and nothing applied among them is "not set up" — the defect', () => {
+      const view = buildOverview(input({ runs: failures(RUNS_READ) }), NOW);
+      expect(view.kind).toBe('not-set-up');
+      expect(view.freshness.kind).toBe('never');
+    });
+
+    it('with the newest applied run read on its own: the numbers, their real age, and the failure in words', () => {
+      const runs = withNewestApplied(failures(RUNS_READ), good);
+      const view = buildOverview(input({ runs }), NOW);
+      expect(view.kind).toBe('ready');
+      expect(view.openTotal).toBe(5);
+      expect(view.freshness).toMatchObject({
+        kind: 'known',
+        tone: 'stale',
+        label: 'Last refreshed 1 hour ago',
+      });
+      expect(view.sync).toMatchObject({
+        lastFailed: true,
+        lastRun: { errorCode: 'SCHEDULE_UNREACHABLE' },
+      });
+    });
+
+    it('a day of failures is still the last good copy, now in red', () => {
+      const old = run({
+        id: 'old',
+        applied_at: new Date(NOW - 26 * HOUR).toISOString(),
+        finished_at: new Date(NOW - 26 * HOUR).toISOString(),
+        started_at: new Date(NOW - 26 * HOUR - 5_000).toISOString(),
+      });
+      const view = buildOverview(input({ runs: withNewestApplied(failures(5), old) }), NOW);
+      expect(view.kind).toBe('ready');
+      expect(view.freshness).toMatchObject({ tone: 'old' });
+    });
+
+    it('joins the applied run only when it is not already among the newest, and only if it applied', () => {
+      const newest = [run({ id: 'a' }), run({ id: 'b', status: 'failed', applied_at: null })];
+      expect(withNewestApplied(newest, run({ id: 'a' }))).toBe(newest);
+      expect(withNewestApplied(newest, null)).toBe(newest);
+      expect(withNewestApplied(newest, undefined)).toBe(newest);
+      expect(withNewestApplied(newest, run({ id: 'x', applied_at: null }))).toBe(newest);
+      expect(withNewestApplied(newest, good).map((r) => r.id)).toEqual(['a', 'b', 'good']);
+      expect(withNewestApplied([], good)).toEqual([good]);
+    });
+
+    it('a newer applied run among the newest still wins: the joined one is only ever the fallback', () => {
+      const runs = withNewestApplied([run({ id: 'recent' }), ...failures(2)], good);
+      expect(buildOverview(input({ runs }), NOW).freshness).toMatchObject({
+        label: 'Updated 10 minutes ago',
+      });
+    });
   });
 
   it('a partial run says how many contacts could not be read, and the arrivals say which', () => {
