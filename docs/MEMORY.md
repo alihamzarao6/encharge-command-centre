@@ -144,7 +144,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D108** | **Logging: one line per request (the key's public id as `caller`, method, tool, outcome, status, duration, records, bytes) and one row per accepted request in `connector_calls` (plus the lead id for `get_lead`). Never a name, email, phone, note, search text, key, header or address — the handler is not handed the address at all** | Rule 20. The field is `caller` because the logger redacts any field whose name contains "key"; the recorded method comes from a fixed list so a caller cannot write into the ledger | 13 Oct |
 | **D109** | **Every result says when the mirror was last refreshed, how old that is, and in what words: under an hour stated, an hour to a day "may have changed", over a day "do not present it as current"; a failed attempt since is said. A pipeline never copied is an error, not an empty list. The connector refreshes nothing** | The mirror is as old as the last Refresh pressed in the app. An AI told "7 open leads" says it as though it were now. A refresh writes the mirror and spends GoHighLevel's shared rate limit, and stage 1 writes nothing — which leaves a gap: his AI cannot make the data current. In the report | 13 Oct |
 | **D110** | **A read happens as the key's own user under the mirror's EXISTING row-level security: `connector_call` (as the server) checks the key and the limits and never receives a user id; `connector_read` is declared `SET role = 'authenticated'` with `auth.uid()` set to the key's user, and every query names the one configured pipeline id** | The existing read path is the browser's own select under RLS, and a connector has no browser session. Running the same policies as the same role means a deactivated user's key reads nothing even with every check above it removed, a future per-user policy narrows the connector untouched, and a write from inside a read is "permission denied" at the database. Probed on PostgreSQL 17 before it was decided; refused from a `SECURITY DEFINER` function, which is why the outer one is not | 13 Oct |
-| **D111** | **The mirror refreshes on a schedule: `pg_cron` (job `ghl-sync`) runs `dispatch_ghl_sync()`, which POSTs `scheduled-sync` to the existing `crm` function through `pg_net`; the run is the part-1 sync with `trigger = 'schedule'`. The caller proves itself with a secret of its own (`CRM_SCHEDULE_SECRET`, header `x-crm-schedule-secret`, SHA-256 compared with no early exit) held as a function secret and in Vault with the address; the cron command is the bare call. Inert until both Vault entries exist** | The service-role key would also have worked and is the platform's own example, but it would put the key that opens every table into the database and into `cron.job`, which stores commands as text (rule 17). This secret opens one door. n8n is not deployed (D71); the database's scheduler is the only one there is | 14 Oct |
+| **D111** | **The mirror refreshes on a schedule: `pg_cron` (job `ghl-sync`) runs `dispatch_ghl_sync()`, which POSTs `scheduled-sync` to the existing `crm` function through `pg_net`; the run is the part-1 sync with `trigger = 'schedule'`. The caller proves itself with a secret of its own (`CRM_SCHEDULE_SECRET`) held as a function secret and in Vault with the address — **never sent: the request carries a two-minute token, `<second>.<HMAC-SHA256 of "scheduled-sync:<second>">`, in `x-crm-schedule-token`** (amended 14 Oct after CI showed the API roles can SELECT `pg_net`'s queue on Supabase); the cron command is the bare call. Inert until both Vault entries exist** | The service-role key would also have worked and is the platform's own example, but it would put the key that opens every table into the database and into `cron.job`, which stores commands as text (rule 17). This secret opens one door. n8n is not deployed (D71); the database's scheduler is the only one there is | 14 Oct |
 | **D112** | **Every ten minutes, at minutes 3, 13, … 53 UTC** | Hourly ends every healthy cycle exactly on the 60-minute amber line; fifteen makes the next tick after an interrupted run land on the 900-second stale threshold to within milliseconds. At ten: refused at 600 s, retired and rerun at 1,200 s. 144 runs × (leads + 3) requests = 1,728 a day today, 0.9% of GoHighLevel's 200,000. Change to 30 minutes at about 134 leads; from about 300 leads (395 at the measured mean, 317 at the slowest run) the `crm` function's 150 s limit is the wall at any interval — TASKS "KNOWN WALL", which supersedes the 12 Sep "about 2,000". Perth keeps no daylight saving | 14 Oct |
 | **D113** | **A failure with a run row is shown by what exists (the screens' red alert, the connector's sentence); a scheduled request that produced NO run is settled by the next tick into a `failed` row in `ghl_sync_runs` with a code naming the cause (`SCHEDULE_REJECTED / _CONTRACT / _FUNCTION_MISSING / _FUNCTION_ERROR / _NO_RUN / _UNREACHABLE`). `ghl_sync_dispatches` records each tick. The scheduler stopping altogether is covered by age alone** | The existing indicator is enough for the first class and blind to the second (function redeployed without the action, secrets out of step, unreachable) — a green line ageing slowly. Writing a FAILED row (never `running`) reuses the alert and the sentence without touching either, and cannot take the sync's slot. No push channel exists (D57); a GoHighLevel notification would be a write | 14 Oct |
 | **D114** | **The lock alone governs the schedule and the button; nothing is added to it. The schedule does not consult the 60-second cooldown; a scheduled run counts towards the button's** | One request per ten minutes cannot hammer GoHighLevel, and consulting the cooldown would let a press at 09:59 cancel the 10:00 run. Either one arriving while the other holds the slot gets 55006 → 409: for the tick that is a skip, not a failure. The button is unavailable about 66 s in every 600, and in those seconds the copy is under 66 s old | 14 Oct |
@@ -168,6 +168,45 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-14 — [Keeping the mirror fresh · CI] Two things only a real stack could show — the secret no longer travels
+
+**Branch `fresh-mirror` pushed by the user; CI found two things the local runs could not.**
+
+1. *Run 38514903613:* `tests/integration/web-pages.test.ts` still expected the old
+   `2 years\t5.79%\t(blank)`. It is Job 2's reader change working as designed, in a stack test
+   that only CI runs. I had searched the stack suites for the one row I knew, not for every
+   table with an empty cell. Fixed in `5ea1105`.
+2. *Run 38515392482:* **`anon` (and `authenticated`) hold SELECT on `pg_net`'s request
+   queue** on a real Supabase stack. The schedule's request sits there until the worker sends
+   it, and the first build put `CRM_SCHEDULE_SECRET` itself in a header. That is exactly the
+   assertion I had listed in Part A as CI's to prove ("that `anon` and `authenticated` cannot
+   read its queue"), and it was false. No browser could actually reach it — the API test that
+   the `net` schema is not served passed in the same run — but the stronger guarantee did not
+   hold. Not deployed; nothing live was ever configured with the old design.
+
+**Decided — the secret stops travelling (amends D111).** A revoke in our migration was the
+first idea; it was probed on the live database inside a rolled-back transaction, and the
+permission layer refused the probe ("Modify Shared Resources"), so whether `postgres` could
+revoke a platform grant is not known. It is the weaker fix anyway: a platform default can
+come back with any platform update. Now `dispatch_ghl_sync()` sends `x-crm-schedule-token`:
+the second, and the HMAC-SHA256 of `scheduled-sync:<second>` keyed with the secret (pgcrypto's
+`hmac`). The function (`checkScheduleToken`, `src/lib/crm/schedule.ts`) makes the same HMAC
+with WebCrypto, compares without an early exit, and refuses a token more than 120 s from its
+own clock. Whoever reads the queue holds a token that expires in two minutes and can only start
+the same sync under the same lock.
+
+**The security test, and why it is not weaker:** the catalog check "no browser role can read
+the queue" is gone from `tests/security/ghl-schedule.test.ts`, with the reason in that file's
+header. What it protected is now proven more strongly in
+`tests/integration/ghl-schedule.test.ts`: the request queued holds no secret, and the token the
+DATABASE made is exactly the one the function's TypeScript accepts. Vault stays strictly
+asserted. **Reviewer, this is a test I changed; say if you want it otherwise.**
+
+**Verified here:** 228 crm unit tests; the stack and security files against the local
+PostgreSQL 17 (52 passed, 4 API tests are CI's), including the SQL-made token matching the
+TypeScript one; 4 mutations — no time window (3 tests fail), any well-formed token accepted (4),
+the secret sent instead of the token (2), the token signed over another message (1).
 
 ### 2026-10-14 — [fix · rate-limit message] A 429 names who refused it
 

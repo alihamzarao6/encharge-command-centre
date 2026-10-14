@@ -21,6 +21,11 @@
 --    which stores each command as text. This secret opens one door — start a sync, under the
 --    existing lock — and is read from Vault at call time. The cron command is the bare
 --    function call and nothing else.
+--  * THE SECRET NEVER TRAVELS. The request carries a token — the second it was made and an
+--    HMAC of it keyed with the secret — that the function accepts for two minutes. On a real
+--    Supabase stack the API roles hold SELECT on pg_net's request queue (CI found it before
+--    the first deploy; a platform grant, not one this file can revoke), and a request waits
+--    there until it is sent.
 --  * The endpoint's address is in Vault too, so this file names no project, and THE JOB IS
 --    INERT UNTIL BOTH VAULT ENTRIES EXIST: in CI, on a developer's stack, and on the live
 --    project until the last step of the deploy (RUNBOOK §1h). Unconfigured is recorded once,
@@ -198,7 +203,7 @@ begin
     when 'SCHEDULE_UNREACHABLE' then
       'the scheduled refresh was requested and nothing answered: the crm function timed out, could not be reached, or the request was never sent'
     when 'SCHEDULE_REJECTED' then
-      'the crm function refused the scheduled refresh: the schedule''s secret in Vault and the function''s CRM_SCHEDULE_SECRET do not match, or the function has none'
+      'the crm function refused the scheduled refresh: the schedule''s secret in Vault and the function''s CRM_SCHEDULE_SECRET do not match, the function has none, or the two clocks are more than two minutes apart'
     when 'SCHEDULE_FUNCTION_MISSING' then
       'the scheduled refresh got a 404: the address in Vault is wrong, or the crm function is not deployed'
     when 'SCHEDULE_CONTRACT' then
@@ -258,6 +263,8 @@ declare
   v_secret text;
   v_pipeline text;
   v_request bigint;
+  v_at bigint;
+  v_token text;
 begin
   for d in
     select x.id, x.request_id
@@ -288,8 +295,8 @@ begin
   select s.decrypted_secret into v_secret
   from vault.decrypted_secrets s where s.name = 'ghl_sync_schedule_secret';
 
-  -- https only: the secret travels in a header, and a mistyped address must not carry it
-  -- in the clear. A secret shorter than 32 characters was not generated.
+  -- https only: a mistyped address must not carry even a two-minute token in the clear. A
+  -- secret shorter than 32 characters was not generated.
   if coalesce(v_url, '') !~ '^https://' or char_length(coalesce(v_secret, '')) < 32 then
     if not exists (
       select 1 from public.ghl_sync_dispatches x
@@ -309,13 +316,25 @@ begin
   order by r.started_at desc
   limit 1;
 
+  -- The secret never leaves this function. What is sent is a token: this second, and the
+  -- HMAC-SHA256 of "scheduled-sync:<this second>" keyed with the secret. The crm function
+  -- makes the same HMAC and refuses a token more than two minutes from its own clock
+  -- (src/lib/crm/schedule.ts). It has to be so: the API roles hold SELECT on pg_net's queue
+  -- on Supabase, a platform grant this project cannot revoke, and the request waits there
+  -- until it is sent.
+  v_at := floor(extract(epoch from clock_timestamp()))::bigint;
+  v_token := v_at::text || '.' || encode(
+    extensions.hmac(convert_to('scheduled-sync:' || v_at::text, 'UTF8'), convert_to(v_secret, 'UTF8'), 'sha256'),
+    'hex'
+  );
+
   -- 150 s is the function's own time limit: pg_net should never give up before it does.
   v_request := net.http_post(
     url := v_url,
     body := jsonb_build_object('action', 'scheduled-sync'),
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-crm-schedule-secret', v_secret
+      'x-crm-schedule-token', v_token
     ),
     timeout_milliseconds := 150000
   );
@@ -327,7 +346,7 @@ end;
 $$;
 
 comment on function public.dispatch_ghl_sync() is
-  '14 Oct 2026 (D111). Run by pg_cron (job ghl-sync) every ten minutes: settles the previous request, then asks the crm Edge Function for a refresh through pg_net, authenticated by a secret read from Vault. Does nothing until Vault holds ghl_sync_schedule_url and ghl_sync_schedule_secret. Owner only.';
+  '14 Oct 2026 (D111). Run by pg_cron (job ghl-sync) every ten minutes: settles the previous request, then asks the crm Edge Function for a refresh through pg_net, with a two-minute token signed by a secret read from Vault (the secret itself is never sent). Does nothing until Vault holds ghl_sync_schedule_url and ghl_sync_schedule_secret. Owner only.';
 
 -- Nobody but the owner (the role pg_cron runs the job as): not a browser session, and not
 -- the service role either — the server has no reason to start a tick. Postgres grants

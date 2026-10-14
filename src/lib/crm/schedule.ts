@@ -12,21 +12,30 @@
  * opens every table; putting a copy inside the database to make a timer work would break the
  * rule that it lives only in the server's environment (CLAUDE.md rule 17). This secret opens
  * one door: start a sync, under the lock every other sync is under, and hear back ids and
- * counts. It is 32 random bytes, held as a function secret and in Vault, sent in a header of
- * its own so it can never be mistaken for a session token, and compared here as SHA-256
- * digests with no early exit — both sides are digested whatever was sent, so the time taken
- * says nothing about how much of it was right.
+ * counts. It is 32 random bytes, held as a function secret and in Vault.
  *
- * This is the only module that reads CRM_SCHEDULE_SECRET (tests/security/ghl.test.ts asserts
- * it, the same rule as the GoHighLevel token). The value is never logged, never returned,
- * never part of an error message; `web/src` does not name it.
+ * THE SECRET NEVER TRAVELS. What the database sends is a TOKEN: the second it was made, and
+ * the HMAC-SHA256 of "scheduled-sync:<that second>" keyed with the secret —
+ * `1792020180.<64 hex>` — in a header of its own. The function makes the same HMAC with its
+ * own copy, compares in constant time, and refuses a token more than two minutes from its own
+ * clock. Why (14 Oct 2026): on a real Supabase stack the API roles hold SELECT on `pg_net`'s
+ * request queue, a platform grant this project cannot revoke, and the request sits there for
+ * the moment before it is sent. Whoever could read it would hold a token that expires in two
+ * minutes and can do nothing but start the same sync under the same lock. The first build sent
+ * the secret itself; CI's security suite caught the grant before anything was deployed.
+ *
+ * This is the only module that reads CRM_SCHEDULE_SECRET (tests/security/ghl-schedule.test.ts
+ * asserts it, the same rule as the GoHighLevel token). The value is never logged, never
+ * returned, never part of an error message; `web/src` does not name it.
  */
 import type { ApplyCounts } from './ghl/sync.js';
 
 export const SCHEDULE_SECRET_ENV = 'CRM_SCHEDULE_SECRET';
-export const SCHEDULE_SECRET_HEADER = 'x-crm-schedule-secret';
+export const SCHEDULE_TOKEN_HEADER = 'x-crm-schedule-token';
 /** 32 random bytes are 43 characters in base64url; anything shorter was not generated. */
 export const SCHEDULE_SECRET_MIN_LENGTH = 32;
+/** How far a token's second may be from the function's clock, either way. */
+export const SCHEDULE_TOKEN_MAX_SKEW_SECONDS = 120;
 export const SCHEDULED_SYNC_ACTION = 'scheduled-sync';
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -37,26 +46,76 @@ export function readScheduleSecret(env: Env): string | null {
   return value.length >= SCHEDULE_SECRET_MIN_LENGTH ? value : null;
 }
 
-async function sha256(text: string): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+function toHex(bytes: Uint8Array): string {
+  let out = '';
+  for (const byte of bytes) out += byte.toString(16).padStart(2, '0');
+  return out;
+}
+
+/** HMAC-SHA256 of "scheduled-sync:<second>" keyed with the secret, as 64 hex characters. */
+async function signature(secret: string, atSeconds: number): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signed = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`${SCHEDULED_SYNC_ACTION}:${String(atSeconds)}`),
+  );
+  return toHex(new Uint8Array(signed));
 }
 
 /**
- * True only when a secret is configured and the one sent is the same. An unconfigured
- * function accepts nothing: a missing secret must never mean "open".
+ * The token for a second, exactly as `dispatch_ghl_sync()` makes it in SQL with pgcrypto's
+ * `hmac()`. The function does not send tokens; the tests use this to make one, and the stack
+ * test checks the database's token against it.
  */
-export async function scheduleSecretMatches(
-  provided: string | null | undefined,
-  expected: string | null | undefined,
-): Promise<boolean> {
-  const sent = typeof provided === 'string' ? provided : '';
-  const held = typeof expected === 'string' ? expected : '';
-  const [a, b] = await Promise.all([sha256(sent), sha256(held)]);
-  let difference = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    difference |= (a[i] ?? 0) ^ (b[i] ?? 0);
+export async function scheduleTokenFor(secret: string, atSeconds: number): Promise<string> {
+  return `${String(atSeconds)}.${await signature(secret, atSeconds)}`;
+}
+
+const TOKEN_SHAPE = /^(\d{1,12})\.([0-9a-f]{64})$/;
+
+export type ScheduleTokenCheck =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: 'not_configured' | 'nothing_sent' | 'malformed' | 'stale' | 'mismatch';
+    };
+
+/**
+ * Is this the token the database would have made, with the secret this function holds, within
+ * two minutes of now? An unconfigured function accepts nothing: a missing secret must never
+ * mean "open". The signature is compared without an early exit.
+ */
+export async function checkScheduleToken(
+  token: string | null | undefined,
+  held: string | null | undefined,
+  nowMs: number,
+): Promise<ScheduleTokenCheck> {
+  if (typeof held !== 'string' || held.length < SCHEDULE_SECRET_MIN_LENGTH) {
+    return { ok: false, reason: 'not_configured' };
   }
-  return difference === 0 && held.length >= SCHEDULE_SECRET_MIN_LENGTH;
+  if (typeof token !== 'string' || token === '') return { ok: false, reason: 'nothing_sent' };
+  const match = TOKEN_SHAPE.exec(token);
+  const atText = match?.[1];
+  const sent = match?.[2];
+  if (atText === undefined || sent === undefined) return { ok: false, reason: 'malformed' };
+  const atSeconds = Number(atText);
+  if (Math.abs(nowMs / 1_000 - atSeconds) > SCHEDULE_TOKEN_MAX_SKEW_SECONDS) {
+    return { ok: false, reason: 'stale' };
+  }
+  const expected = await signature(held, atSeconds);
+  let difference = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    difference |= expected.charCodeAt(i) ^ sent.charCodeAt(i);
+  }
+  return difference === 0 ? { ok: true } : { ok: false, reason: 'mismatch' };
 }
 
 export interface RunChanges {

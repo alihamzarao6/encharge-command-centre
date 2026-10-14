@@ -1,23 +1,29 @@
 /**
  * The sync schedule's security (brief of 14 Oct 2026, "Keeping the data fresh", decision A1):
- * the scheduler's secret is never readable from a browser, never stored where a job's text
- * is stored, and the schedule can be started by nobody but the scheduler.
+ * the scheduler's secret is never readable from a browser, never sent, never stored where a
+ * job's text is stored, and the schedule can be started by nobody but the scheduler.
  *
  * Static — runs everywhere, no stack:
- *   - CRM_SCHEDULE_SECRET has exactly one reader, and the header that carries the secret
+ *   - CRM_SCHEDULE_SECRET has exactly one reader, and the header that carries the token
  *     exactly one namer (the rule ghl.test.ts enforces for the GoHighLevel token);
  *   - nothing under web/src knows the schedule exists, and the function's CORS allow-list
  *     does not admit the header;
  *   - the migration and the TypeScript agree on the header, the action and the minimum
- *     length, since each is written out on both sides;
+ *     length, since each is written out on both sides; the migration signs a token with the
+ *     secret and never puts the secret itself in a request;
  *   - the SQL the migration runs holds no credential of any shape, sends the HTTP request
  *     from one place, stores the bare call as the job's command, and never writes a
  *     `running` row (it must not be able to take the sync's slot).
  *
  * Stack-backed:
  *   - catalog (pg only): the two functions are executable by no API role — not even the
- *     service role; no browser role holds anything on Vault, on pg_net's queue or on its
- *     responses;
+ *     service role; no browser role holds anything on Vault.
+ *     NOT asserted, and why (14 Oct 2026): the first version of this file also required that
+ *     no browser role could read pg_net's request queue. CI's real Supabase stack showed they
+ *     can — a platform grant on the extension's tables, which this project's migrations
+ *     cannot revoke. The answer was not to loosen the check but to take the secret out of the
+ *     queue: the request now carries a token that expires in two minutes, and
+ *     tests/integration/ghl-schedule.test.ts proves the queued request holds no secret;
  *   - through the API, as an attacker holds it: a session and the service key cannot start a
  *     tick or settle one; the dispatch table is read-only to staff and empty to an outsider;
  *     and neither `net` nor `vault` is a schema the API will answer for.
@@ -31,8 +37,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   SCHEDULED_SYNC_ACTION,
   SCHEDULE_SECRET_ENV,
-  SCHEDULE_SECRET_HEADER,
   SCHEDULE_SECRET_MIN_LENGTH,
+  SCHEDULE_TOKEN_HEADER,
 } from '../../src/lib/crm/schedule.js';
 import { loadSupabaseTestEnv } from '../helpers/supabaseEnv.js';
 
@@ -71,11 +77,11 @@ describe('the schedule secret has exactly one reader', () => {
   });
 
   it('the header is spelt out in one module; everything else imports the constant', () => {
-    expect(naming(srcFiles, SCHEDULE_SECRET_HEADER)).toEqual(['src/lib/crm/schedule.ts']);
+    expect(naming(srcFiles, SCHEDULE_TOKEN_HEADER)).toEqual(['src/lib/crm/schedule.ts']);
   });
 
   it('nothing under web/src knows the schedule exists', () => {
-    const pattern = /CRM_SCHEDULE_SECRET|x-crm-schedule-secret|scheduled-sync|ghl_sync_schedule_/;
+    const pattern = /CRM_SCHEDULE_SECRET|x-crm-schedule-|scheduled-sync|ghl_sync_schedule_/;
     expect(webFiles.filter((f) => pattern.test(readFileSync(f, 'utf8'))).map(relative)).toEqual([]);
   });
 
@@ -91,10 +97,23 @@ describe('the schedule secret has exactly one reader', () => {
 describe('the migration', () => {
   const sql = sqlOf(MIGRATION);
 
-  it('agrees with the function on the header, the action and the shortest secret it will send', () => {
-    expect(sql).toContain(`'${SCHEDULE_SECRET_HEADER}', v_secret`);
+  it('agrees with the function on the header, the action and the shortest secret it will sign with', () => {
+    expect(sql).toContain(`'${SCHEDULE_TOKEN_HEADER}', v_token`);
     expect(sql).toContain(`jsonb_build_object('action', '${SCHEDULED_SYNC_ACTION}')`);
     expect(sql).toContain(`char_length(coalesce(v_secret, '')) < ${SCHEDULE_SECRET_MIN_LENGTH}`);
+    // The message signed is the one the function checks: "<action>:<second>".
+    expect(sql).toContain(`convert_to('${SCHEDULED_SYNC_ACTION}:' || v_at::text, 'UTF8')`);
+  });
+
+  it('signs a token with the secret and never puts the secret itself in a request', () => {
+    expect(sql).toContain(
+      "extensions.hmac(convert_to('scheduled-sync:' || v_at::text, 'UTF8'), convert_to(v_secret, 'UTF8'), 'sha256')",
+    );
+    // The request is built in one call; the secret is not among its arguments.
+    const post = /net\.http_post\(([\s\S]*?)\n {2}\);/.exec(sql)?.[1] ?? '';
+    expect(post).toContain('v_token');
+    expect(post).not.toContain('v_secret');
+    expect(sql).not.toMatch(/'x-crm-schedule-[a-z]+',\s*v_secret/);
   });
 
   it('stores the bare call as the job command — the one place a platform guide would put a key', () => {
@@ -204,14 +223,18 @@ describe.skipIf(env === null)('the schedule in the catalog (requires a database)
     ]);
   });
 
-  it('no browser role can read Vault, the queue the secret passes through, or what came back', async () => {
-    const res = await db.query<{ role: string; target: string; can: boolean }>(
-      `select role, target, has_table_privilege(role, target, 'select') as can
-       from (values ('anon'), ('authenticated')) r(role)
-       cross join (values ('vault.decrypted_secrets'), ('net.http_request_queue'), ('net._http_response')) t(target)`,
+  it('no browser role can read Vault, or use its schema at all', async () => {
+    const res = await db.query<{ role: string; secrets: boolean; schema: boolean }>(
+      `select role,
+              has_table_privilege(role, 'vault.decrypted_secrets', 'select') as secrets,
+              has_schema_privilege(role, 'vault', 'usage') as schema
+       from (values ('anon'), ('authenticated')) r(role)`,
     );
-    expect(res.rows).toHaveLength(6);
-    for (const row of res.rows) expect(row.can, `${row.role} on ${row.target}`).toBe(false);
+    expect(res.rows).toEqual([
+      { role: 'anon', secrets: false, schema: false },
+      { role: 'authenticated', secrets: false, schema: false },
+    ]);
+    // pg_net's queue is deliberately absent from this list: see the header of this file.
   });
 
   it('the dispatch table: RLS enabled and forced, one policy, SELECT for staff only', async () => {

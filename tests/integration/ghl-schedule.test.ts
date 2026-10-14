@@ -7,8 +7,9 @@
  *
  *   1. the job is there, every ten minutes, and its stored command is the bare call;
  *   2. with nothing in Vault the dispatcher asks for nothing, and says so once;
- *   3. configured, it queues exactly one request — the address, the action, the secret in
- *      its own header, the function's own time limit — and the secret is in no table of ours;
+ *   3. configured, it queues exactly one request — the address, the action, a two-minute
+ *      token in its own header that the function's own check accepts, the function's own time
+ *      limit — and the secret is in neither the request nor any table of ours;
  *   4. the next tick settles the one before: a request that became a scheduled run is left
  *      alone; "already running" is not a failure; anything else becomes a FAILED row in the
  *      run log with a code naming the cause, which is what the app and the connector read;
@@ -29,8 +30,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   SCHEDULED_SYNC_ACTION,
-  SCHEDULE_SECRET_HEADER,
   SCHEDULE_SECRET_MIN_LENGTH,
+  SCHEDULE_TOKEN_HEADER,
+  checkScheduleToken,
+  scheduleTokenFor,
 } from '../../src/lib/crm/schedule.js';
 import { loadSupabaseTestEnv } from '../helpers/supabaseEnv.js';
 
@@ -281,11 +284,13 @@ describe.skipIf(env === null)('the GoHighLevel sync schedule (requires a databas
   // -------------------------------------------------------------------------------------
 
   describe('configured', () => {
-    it('queues one request: the address, the action, the secret in its own header, 150 seconds', async () => {
+    it('queues one request: the address, the action, a two-minute token in its own header, 150 seconds', async () => {
       await inTransaction(async () => {
         await configure();
         const since = await mark();
+        const before = Date.now();
         expect(await dispatch()).toBe('requested');
+        const after = Date.now();
 
         const rows = await dispatchesSince(since);
         expect(rows).toHaveLength(1);
@@ -304,15 +309,42 @@ describe.skipIf(env === null)('the GoHighLevel sync schedule (requires a databas
            from net.http_request_queue where id = $1::bigint`,
           [rows[0]?.request_id],
         );
+        const token = queued.rows[0]?.headers[SCHEDULE_TOKEN_HEADER] ?? '';
         expect(queued.rows).toEqual([
           {
             method: 'POST',
             url: ENDPOINT,
-            headers: { 'Content-Type': 'application/json', [SCHEDULE_SECRET_HEADER]: SECRET },
+            headers: { 'Content-Type': 'application/json', [SCHEDULE_TOKEN_HEADER]: token },
             body: { action: SCHEDULED_SYNC_ACTION },
             timeout_milliseconds: 150_000,
           },
         ]);
+        // The token the DATABASE made is the one the function checks: the same HMAC in SQL
+        // (pgcrypto) and in TypeScript (WebCrypto), for the second the request was made.
+        const at = Number(token.split('.')[0]);
+        expect(at).toBeGreaterThanOrEqual(Math.floor(before / 1_000) - 1);
+        expect(at).toBeLessThanOrEqual(Math.ceil(after / 1_000) + 1);
+        expect(token).toBe(await scheduleTokenFor(SECRET, at));
+        expect(await checkScheduleToken(token, SECRET, at * 1_000)).toEqual({ ok: true });
+        expect(await checkScheduleToken(token, 'T'.repeat(43), at * 1_000)).toMatchObject({
+          ok: false,
+        });
+      });
+    });
+
+    it('the secret is not in the request — the queue anyone could read holds only the token', async () => {
+      await inTransaction(async () => {
+        await configure();
+        const since = await mark();
+        expect(await dispatch()).toBe('requested');
+        const request = (await dispatchesSince(since))[0]?.request_id;
+        const found = await db.query<{ queued: string; with_secret: string }>(
+          `select count(*)::text as queued,
+                  count(*) filter (where q::text like $2 or convert_from(q.body, 'UTF8') like $2)::text as with_secret
+             from net.http_request_queue q where q.id = $1::bigint`,
+          [request, `%${SECRET}%`],
+        );
+        expect(found.rows[0]).toEqual({ queued: '1', with_secret: '0' });
       });
     });
 

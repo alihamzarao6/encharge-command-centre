@@ -562,7 +562,7 @@ from ghl_sync_runs where applied_at > now() - interval '1 day') g;`
 | `UNAUTHENTICATED` | GoHighLevel rejected the token | New token: `supabase secrets set GHL_PRIVATE_INTEGRATION_TOKEN=…`. The next tick heals; nothing else to do |
 | `RATE_LIMITED`, `NETWORK`, `TIMEOUT`, `CIRCUIT_OPEN`, `HTTP_STATUS` | GoHighLevel refused for now or did not answer | Nothing. Each tick retries; an outage clears itself |
 | `STALE` | A run was interrupted and the next one retired it | Nothing, unless it repeats: then the function is being killed mid-run (time limit, near 370 leads) |
-| `SCHEDULE_REJECTED` | The function and Vault hold different secrets, or the function has none | Set both again from one value (steps 3 and 5) |
+| `SCHEDULE_REJECTED` | The function and Vault hold different secrets, the function has none, or the database's clock and the function's are more than two minutes apart (the token is refused as `stale` — the function's log line says which) | Set both again from one value (steps 3 and 5) |
 | `SCHEDULE_CONTRACT` | The deployed `crm` does not know `scheduled-sync` — an older build | Redeploy `crm` from `main` |
 | `SCHEDULE_FUNCTION_MISSING` | 404: wrong address in Vault, or `crm` not deployed | Check `ghl_sync_schedule_url`, then the deploy |
 | `SCHEDULE_FUNCTION_ERROR` | `crm` failed before a run could start (misconfigured, or could not reach the database) | `crm` function logs, search `crm function misconfigured` |

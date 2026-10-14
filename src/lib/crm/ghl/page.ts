@@ -40,8 +40,8 @@
  *
  * THE SCHEDULE (14 Oct 2026, D111–D116): a fourth action, `scheduled-sync`, for the database's
  * scheduler and nobody else. It has no session, so it is not verified as staff; it carries a
- * secret of its own in a header of its own (src/lib/crm/schedule.ts), and without the right
- * one it is a 401 before anything is read. It runs the same `runSync` with `trigger:
+ * two-minute token signed with a secret of its own, in a header of its own
+ * (src/lib/crm/schedule.ts), and without a good one it is a 401 before anything is read. It runs the same `runSync` with `trigger:
  * 'schedule'` and no user. It does NOT consult the cooldown — at one request every ten minutes
  * it cannot hammer GoHighLevel, and consulting it would let a press at 09:59 cancel the 10:00
  * run. The lock is the only thing that can refuse it, and a refusal there is not a failure:
@@ -59,7 +59,7 @@ import {
   describeCooldown,
   type CooldownRun,
 } from '../cooldown.js';
-import { SCHEDULED_SYNC_ACTION, changesOf, scheduleSecretMatches } from '../schedule.js';
+import { SCHEDULED_SYNC_ACTION, changesOf, checkScheduleToken } from '../schedule.js';
 import {
   NOTE_MAX_LENGTH,
   type Actor,
@@ -88,8 +88,8 @@ export interface CrmRequestBody {
 export interface CrmPageInput {
   readonly token: string | null | undefined;
   readonly body: CrmRequestBody;
-  /** The scheduler's credential, from its own header. A browser never sends one. */
-  readonly scheduleSecret?: string | null | undefined;
+  /** The scheduler's two-minute token, from its own header. A browser never sends one. */
+  readonly scheduleToken?: string | null | undefined;
 }
 
 export interface CrmSyncReply {
@@ -292,18 +292,18 @@ function logScheduled(deps: CrmPageDeps, report: SyncReport, startedAtMs: number
 }
 
 async function routeScheduled(deps: CrmPageDeps, input: CrmPageInput): Promise<CrmPageResult> {
-  const held = deps.scheduleSecret ?? null;
-  if (!(await scheduleSecretMatches(input.scheduleSecret, held))) {
+  const now = deps.now ?? Date.now;
+  const check = await checkScheduleToken(input.scheduleToken, deps.scheduleSecret, now());
+  if (!check.ok) {
     // One answer for every cause; which cause it was is here and nowhere else.
-    const sent = typeof input.scheduleSecret === 'string' && input.scheduleSecret !== '';
     deps.log.error('crm: scheduled refresh refused', {
-      reason: held === null ? 'not_configured' : sent ? 'mismatch' : 'nothing_sent',
+      reason: check.reason,
       alert: 'ghl_schedule_refused',
     });
     return failure(401, 'UNAUTHENTICATED', 'Not authorised.');
   }
 
-  const startedAtMs = (deps.now ?? Date.now)();
+  const startedAtMs = now();
   const report = await deps.runSync({ trigger: 'schedule', triggeredBy: null });
   logScheduled(deps, report, startedAtMs);
 

@@ -21,7 +21,7 @@
  * allowed.
  *
  * The schedule (14 Oct 2026): the database's scheduler POSTs `scheduled-sync` here with a
- * secret in a header of its own (src/lib/crm/schedule.ts). The header is passed through and
+ * two-minute token in a header of its own (src/lib/crm/schedule.ts). The header is passed through and
  * nothing more; the library decides. It is deliberately NOT in the CORS allow-list below — no
  * page has any business sending it.
  */
@@ -29,7 +29,7 @@
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
 import { handleCrmRequest, type CrmRequestBody } from '../../lib/crm/ghl/page.js';
 import { createCrmPageDeps } from '../../lib/crm/ghl/wiring.js';
-import { SCHEDULE_SECRET_HEADER } from '../../lib/crm/schedule.js';
+import { SCHEDULE_TOKEN_HEADER } from '../../lib/crm/schedule.js';
 import { logger } from '../../lib/logger.js';
 
 const CORS_HEADERS = {
@@ -93,7 +93,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const result = await handleCrmRequest(deps.value, {
     token,
     body,
-    scheduleSecret: request.headers.get(SCHEDULE_SECRET_HEADER),
+    scheduleToken: request.headers.get(SCHEDULE_TOKEN_HEADER),
   });
   return json(result.status, result.body);
 });

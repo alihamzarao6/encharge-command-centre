@@ -9,15 +9,16 @@
  * tests/integration/ghl-schedule.test.ts, against the real SQL.
  *
  * What is proven:
- *   - who may call: the right secret and nobody else — not a signed-in member, not an
- *     administrator, not an unconfigured function, and the secret opens no other action;
+ *   - who may call: a token signed with the right secret in the last two minutes, and nobody
+ *     else — not a signed-in member, not an administrator, not the secret itself, not an
+ *     unconfigured function — and a token opens no other action;
  *   - the schedule and the button: the schedule never consults the cooldown, a scheduled run
  *     counts towards the button's, and whichever arrives second while the other holds the slot
  *     is told so (a skip, not a failure) — ordered by an explicit gate, not by timing;
  *   - 401 from GoHighLevel is loud, 429 is a failed or a partial run, an outage is a row per
  *     tick and then a success with nothing carried over, an empty pipeline is a success;
  *   - every scheduled request writes one structured line, and neither a line nor a reply
- *     carries the secret or anything about a person.
+ *     carries the secret, a token or anything about a person.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -36,6 +37,7 @@ import {
   type SyncReport,
 } from '../../../../src/lib/crm/ghl/sync.js';
 import { AppError, err, ok } from '../../../../src/lib/errors.js';
+import { scheduleTokenFor } from '../../../../src/lib/crm/schedule.js';
 import { RateLimitedError } from '../../../../src/lib/llm/errors.js';
 import { capturingLogger } from '../../llm/helpers.js';
 import {
@@ -59,6 +61,13 @@ const SECRET = 'S'.repeat(43);
 const WRONG = 'W'.repeat(43);
 const STAFF_ID = 'bbbbbbbb-0000-4000-8000-000000000002';
 const TICK_AT = Date.parse('2026-10-14T00:03:00.000Z');
+const AT = Math.floor(TICK_AT / 1_000);
+/** What the database sends: a two-minute token, never the secret. */
+const GOOD = await scheduleTokenFor(SECRET, AT);
+/** Signed with a secret this function does not hold. */
+const FORGED = await scheduleTokenFor(WRONG, AT);
+/** Signed with the right secret, ten minutes before the tick. */
+const STALE = await scheduleTokenFor(SECRET, AT - 600);
 
 interface Harness {
   readonly deps: CrmPageDeps;
@@ -134,23 +143,23 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   return { deps, client, lines, verified, cooldownReads, runs };
 }
 
-/** With no second argument the right secret is sent; an explicit `undefined` sends none. */
+/** With no second argument a good token is sent; an explicit `undefined` sends none. */
 function scheduled(
   h: Harness,
-  ...sent: [secret?: string | null, token?: string | null]
+  ...sent: [scheduleToken?: string | null, session?: string | null]
 ): Promise<CrmPageResult> {
   return handleCrmRequest(h.deps, {
     token: sent[1] ?? null,
     body: { action: 'scheduled-sync' },
-    scheduleSecret: sent.length === 0 ? SECRET : sent[0],
+    scheduleToken: sent.length === 0 ? GOOD : sent[0],
   });
 }
 
-function pressed(h: Harness, secret?: string | null): Promise<CrmPageResult> {
+function pressed(h: Harness, scheduleToken?: string | null): Promise<CrmPageResult> {
   return handleCrmRequest(h.deps, {
     token: 'staff-token',
     body: { action: 'sync' },
-    ...(secret === undefined ? {} : { scheduleSecret: secret }),
+    ...(scheduleToken === undefined ? {} : { scheduleToken }),
   });
 }
 
@@ -228,7 +237,7 @@ function gateFirstCall(client: FakeGhlClient): () => void {
 }
 
 describe('who may ask for a scheduled refresh', () => {
-  it('the right secret → the sync runs as the schedule, for nobody, and no person is looked up', async () => {
+  it('a good token → the sync runs as the schedule, for nobody, and no person is looked up', async () => {
     const h = makeHarness();
     const result = await scheduled(h);
     expect(result.status).toBe(200);
@@ -236,21 +245,28 @@ describe('who may ask for a scheduled refresh', () => {
     expect(h.verified).toEqual([]);
   });
 
-  it('no secret, an empty one or a wrong one → 401, one sentence for all three, and nothing runs', async () => {
+  it('no token, a forged one, an old one, or anything else → 401, one sentence for all, and nothing runs', async () => {
     const h = makeHarness();
     expect(await scheduled(h, null)).toEqual(UNAUTHORISED);
     expect(await scheduled(h, undefined)).toEqual(UNAUTHORISED);
     expect(await scheduled(h, '')).toEqual(UNAUTHORISED);
-    expect(await scheduled(h, WRONG)).toEqual(UNAUTHORISED);
-    expect(await scheduled(h, SECRET.slice(0, -1))).toEqual(UNAUTHORISED);
+    expect(await scheduled(h, FORGED)).toEqual(UNAUTHORISED);
+    expect(await scheduled(h, STALE)).toEqual(UNAUTHORISED);
+    expect(await scheduled(h, GOOD.slice(0, -1))).toEqual(UNAUTHORISED);
     expect(h.runs).toEqual([]);
     expect(h.client.calls).toEqual([]);
   });
 
-  it('a signed-in administrator without the secret is refused too: a session is not the credential', async () => {
+  it('the secret itself is not a credential: the function never accepts it as the token', async () => {
+    const h = makeHarness();
+    expect(await scheduled(h, SECRET)).toEqual(UNAUTHORISED);
+    expect(h.runs).toEqual([]);
+  });
+
+  it('a signed-in administrator without a token is refused too: a session is not the credential', async () => {
     const h = makeHarness();
     expect(await scheduled(h, null, 'staff-token')).toEqual(UNAUTHORISED);
-    expect(await scheduled(h, WRONG, 'staff-token')).toEqual(UNAUTHORISED);
+    expect(await scheduled(h, FORGED, 'staff-token')).toEqual(UNAUTHORISED);
     expect(h.runs).toEqual([]);
     // Refused before the session was even looked at.
     expect(h.verified).toEqual([]);
@@ -261,42 +277,41 @@ describe('who may ask for a scheduled refresh', () => {
       const h = makeHarness({ held });
       expect(await scheduled(h, '')).toEqual(UNAUTHORISED);
       expect(await scheduled(h, null)).toEqual(UNAUTHORISED);
-      expect(await scheduled(h, held)).toEqual(UNAUTHORISED);
-      expect(await scheduled(h, SECRET)).toEqual(UNAUTHORISED);
+      expect(await scheduled(h, GOOD)).toEqual(UNAUTHORISED);
       expect(h.runs).toEqual([]);
     }
   });
 
-  it('the log says which it was — not configured, nothing sent, or a mismatch — at error level', async () => {
-    const reasonOf = (h: Harness): unknown =>
-      h.lines
+  it('the log says which it was, at error level — never the token or the secret', async () => {
+    const reasonOf = async (held: string | null, sent: string | null): Promise<unknown> => {
+      const h = makeHarness({ held });
+      await scheduled(h, sent);
+      return h.lines
         .map((line) => JSON.parse(line) as Record<string, unknown>)
         .filter((record) => record['msg'] === 'crm: scheduled refresh refused')
         .map((record) => [record['level'], record['reason'], record['alert']]);
-    const unconfigured = makeHarness({ held: null });
-    await scheduled(unconfigured, SECRET);
-    expect(reasonOf(unconfigured)).toEqual([['error', 'not_configured', 'ghl_schedule_refused']]);
-    const nothing = makeHarness();
-    await scheduled(nothing, null);
-    expect(reasonOf(nothing)).toEqual([['error', 'nothing_sent', 'ghl_schedule_refused']]);
-    const wrong = makeHarness();
-    await scheduled(wrong, WRONG);
-    expect(reasonOf(wrong)).toEqual([['error', 'mismatch', 'ghl_schedule_refused']]);
+    };
+    const line = (reason: string): unknown => [['error', reason, 'ghl_schedule_refused']];
+    expect(await reasonOf(null, GOOD)).toEqual(line('not_configured'));
+    expect(await reasonOf(SECRET, null)).toEqual(line('nothing_sent'));
+    expect(await reasonOf(SECRET, SECRET)).toEqual(line('malformed'));
+    expect(await reasonOf(SECRET, STALE)).toEqual(line('stale'));
+    expect(await reasonOf(SECRET, FORGED)).toEqual(line('mismatch'));
   });
 
-  it('the secret opens nothing else: sent with the action of the button and no session it is a 401', async () => {
+  it('a token opens nothing else: sent with the action of the button and no session it is a 401', async () => {
     const h = makeHarness();
     const result = await handleCrmRequest(h.deps, {
       token: null,
       body: { action: 'sync' },
-      scheduleSecret: SECRET,
+      scheduleToken: GOOD,
     });
     expect(result).toMatchObject({ status: 401, body: { error: { code: 'UNAUTHENTICATED' } } });
     for (const action of ['move', 'note']) {
       const other = await handleCrmRequest(h.deps, {
         token: null,
         body: { action },
-        scheduleSecret: SECRET,
+        scheduleToken: GOOD,
       });
       expect(other.status).toBe(401);
     }
@@ -308,7 +323,7 @@ describe('who may ask for a scheduled refresh', () => {
     const result = await handleCrmRequest(h.deps, {
       token: null,
       body: { action: 'scheduled-refresh' },
-      scheduleSecret: SECRET,
+      scheduleToken: GOOD,
     });
     expect(result).toMatchObject({ status: 400, body: { error: { code: 'BAD_REQUEST' } } });
     expect(h.runs).toEqual([]);
@@ -602,7 +617,8 @@ describe('what a scheduled run records about itself', () => {
       trigger: 'schedule',
       outcome: 'success',
       runId: RUN_ID,
-      startedAt: '2026-10-14T00:03:00.250Z',
+      // The harness clock moves 250 ms a read: one read checks the token, the next starts.
+      startedAt: '2026-10-14T00:03:00.500Z',
       durationMs: expect.any(Number) as number,
       staleMarked: 0,
       fetched: {
@@ -625,7 +641,7 @@ describe('what a scheduled run records about itself', () => {
     });
   });
 
-  it('nothing in any line or reply is a name, an email, a phone number — or the secret', async () => {
+  it('nothing in any line or reply is a name, an email, a phone number — or the secret, or a token', async () => {
     const contact = fixtureContact('contact-1');
     const personal = [contact.firstName, contact.lastName, contact.email, contact.phone]
       .filter((value): value is string => typeof value === 'string' && value !== '')
@@ -635,17 +651,20 @@ describe('what a scheduled run records about itself', () => {
     const h = makeHarness();
     const replies = [
       await scheduled(h),
-      await scheduled(h, WRONG),
+      await scheduled(h, FORGED),
+      await scheduled(h, SECRET),
       await scheduled(h, null),
-      await pressed(h, SECRET),
+      await pressed(h, GOOD),
     ];
     h.client.pipelines = err(unauthenticated());
     replies.push(await scheduled(h));
 
     const text = (JSON.stringify(replies) + h.lines.join('\n')).toLowerCase();
     for (const value of personal) expect(text).not.toContain(value);
-    expect(text).not.toContain(SECRET.toLowerCase());
-    expect(text).not.toContain(WRONG.toLowerCase());
+    for (const value of [SECRET, WRONG, GOOD, FORGED]) {
+      expect(text).not.toContain(value.toLowerCase());
+      expect(text).not.toContain(value.slice(-64).toLowerCase());
+    }
     // And the lines are there to be checked: this is not an empty log passing by default.
     expect(h.lines.length).toBeGreaterThan(8);
   });
