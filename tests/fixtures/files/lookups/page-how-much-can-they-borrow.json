@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "My client earns 95k and has a 60k deposit. How much can they borrow with this lender?",
   "mode": "protected",
-  "recordedAt": "2026-10-13T04:06:29.139Z",
+  "recordedAt": "2026-10-14T03:54:43.283Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-13.1",
-  "requestSha256": "c9050ad85342ad7278f024ca90d3992984dee9270c66a8928e79c1f4d05902be",
-  "reply": "I can't work out borrowing capacity from this document — it only shows interest rates and fees, not serviceability criteria or borrowing calculations, and that figure depends on policy this page doesn't cover (income, liabilities, expenses, lender assessment rates, etc). That's a calculation for the broker to run, not something to pull from this rate sheet.\n\nWhat I can tell you from the document (Example Lender, read 13 Oct 2026, 12:00 pm Perth time): with a $60k deposit, the LVR band depends on the purchase price, which determines which rate tier applies. For example, at 90.01–95% LVR the variable rate is 6.84% p.a. with a $10 monthly fee, and the comparison rate field is blank for that row in the source. If you give me the purchase price I can tell you which LVR band and rate applies.",
+  "rulesVersion": "2026-10-14.1",
+  "requestSha256": "9426db1e56ebac4daeacaacd724ad896a09127da6ae611ef6d158ce71d02469e",
+  "reply": "I can't work that out from this document, and it's not something I'd calculate anyway — borrowing capacity depends on the client's full financial picture (income, expenses, liabilities, dependants, the lender's servicing calculator) and that's a job for Ross as the licensed broker.\n\nWhat the document does show: the LVR bands and rates for Example Lender's Basic Home Loan (variable), read 13 Oct 2026, 12:00 pm Perth time. If you can tell me the property price you're working towards, I can tell you which LVR band and rate that deposit would fall into — that's a straightforward lookup I can do.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 32,
-    "outputTokens": 270,
-    "cacheReadTokens": 5662,
+    "outputTokens": 198,
+    "cacheReadTokens": 5875,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.005845
+  "costUsd": 0.004829
 }

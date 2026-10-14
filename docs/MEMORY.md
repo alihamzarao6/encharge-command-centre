@@ -151,6 +151,7 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 | **D115** | **No refresh tool on the connector** | Possible without giving the SELECT-only role anything (the connector function would call `scheduled-sync`), but the connector would then hold a credential that causes writes, "this connector cannot act" (D107) would get an exception a stranger-typed lead name could ask for, and the test forbidding a writing tool would have to be loosened — for at most ten minutes of freshness | 14 Oct |
 | **D116** | **The run row is the log of a scheduled run; each scheduled request also writes one structured line (`crm: scheduled refresh`: started, fetched, changed, duration, outcome — ids and counts). The logger writes through `console` under the Edge runtime, for all six functions** | Measured 14 Oct: no line any function wrote had ever reached Supabase — the runtime discards stdout. The reviewer extended the fix from `crm` to every function because the logger is shared. A healthy tick is 3 lines, about 2.1 KB: ~300 KiB a day | 14 Oct |
 | **D117** | **Both mirror screens read the newest APPLIED run on its own (`withNewestApplied`) and re-read every two minutes while open and visible, quietly** | Five failed runs in a row used to push the last good run out of the screens' five-row read and show "Not set up yet" over a full pipeline — on a schedule, 50 minutes of an outage. An open screen did not see a refresh it did not start. Ruled by the reviewer 14 Oct: this and nothing else on those screens | 14 Oct |
+| **D118** | **A blank cell says nothing about any other cell. The page reader writes every value of a table row that has an empty cell after its column's heading (`Comparison rate: 6.47% p.a.`, `Monthly fee: (blank)`), when the table marks its headings; a row with every cell filled is written by position as before. The document rules (`2026-10-14.1`) say a `(blank)` is one cell, that a labelled value's heading is its column, to check the asked row's own cell before calling anything blank, and "fewer CELLS than headings" where they said "fewer values" — a row with `(blank)` in it is not such a row** | Reproduced live 14 Oct through the recorded request: the reader wrote `6.44% p.a. · 6.47% p.a. · (blank)` correctly and the model said the comparison rate was blank — 1 in 24 for the question first seen, **8 in 12** asked straight. The model half, fed by our own "fewer values" line and by the blank comparison rate in the row beneath. Measured on the exact shipped requests: labels alone 6 in 12; rules alone 2 in 24; both **0 in 24**, with genuinely blank cells still reported blank (0 wrong in 12, twice). Not the PDF limitation recorded 12 Oct, which stays open | 14 Oct |
 
 ---
 
@@ -167,6 +168,60 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 ```
 
 ---
+
+### 2026-10-14 — [Job 2 · a blank cell read as the comparison rate] Reproduced, then fixed in the reader AND the rules — working tree, NOT committed
+
+**Reproduced before anything was changed.** Through exactly the request `page-rate-for-a-deposit`
+is recorded with (sha `13c26d36…`, the committed recording's own): asked 24 times, wrong on the
+**11th** — "the comparison rate shown as (blank) — not stated" — 1 of 24. Then the same page
+asked straight, 12 times each: the 85% comparison rate called blank **8 of 12**; the genuinely
+blank fee and the genuinely blank 92% comparison rate 0 wrong in 12 each. The nine wrong replies,
+word for word: `tests/fixtures/files/blank-cell-before.json`.
+
+**Which half: the model's.** The reader wrote the row right — `LVR 80.01% to 90% · 6.44% p.a. ·
+6.47% p.a. · (blank)` under `Loan to value ratio · Interest rate · Comparison rate · Monthly
+fee` — and the model read past it. **Not the limitation recorded 12 Oct** (typed-PDF rows placed
+by geometry); this is an HTML table whose every row has all four cells. That limitation is
+**still open**: closing it means checking EVERY row's cells against the column edges, not only
+rows with fewer cells — a change to how `linesFromItems` works, which this brief rules out.
+
+**Surprised by — the first fix was not enough, and measuring said why.** I built what the
+diagnosis suggested first: each value of a row with a blank written after its heading. Live, on
+the shipped request: 6 of 12 still wrong. Experiments then, ONE change each, on the exact
+requests (every row 12 or 24 calls): labels + our rules as they were 6/12 · labels + the line
+"Do the same for any row that plainly has fewer **values** than the table has headings" removed
+1/12 · labels + the 90.01–95% row's blank comparison rate filled 0/12 · no labels + that line
+removed **23/24** · no labels + the line clarified 19/24 · labels + clarified 3/24 · **labels +
+clarified + the blank rule rewritten 0/24** · rewritten rules, no labels 2/24. Two things fed it:
+our own "fewer values" line, which a row with a blank in it looked like, and the blank comparison
+rate in the row beneath. Neither the labels nor the rules alone closed it.
+
+**Did (D118):** `web/src/lib/files/html.ts` — a body row with an empty cell writes each value as
+`Heading: value`, when the table marks its headings; other rows unchanged · `src/lib/files/
+rules.ts` — the blank bullet rewritten, "fewer values" → "fewer cells" with a row holding
+`(blank)` excluded, **version `2026-10-14.1`** (the reviewer's condition) · probes: the deposit
+lookup must now also state 6.47; a new lookup, `page-comparison-at-85` · re-recorded: the seven
+lookups and the three protected injection recordings (still not obeyed); the three controls send
+no rules and were kept as they were · tests: the reader (4 new, 1 changed), `lookup-live` (the
+before-fixture block, 5 tests + 9 replies), the version pin, the browser test of the attached
+text.
+
+**Measured after, on the shipped requests (each hash checked against what was measured):** the
+85% comparison **0 of 24** wrong; the deposit question 0 of 24; the blank fee 0 wrong of 12; the
+blank 92% comparison 0 wrong of 12. **Credit advice, the same six questions three times each:**
+0 of 18 lectured, scored as on 13 Oct (`judgeLookup` against each reply's own probe); the 12
+lookups all answered from the document. The judgements: the judge counts 5 of 6 declined — the
+sixth reads "That's a call for Ross to make, not me", a phrasing its list does not hold; not
+loosened. Applying the lookup lecture patterns to the judgement replies as well, 2 of 18 match —
+both decline "how much can they borrow" as "Ross's call as the licensed broker".
+
+**Mutations:** the reader's labels removed → 11 tests fail; the blank rule put back → 11; the
+"fewer values" line put back → 11. Restored, hashes checked. **Spend:** 343 live calls, US$1.47.
+
+**Not covered:** a PDF's table, and an HTML table whose headings are not marked as headings (bold
+`<td>`s, as in `layout-table.html`), get the rewritten rules but no labels — measured, rules alone
+were 2 in 24 on the page. **To go live:** the rules are in the `chat` function (redeploy), the
+reader in the web app (the Vercel deploy).
 
 ### 2026-10-14 — [Keeping the mirror fresh · Job 1 · build] The mirror refreshes itself every ten minutes — working tree, NOT committed, NOT pushed, NOT deployed
 

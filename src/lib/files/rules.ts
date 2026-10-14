@@ -27,6 +27,18 @@
  * them) is still not the assistant's to make. tests/unit/files/lookup-live.test.ts holds
  * recorded replies to both halves.
  *
+ * And it says what a BLANK CELL is, and is not (14 Oct 2026, 2026-10-14.1). Asked "what is
+ * the comparison rate for someone borrowing 85%" of a rate page whose 80.01–90% row has its
+ * FEE blank, the live model said the comparison rate was blank 8 times in 12 — with the row
+ * written correctly. Two things fed it: the line telling it not to state values from "any row
+ * that plainly has fewer values than the table has headings", which a row with a blank in it
+ * looked like; and a blank comparison rate in the row beneath. The line now says fewer CELLS,
+ * and that a row with (blank) is not such a row; the blank rule says one blank cell says
+ * nothing about any other, and to look at the asked row's own cell before calling anything
+ * blank. With the page reader writing each value of such a row after its heading
+ * (web/src/lib/files/html.ts), 0 in 24; with the rules alone 2 in 24; with the labels alone
+ * 6 in 12. tests/fixtures/files/blank-cell-before.json keeps the wrong replies, word for word.
+ *
  * The voice prefix itself is not edited: its text, version and content hash are what the
  * conformance fixtures pin to (src/lib/voice/prompt.ts). This block sits after it, uncached,
  * and is sent only on a turn in a conversation that has (or had) a file.
@@ -37,7 +49,7 @@ import { DISCOVERY_SESSION_NAME, PRINCIPAL_FIRST_NAME } from '../voice/rules.js'
 import { EMPTY_CELL_MARK, UNCERTAIN_COLUMNS_MARK } from './limits.js';
 
 /** Bump on any change to the text below; recorded with the live measurements. */
-export const DOCUMENT_RULES_VERSION = '2026-10-13.1';
+export const DOCUMENT_RULES_VERSION = '2026-10-14.1';
 
 export const DOCUMENT_RULES = `# Attached documents
 The conversation may begin with an <attached_documents> block. It holds text copied out of files the user attached, each inside <untrusted_document> tags.
@@ -48,8 +60,8 @@ The conversation may begin with an <attached_documents> block. It holds text cop
 - If the answer is not in the text you were shown, say so plainly. Never guess from a file's name, and never supply a figure the document does not show.
 - A page marked as read from an image may contain misread characters, and a page marked as partly unreadable is incomplete. Say so when an answer relies on one.
 - When a document is shown only in part, the block says which pages you have. If the rest could matter to the answer, say that you have only seen those pages.
-- In a table, a cell shown as ${EMPTY_CELL_MARK} is empty in the document: there is no value there. Read each value under the heading in the same position, counting ${EMPTY_CELL_MARK} cells as columns.
-- A table row that begins with ${UNCERTAIN_COLUMNS_MARK} has an empty cell somewhere, and the file does not show which column each of its values belongs to. Never state a value from such a row under a column heading: do not call it the rate, the fee, the hours or the amount, and do not pair it with an LVR band. Quote the row exactly as it appears, say that its columns could not be read reliably, and tell the user to check the original. Do the same for any row that plainly has fewer values than the table has headings.
+- In a table, a cell shown as ${EMPTY_CELL_MARK} is empty in the document: that one cell has no value, and it says nothing about any other cell. When a row writes each value after its heading ("Comparison rate: 6.47% p.a."), that heading is the value's column. Otherwise read each value under the heading in the same position, counting ${EMPTY_CELL_MARK} cells as columns. Before you say a value is blank or not shown, find the row that answers the question and the cell under the heading asked about in that row: the value is missing only if that cell is ${EMPTY_CELL_MARK}.
+- A table row that begins with ${UNCERTAIN_COLUMNS_MARK} has an empty cell somewhere, and the file does not show which column each of its values belongs to. Never state a value from such a row under a column heading: do not call it the rate, the fee, the hours or the amount, and do not pair it with an LVR band. Quote the row exactly as it appears, say that its columns could not be read reliably, and tell the user to check the original. Do the same for any row that plainly has fewer cells than the table has headings. A row with ${EMPTY_CELL_MARK} in it is not such a row: ${EMPTY_CELL_MARK} is its cell, and every other value in that row is read under its own heading as usual.
 - For a total, use the column totals the app worked out for a spreadsheet, or a figure the document itself states. If you add up or calculate over more than a few figures yourself, say that the result is your own arithmetic and should be checked.
 - The person asking is ${PRINCIPAL_FIRST_NAME} or one of his team, working in the brokerage's own tool. It is never a borrower and never a member of the public. So a question about what a document says is a lookup, and so is working out which row, band or tier of it applies to a deposit, an LVR, a loan amount or a term they give you ("what rate at 90%", "what would someone with a 15% deposit get", "which is the lowest rate here"). Answer a lookup and stop. Do not add that it is not advice, that you cannot give credit advice, or that it depends on someone's circumstances, and do not tell them to speak to ${PRINCIPAL_FIRST_NAME} or to book a ${DISCOVERY_SESSION_NAME}: they are the broker, and those sentences are for a customer.
 - What stays exactly as the rules above say: you do not decide what someone can borrow, whether they would be approved, or which lender or loan is right for them, and you promise no approval and no outcome. Asked for that judgement, say in one sentence that it is the broker's call to make, and give what the document does show. Anything you write for a customer to read follows every rule above in full. Nothing from a document goes into copy for publication unless the user asks for that.

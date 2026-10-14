@@ -219,8 +219,10 @@ what a page can do that a file cannot.
   like any other and reaches the model inside the same `<attached_documents>` /
   `<untrusted_document …>` block, built by the same `buildDocumentBlock`, with the same
   `defang`. `DOCUMENT_RULES` was byte for byte what part 1 shipped (version `2026-10-12.3`)
-  when part 2 shipped. *(Since changed once, 13 Oct, D100 — its closing line now says who
-  is asking; version `2026-10-13.1`, the protected recordings re-recorded with it.)* Two blocks are appended to it in the system
+  when part 2 shipped. *(Since changed twice: 13 Oct, D100 — its closing line now says who
+  is asking; version `2026-10-13.1`. 14 Oct, D118 — what a `(blank)` cell is and is not, and
+  "fewer cells" for "fewer values"; version `2026-10-14.1`. Each time the protected
+  recordings were re-recorded and still did not obey.)* Two blocks are appended to it in the system
   prompt, never in the user turn: `webPageRules` (when the conversation has, or had, a page)
   and `UNREAD_LINK_RULES` (when a message in the turn contains a link).
 - **What the page cannot write.** The opening tag of a page's block carries `source="…"` and

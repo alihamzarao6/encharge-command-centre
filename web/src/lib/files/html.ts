@@ -56,7 +56,11 @@
  *   TABLES AS TABLES. A rate sheet is a table, and a figure under the wrong heading is a
  *   wrong rate. Rows keep their cells in order, a spanning cell is repeated into every
  *   column or row it covers, and an empty cell is written `(blank)` — part 1's mark and
- *   part 1's rule for reading it.
+ *   part 1's rule for reading it. A ROW WITH AN EMPTY CELL CARRIES ITS HEADINGS: each of its
+ *   cells is written `Heading: value` (14 Oct 2026). The reader had the row right —
+ *   `6.44% p.a. · 6.47% p.a. · (blank)` — and the model still said the comparison rate was
+ *   blank: 1 reply in 24, live, through the exact request the lookups are recorded with. Where
+ *   every cell is filled, position is enough and the row is written as before.
  *
  * And it says what it could NOT read. A place the site leaves for a script to fill in (three
  * of seven lender rate pages do this with their rates) is written into the text as
@@ -632,6 +636,50 @@ function lines(grid: readonly (readonly (string | undefined)[])[], width: number
   );
 }
 
+/** Longest heading a labelled cell repeats; a heading is a few words, not a paragraph. */
+const HEADING_LABEL_MAX_CHARS = 60;
+
+/**
+ * Each column's heading, from the table's heading rows: what that column holds, in the words
+ * the page used. Two heading rows ("Owner occupier" over "Rate") make one label. A column
+ * with no heading has none, and its cells are written as they are.
+ */
+function columnHeadings(
+  grid: readonly (readonly (string | undefined)[])[],
+  headerRows: number,
+  width: number,
+): readonly (string | null)[] {
+  return Array.from({ length: width }, (_unused, column) => {
+    const parts: string[] = [];
+    for (let row = 0; row < headerRows; row += 1) {
+      const text = grid[row]?.[column];
+      if (text !== undefined && text !== EMPTY_CELL_MARK && !parts.includes(text)) parts.push(text);
+    }
+    const heading = collapse(parts.join(' ')).slice(0, HEADING_LABEL_MAX_CHARS);
+    return heading === '' ? null : heading;
+  });
+}
+
+/**
+ * One body row. With every cell filled, position says which heading a value is under. With a
+ * cell empty, position was not enough for the model reading it (see TABLES AS TABLES above),
+ * so every cell of that row names its heading: `Comparison rate: 6.47% p.a.`.
+ */
+function bodyLine(
+  line: readonly (string | undefined)[],
+  width: number,
+  headings: readonly (string | null)[],
+): string {
+  const cells = Array.from({ length: width }, (_unused, column) => line[column] ?? EMPTY_CELL_MARK);
+  if (!cells.includes(EMPTY_CELL_MARK)) return cells.join('\t');
+  return cells
+    .map((cell, column) => {
+      const heading = headings[column] ?? null;
+      return heading === null ? cell : `${heading}: ${cell}`;
+    })
+    .join('\t');
+}
+
 function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
@@ -883,7 +931,11 @@ function walk(html: string, unfaded = false): Walked {
       headerRows += 1;
     }
     const lead = caption === '' ? [] : [`Table: ${caption}`];
-    push('table', [...lead, ...lines(grid, width)].join('\n'), table.flags, {
+    const headings = columnHeadings(grid, headerRows, width);
+    const written = lines(grid, width).map((plain, row) =>
+      row < headerRows ? plain : bodyLine(grid[row] ?? [], width, headings),
+    );
+    push('table', [...lead, ...written].join('\n'), table.flags, {
       headerLines: lead.length + headerRows,
     });
   };

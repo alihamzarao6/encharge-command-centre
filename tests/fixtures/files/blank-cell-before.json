@@ -1,0 +1,152 @@
+{
+  "description": "BEFORE the fix of 14 Oct 2026: the live model saying the comparison rate of the \"LVR 80.01% to 90%\" band is blank, when the page shows 6.47% p.a. and the blank cell in that row is the monthly fee. tests/fixtures/web/rate-table.html read as a page from a link, through exactly the request the page lookups are recorded with (lookupRequest), with the document rules at 2026-10-13.1 and the page reader writing the row by position only. Kept, word for word, so tests/unit/files/lookup-live.test.ts can show its check fails on them. Never re-recorded: the rules and the reader that produced them are gone.",
+  "recordedAt": "2026-10-14T03:37:56.074Z",
+  "rulesVersion": "2026-10-13.1",
+  "model": "claude-sonnet-5",
+  "rowAsSent": "LVR 80.01% to 90%\t6.44% p.a.\t6.47% p.a.\t(blank)",
+  "headingsAsSent": "Loan to value ratio\tInterest rate\tComparison rate\tMonthly fee",
+  "reproduction": {
+    "deposit": {
+      "question": "What rate would someone with a 15% deposit get?",
+      "asked": 24,
+      "wrong": 1,
+      "firstWrongOnAttempt": 11,
+      "requestSha256": "13c26d36115861c1ec61af5788dd5136ca2bc9285fd4085286dd4772b021a5af"
+    },
+    "compare85": {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "asked": 12,
+      "wrong": 8,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff"
+    },
+    "fee85": {
+      "question": "What is the monthly fee at 85% LVR?",
+      "asked": 12,
+      "wrong": 0
+    },
+    "compare92": {
+      "question": "What is the comparison rate at 92% LVR?",
+      "asked": 12,
+      "wrong": 0
+    }
+  },
+  "replies": [
+    {
+      "question": "What rate would someone with a 15% deposit get?",
+      "attempt": 11,
+      "requestSha256": "13c26d36115861c1ec61af5788dd5136ca2bc9285fd4085286dd4772b021a5af",
+      "usage": {
+        "inputTokens": 19,
+        "outputTokens": 173,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.004351,
+      "reply": "A 15% deposit means an LVR of 85%, which falls in the 80.01% to 90% band. The page on examplelender.com.au (read 13 Oct 2026, 12:00 pm Perth time) shows this as 6.44% p.a. variable, with the comparison rate shown as (blank) — not stated — and the monthly fee also shown as (blank), so neither of those is given for that band.\n\nNote: rates on that page are subject to change without notice, so if this is more than a day old it's worth checking the page again for the current figure."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 2,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 129,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003709,
+      "reply": "At 85% LVR (the 80.01% to 90% band) on the Example Basic Home Loan, the page shows the interest rate as 6.44% p.a., but the comparison rate cell is blank — no value is shown for that band. The monthly fee cell is also blank for that row.\n\nThis is from the examplelender.com.au page read 13 Oct 2026, 12:00 pm Perth time."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 3,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 141,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003889,
+      "reply": "At 85% LVR (the 80.01% to 90% band), the comparison rate cell is blank in the document — the page on examplelender.com.au doesn't show a value there. The interest rate for that band is 6.44% p.a., but no comparison rate was given.\n\nThis page was read 13 Oct 2026, 12:00 pm Perth time; if you need the comparison rate, it'd be worth reading the page again or checking the source directly."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 4,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 148,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003994,
+      "reply": "At LVR 80.01% to 90%, the Example Basic Home Loan shows an interest rate of 6.44% p.a., but the comparison rate cell is blank — there's no value shown for it in the document.\n\nA deposit giving 85% LVR falls in that band, so I can't give you a comparison rate for that tier. Worth checking the original page on examplelender.com.au directly, since it may load that figure separately or it may genuinely not be published for that band."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 6,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 128,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003694,
+      "reply": "At 85% LVR (the 80.01% to 90% band) on the Example Basic Home Loan, the page lists the interest rate as 6.44% p.a. and shows the comparison rate cell as blank — so no comparison rate is given for that band.\n\nThis is from the Example Lender page on www.examplelender.com.au, read 13 Oct 2026, 12:00 pm Perth time."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 8,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 159,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.004159,
+      "reply": "At 85% LVR (the \"80.01% to 90%\" band), the Example Basic Home Loan comparison rate shows as (blank) — the document doesn't give a figure for that band. The interest rate shown is 6.44% p.a., with no monthly fee listed either.\n\nThis is from the Example Lender page, read 13 Oct 2026, 12:00 pm Perth time. If you need the comparison rate for that band, you'll need to check the lender's site directly or source it elsewhere."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 10,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 147,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003979,
+      "reply": "At 85% LVR (the LVR 80.01% to 90% band), the Example Lender page shows an interest rate of 6.44% p.a., but the comparison rate cell is blank — no comparison rate is shown for that band. The monthly fee cell is also blank for that row.\n\nNote: page read 13 Oct 2026, 12:00 pm Perth time; if this matters for a current quote, it should be checked again as rates are subject to change without notice."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 11,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 161,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.004189,
+      "reply": "At LVR 80.01% to 90% on the Example Basic Home Loan, the interest rate is 6.44% p.a., but the comparison rate cell is shown as (blank) — it's not stated on the page. There's also no monthly fee figure shown for that band (also blank).\n\nNote: this is from the page on examplelender.com.au, read 13 Oct 2026. Since rates are subject to change, if this is needed for anything beyond today you should read the page again or get the figure confirmed directly."
+    },
+    {
+      "question": "What is the comparison rate for someone borrowing 85% of the value?",
+      "attempt": 12,
+      "requestSha256": "857da848f62ebceea0fa7f0dde737132789a84eef3402cef3fd71894f050a9ff",
+      "usage": {
+        "inputTokens": 25,
+        "outputTokens": 144,
+        "cacheWriteTokens": 0,
+        "cacheReadTokens": 5662
+      },
+      "costUsd": 0.003934,
+      "reply": "At LVR 80.01% to 90% on the Example Basic Home Loan, the interest rate is 6.44% p.a., and the monthly fee cell is blank (meaning no monthly fee shown). The comparison rate cell for that row is blank too — it's not shown in the document, so I can't give you a figure for it.\n\nThis is from the page on examplelender.com.au, read 13 Oct 2026, 12:00 pm Perth time."
+    }
+  ]
+}

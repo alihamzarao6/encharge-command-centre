@@ -220,12 +220,15 @@ test.describe('a link in the message', () => {
     expect(call?.authorization).toMatch(/^Bearer /);
     expect(actions(state)).toEqual(['fetch_page', 'begin', 'append', 'finish']);
     // What was attached names the server's fetch, and carries the page's text — its table
-    // included, an empty cell marked rather than closed up.
+    // included, an empty cell marked rather than closed up, and (14 Oct 2026) every value in
+    // that row naming its heading.
     const begin = callsOf(state, 'begin')[0];
     expect(begin).toMatchObject({ kind: 'html', fetchId: state.pageFetches[0]?.requestId });
     expect(begin?.['title']).toBe('Home loan interest rates | Example Lender');
     expect(appendedText(state)).toContain('LVR 60% or less\t6.04% p.a.\t6.07% p.a.\t$0');
-    expect(appendedText(state)).toContain('LVR 80.01% to 90%\t6.44% p.a.\t6.47% p.a.\t(blank)');
+    expect(appendedText(state)).toContain(
+      'LVR 80.01% to 90%\tInterest rate: 6.44% p.a.\tComparison rate: 6.47% p.a.\tMonthly fee: (blank)',
+    );
     expect(siteRequests).toEqual([]);
 
     // The link in the box is now a page that has been read; the question is still there.

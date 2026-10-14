@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "What's the best rate on this page?",
   "mode": "protected",
-  "recordedAt": "2026-10-13T04:06:17.498Z",
+  "recordedAt": "2026-10-14T03:54:33.850Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-13.1",
-  "requestSha256": "bef10fcc87f009b7e6683674360dee8782602fa35faedca11e75e2b54c0d4d65",
-  "reply": "From the Example Lender page (read 13 Oct 2026, 12:00 pm Perth time), the lowest rate shown is 5.79% p.a. for the 2-year fixed owner occupier term, comparison rate 6.44% p.a.\n\nIf you're including variable, the lowest variable rate is 6.04% p.a. (LVR 60% or less), comparison rate 6.07% p.a.\n\nWorth noting this page was read today, so these rates are current as of this reading — if you check again later, re-read the page to confirm nothing's changed.",
+  "rulesVersion": "2026-10-14.1",
+  "requestSha256": "5773afac34bbf8a6fcf731b3dbd9b898a7d379f1359c64ff2ce8eba1c09d9734",
+  "reply": "The lowest rate on the page is the 2-year fixed rate for owner occupiers: 5.79% (comparison rate 6.44%), from the Example Lender page read 13 Oct 2026, 12:00 pm Perth time.\n\nIf \"best rate\" should instead mean the lowest variable rate, that's 6.04% p.a. (comparison rate 6.07% p.a.) for LVR 60% or less.\n\nNote: this page was true when read; if it's being relied on later, it should be checked again for current figures.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 13,
-    "outputTokens": 178,
-    "cacheReadTokens": 5662,
+    "outputTokens": 167,
+    "cacheReadTokens": 5875,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.004408
+  "costUsd": 0.004307
 }

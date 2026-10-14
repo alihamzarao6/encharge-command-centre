@@ -471,7 +471,7 @@ describe("the rules — ours, and never the page's", () => {
   it("a conversation with only files gets part 1's rules, byte for byte", () => {
     expect(rulesFor(true, false, NOW)).toBe(DOCUMENT_RULES);
     expect(rulesFor(false, false, NOW)).toBeNull();
-    expect(DOCUMENT_RULES_VERSION).toBe('2026-10-13.1');
+    expect(DOCUMENT_RULES_VERSION).toBe('2026-10-14.1');
   });
 
   it('a conversation that has had a page gets the web rules after them, with the time now', () => {

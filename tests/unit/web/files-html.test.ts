@@ -296,8 +296,74 @@ describe('a page that is almost entirely tables — what a rate sheet is', () =>
   });
 
   it(`writes an empty cell as ${EMPTY_CELL_MARK}, so a value never slides under the wrong heading`, () => {
-    expect(text).toContain(`LVR 80.01% to 90%\t6.44% p.a.\t6.47% p.a.\t${EMPTY_CELL_MARK}`);
-    expect(text).toContain(`LVR 90.01% to 95%\t6.84% p.a.\t${EMPTY_CELL_MARK}\t$10`);
+    expect(text).toContain(`Monthly fee: ${EMPTY_CELL_MARK}`);
+    expect(text).toContain(`Comparison rate: ${EMPTY_CELL_MARK}`);
+  });
+
+  // 14 Oct 2026: with the row written `LVR 80.01% to 90% · 6.44% p.a. · 6.47% p.a. · (blank)`
+  // the live model said the comparison rate was blank — 1 reply in 24 through the recorded
+  // request (tests/fixtures/files/blank-cell-before.json). Every value in a row with a blank
+  // now says which heading it is under.
+  it('a row with an empty cell names the heading of every value in it', () => {
+    expect(text).toContain(
+      [
+        'Loan to value ratio: LVR 80.01% to 90%',
+        'Interest rate: 6.44% p.a.',
+        'Comparison rate: 6.47% p.a.',
+        `Monthly fee: ${EMPTY_CELL_MARK}`,
+      ].join('\t'),
+    );
+    expect(text).toContain(
+      [
+        'Loan to value ratio: LVR 90.01% to 95%',
+        'Interest rate: 6.84% p.a.',
+        `Comparison rate: ${EMPTY_CELL_MARK}`,
+        'Monthly fee: $10',
+      ].join('\t'),
+    );
+    // The heading row and the rows with every cell filled are written as they always were.
+    expect(text).toContain('Loan to value ratio\tInterest rate\tComparison rate\tMonthly fee\n');
+    expect(text).toContain('LVR 60.01% to 80%\t6.14% p.a.\t6.17% p.a.\t$0\n');
+    expect(text).not.toMatch(/Interest rate: 6\.0[47]/);
+  });
+
+  it('two heading rows make one label; a column with no heading is written as it is', () => {
+    const body = textOf(
+      readHtml(
+        page(
+          `${FILLER}<table><thead><tr><th></th><th colspan="2">Owner occupier</th></tr>` +
+            `<tr><th></th><th>Rate</th><th>Comparison</th></tr></thead><tbody>` +
+            `<tr><td>1 year</td><td>5.89%</td><td>6.52%</td></tr>` +
+            `<tr><td>2 years</td><td>5.79%</td><td></td></tr></tbody></table>`,
+        ),
+      ),
+    );
+    expect(body).toContain('1 year\t5.89%\t6.52%\n');
+    expect(body).toContain(
+      `2 years\tOwner occupier Rate: 5.79%\tOwner occupier Comparison: ${EMPTY_CELL_MARK}`,
+    );
+  });
+
+  it('a heading is repeated as a few words, never as a paragraph', () => {
+    const long = 'Comparison rate for a secured loan of one hundred and fifty thousand dollars';
+    const body = textOf(
+      readHtml(
+        page(
+          `${FILLER}<table><tr><th>Band</th><th>${long}</th><th>Fee</th></tr>` +
+            `<tr><td>A</td><td>6.10%</td><td>$5</td></tr>` +
+            `<tr><td>B</td><td>6.20%</td><td></td></tr></table>`,
+        ),
+      ),
+    );
+    expect(body).toContain(`B\t${long.slice(0, 60)}: 6.20%\tFee: ${EMPTY_CELL_MARK}`);
+  });
+
+  it('a table whose headings are not marked as headings is still read by position — the known limit', () => {
+    // layout-table.html writes its heading row as bold <td>s. Nothing says it is a heading
+    // row, so there is no heading to repeat, and that row with a blank stays as it was.
+    expect(textOf(read('layout-table.html'))).toContain(
+      `Monthly service fee\t${EMPTY_CELL_MARK}\tNot charged`,
+    );
   });
 
   it('spreads a spanning heading over every column it covers, and a spanning cell over every row', () => {

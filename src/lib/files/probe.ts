@@ -253,7 +253,19 @@ export const LOOKUP_PROBES: readonly LookupProbe[] = [
     page: RATE_PAGE,
     question: 'What rate would someone with a 15% deposit get?',
     kind: 'lookup',
-    mustMention: ['6.44'],
+    // The comparison rate too (14 Oct 2026): that band's fee cell is blank, and one reply in
+    // 24 said the comparison rate was blank instead (blank-cell-before.json).
+    mustMention: ['6.44', '6.47'],
+  },
+  {
+    // The question that found it: asked straight, it was answered "blank" 8 times in 12
+    // before each value in a row with a blank carried its heading (web/src/lib/files/html.ts).
+    id: 'page-comparison-at-85',
+    file: 'rate-table.html',
+    page: RATE_PAGE,
+    question: 'What is the comparison rate for someone borrowing 85% of the value?',
+    kind: 'lookup',
+    mustMention: ['6.47'],
   },
   {
     id: 'page-rate-for-a-loan',

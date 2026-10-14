@@ -37,6 +37,7 @@ import {
   type LookupProbe,
   type RecordedProbe,
 } from '../../../src/lib/files/probe.js';
+import { EMPTY_CELL_MARK } from '../../../src/lib/files/limits.js';
 import { DOCUMENT_RULES, DOCUMENT_RULES_VERSION } from '../../../src/lib/files/rules.js';
 import { sanitiseTitle } from '../../../src/lib/files/text.js';
 import type { CompletionRequest } from '../../../src/lib/llm/client.js';
@@ -110,6 +111,103 @@ describe('before: the paragraph the client objected to', () => {
     expect(DOCUMENT_RULES).toContain('The person asking is Ross or one of his team');
     expect(DOCUMENT_RULES).toContain('It is never a borrower and never a member of the public');
     expect(DOCUMENT_RULES).toContain('Answer a lookup and stop');
+  });
+});
+
+/**
+ * BEFORE (tests/fixtures/files/blank-cell-before.json), 14 Oct 2026: the live model saying
+ * the 80.01–90% band's comparison rate is blank, when the page shows 6.47% p.a. and the blank
+ * in that row is the fee. Word for word, from the request the lookups are recorded with, the
+ * rules at 2026-10-13.1 and the reader writing the row by position. Reproduced on the 11th
+ * attempt of 24 for the question first seen; 8 in 12 asked straight.
+ */
+const BLANK_BEFORE = z
+  .object({
+    rulesVersion: z.literal('2026-10-13.1'),
+    rowAsSent: z.string(),
+    headingsAsSent: z.string(),
+    reproduction: z.object({
+      deposit: z.object({ asked: z.number(), wrong: z.number(), firstWrongOnAttempt: z.number() }),
+      compare85: z.object({ asked: z.number(), wrong: z.number() }),
+    }),
+    replies: z
+      .array(
+        z.object({
+          question: z.string().min(1),
+          requestSha256: z.string().length(64),
+          reply: z.string().min(1),
+        }),
+      )
+      .min(2),
+  })
+  .parse(JSON.parse(readFileSync(join(FIXTURES, 'blank-cell-before.json'), 'utf8')));
+
+const probeById = (id: string): LookupProbe => {
+  const found = LOOKUP_PROBES.find((probe) => probe.id === id);
+  if (found === undefined) throw new Error(`no probe ${id}`);
+  return found;
+};
+
+describe('before: a blank cell read as the comparison rate', () => {
+  it('the reader had the row right: 6.47% p.a. sat under "Comparison rate", the blank under the fee', () => {
+    const headings = BLANK_BEFORE.headingsAsSent.split('\t');
+    const row = BLANK_BEFORE.rowAsSent.split('\t');
+    expect(row[headings.indexOf('Comparison rate')]).toBe('6.47% p.a.');
+    expect(row[headings.indexOf('Monthly fee')]).toBe(EMPTY_CELL_MARK);
+  });
+
+  it('it was reproduced, and how often is on record', () => {
+    expect(BLANK_BEFORE.reproduction.deposit).toMatchObject({
+      asked: 24,
+      wrong: 1,
+      firstWrongOnAttempt: 11,
+    });
+    expect(BLANK_BEFORE.reproduction.compare85).toMatchObject({ asked: 12, wrong: 8 });
+    expect(BLANK_BEFORE.replies).toHaveLength(9);
+  });
+
+  it.each(BLANK_BEFORE.replies)('"$question" — the check fails on it', (before) => {
+    // The same check the recordings below are held to, for the question that was asked.
+    const probe = probeById(
+      before.question === probeById('page-rate-for-a-deposit').question
+        ? 'page-rate-for-a-deposit'
+        : 'page-comparison-at-85',
+    );
+    expect(judgeLookup(before.reply, probe).answered).toBe(false);
+    expect(before.reply).not.toContain('6.47');
+    expect(before.reply).toMatch(/comparison rate[^.]*\(?blank\)?/i);
+  });
+
+  it('today the same questions are a different request: the row names its headings, and the rules changed', async () => {
+    // The fingerprint is the request as JSON, so a tab in it is written `\t`.
+    const asSent = (text: string): string => JSON.stringify(text).slice(1, -1);
+    for (const id of ['page-rate-for-a-deposit', 'page-comparison-at-85']) {
+      const probe = probeById(id);
+      const today = requestFingerprintSource(await requestToday(probe));
+      expect(today).toContain(
+        asSent(`Comparison rate: 6.47% p.a.\tMonthly fee: ${EMPTY_CELL_MARK}`),
+      );
+      expect(today).not.toContain(asSent(BLANK_BEFORE.rowAsSent));
+      expect(today).toContain(asSent('LVR 60.01% to 80%\t6.14% p.a.\t6.17% p.a.\t$0'));
+      for (const before of BLANK_BEFORE.replies.filter((r) => r.question === probe.question)) {
+        expect(sha256(today)).not.toBe(before.requestSha256);
+      }
+    }
+    expect(DOCUMENT_RULES_VERSION).not.toBe(BLANK_BEFORE.rulesVersion);
+  });
+
+  it('the rules say what a blank cell is and is not', () => {
+    expect(DOCUMENT_RULES).toContain(
+      'that one cell has no value, and it says nothing about any other cell',
+    );
+    expect(DOCUMENT_RULES).toContain(
+      `the value is missing only if that cell is ${EMPTY_CELL_MARK}`,
+    );
+    expect(DOCUMENT_RULES).toContain(
+      'any row that plainly has fewer cells than the table has headings',
+    );
+    expect(DOCUMENT_RULES).toContain(`A row with ${EMPTY_CELL_MARK} in it is not such a row`);
+    expect(DOCUMENT_RULES).not.toContain('fewer values than the table has headings');
   });
 });
 

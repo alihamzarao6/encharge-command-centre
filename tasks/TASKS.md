@@ -315,8 +315,36 @@ at all, a small stage 1 is what it cost.*
   mutations in `docs/MEMORY.md` 14 Oct "build". **Stays unticked until:** the report is
   reviewed; CI green with zero skipped; deployed per RUNBOOK §1h; and two consecutive scheduled
   runs read back from the live project.
-- [ ] **Job 2 — a blank cell read as the comparison rate.** Reproduce first, with a committed
-  fixture. Built in the working tree; its own commit follows.
+- [ ] **Job 2 — a blank cell read as the comparison rate — BUILT, working tree, NOT committed.**
+  Reproduced live (1 in 24, first on attempt 11; 8 in 12 asked straight), fixture
+  `tests/fixtures/files/blank-cell-before.json`. The model half, fed by our own "fewer values"
+  rule and the neighbouring blank. Fixed in both places, each measured: the page reader names the
+  heading of every value in a row with a blank; the document rules (`2026-10-14.1`) say what a
+  blank is and is not. 0 in 24 after; the credit-advice check 0 of 18. D118; `docs/MEMORY.md`
+  14 Oct "Job 2". **Stays unticked until:** the report is reviewed; CI green; `chat` and the web
+  app deployed.
+- [ ] **PARTIAL — the wrong-number case is still reachable in two kinds of table.** The labels
+  (`Comparison rate: 6.47% p.a.`) are written only where the reader knows each column's
+  heading: an HTML table whose heading row is marked as headings (`<th>`, `<thead>`, or ARIA
+  column headers). Two kinds of table get the rewritten rules and NOT the labels:
+  - **typed PDFs** — `linesFromItems` (`web/src/lib/files/pdf.ts`) places cells by geometry
+    and never identifies a heading row. Rate sheets are mostly PDFs, so this is the larger
+    half.
+  - **HTML tables whose headings are just bold cells** (`<td><b>Fee</b></td>`, as in
+    `tests/fixtures/web/layout-table.html`) — nothing marks that row as headings.
+
+  Measured on the page with the rules alone (no labels): **2 wrong in 24** on the question
+  that was 8 in 12 before. Not zero.
+
+  *Closing it:*
+  - **PDF:** identify the heading row and place EVERY row's cells by x-position against the
+    column edges, then label rows with a blank as the HTML reader does. That is the rework of
+    `linesFromItems` this brief ruled out, and the same work would close the 12 Oct limitation
+    (a row with the right number of cells in the wrong places is not detected).
+  - **Bold-cell headings:** treat a first row whose every cell is bold as the heading row.
+    That is small in `html.ts`, but it is a guess: it would mislabel a table whose first row
+    is a bold data or totals row. It wants its own fixtures and a live measurement before it
+    ships.
 - [ ] **Open item, named so it is not lost again:** every acceptance criterion that rested on a
   function's log line was met in code and never true in production until the logger fix is
   deployed — listed in `docs/MEMORY.md` 14 Oct "build". After the deploy, check one line from
