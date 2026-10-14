@@ -544,7 +544,9 @@ describe.skipIf(env === null)('a page read from a link (requires a running Supab
     for (const part of parts.rows) expect(part.extraction_method).toBe('html_text');
     const text = parts.rows.map((part) => part.content).join('\n');
     expect(text).toContain(RATE_LINE);
-    expect(text).toContain('2 years\t5.79%\t(blank)');
+    // Since 14 Oct 2026 (D118) a row with an empty cell names the heading of every value in it.
+    expect(text).toContain('Term: 2 years\tOwner occupier: 5.79%\tInvestor: (blank)');
+    expect(text).toContain('1 year\t5.89%\t6.09%');
 
     // The audit row has ids and counts: no title, no address, not a word of the page.
     const audit = await db.query<{ after: string }>(
