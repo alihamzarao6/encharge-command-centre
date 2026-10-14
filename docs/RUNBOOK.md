@@ -516,6 +516,14 @@ SQL functions: `docs/SCHEMA.md` §3; the secret: `docs/SECURITY.md` §12. **The 
 makes every Edge Function's log lines reach Supabase for the first time** (the logger wrote
 to stdout, which the Edge runtime discards), so all six functions are redeployed.
 
+*(14 Oct 2026: done, in this order, `main` at `cb7bae4`; live since the 05:53 UTC tick; five
+consecutive runs read back and the worst gap between refreshes measured at 10 min 0.8 s —
+`docs/MEMORY.md` 14 Oct "shipped". Step 5 went in through the CLI rather than the dashboard:
+`node node_modules/supabase/dist/supabase.js db query --linked "<sql>"` — called directly so
+the SQL stays one argument (through `npx` on Windows it is split and refused) — with the value
+read from the file at run time, errors caught inside the statement, and Vault's value checked
+against the function's by SHA-256. No log source showed the statement afterwards.)*
+
 **Deploy — §1f's order. The job is inert until the LAST step, so nothing fires half-built:**
 
 1. Push a branch. CI green with zero skipped: the first from-zero replay of

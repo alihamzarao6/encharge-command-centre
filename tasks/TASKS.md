@@ -303,10 +303,12 @@ at all, a small stage 1 is what it cost.*
 
 ## Keeping the data fresh, and one wrong number (brief of 14 Oct) — two jobs, each its own commit
 
-- [ ] **Job 1 — the mirror keeps itself current — BUILT, working tree, NOT committed.** A
+- [x] **Job 1 — the mirror keeps itself current — SHIPPED 14 Oct (`main` `cb7bae4`, CI run
+  38517734893 green with zero skipped, deployed per RUNBOOK §1h, live since 05:53 UTC; five
+  consecutive scheduled runs read back; measured worst staleness 10 min 0.8 s).** A
   `pg_cron` job (`ghl-sync`, every ten minutes) asks the `crm` function for the existing sync
-  through `pg_net`, authenticated by a secret of its own held in Vault and in the function's
-  secrets; the next tick turns a request that produced no run into a named failed row the
+  through `pg_net`, with a two-minute token signed by a secret of its own held in Vault and in
+  the function's secrets (the secret itself is never sent); the next tick turns a request that produced no run into a named failed row the
   screens and the connector already show (migration `20261014010000`,
   `src/lib/crm/schedule.ts`, `scheduled-sync` in `page.ts`). With it, as ruled 14 Oct: both
   mirror screens find the newest applied run however many failures sit on top of it, and re-read
@@ -315,8 +317,8 @@ at all, a small stage 1 is what it cost.*
   mutations in `docs/MEMORY.md` 14 Oct "build". **Stays unticked until:** the report is
   reviewed; CI green with zero skipped; deployed per RUNBOOK §1h; and two consecutive scheduled
   runs read back from the live project.
-- [ ] **Job 2 — a blank cell read as the comparison rate — BUILT, working tree, NOT committed.**
-  Reproduced live (1 in 24, first on attempt 11; 8 in 12 asked straight), fixture
+- [x] **Job 2 — a blank cell read as the comparison rate — SHIPPED 14 Oct (`0b05b3b` and
+  `5ea1105` on `main`; `chat` v19 carries the rules, the web app the reader).** Reproduced live (1 in 24, first on attempt 11; 8 in 12 asked straight), fixture
   `tests/fixtures/files/blank-cell-before.json`. The model half, fed by our own "fewer values"
   rule and the neighbouring blank. Fixed in both places, each measured: the page reader names the
   heading of every value in a row with a blank; the document rules (`2026-10-14.1`) say what a
@@ -346,9 +348,11 @@ at all, a small stage 1 is what it cost.*
     is a bold data or totals row. It wants its own fixtures and a live measurement before it
     ships.
 - [ ] **Open item, named so it is not lost again:** every acceptance criterion that rested on a
-  function's log line was met in code and never true in production until the logger fix is
-  deployed — listed in `docs/MEMORY.md` 14 Oct "build". After the deploy, check one line from
-  each of the six functions arrives (RUNBOOK §1h step 6 shows how for `crm`).
+  function's log line was met in code and never true in production until the logger fix was
+  deployed — listed in `docs/MEMORY.md` 14 Oct "build". **Deployed 14 Oct; lines seen in
+  Supabase from `crm` (05:50 and 05:53 UTC) and `connector` (05:56).** Still to see: one line
+  each from `chat`, `memory`, `admin` and `files` — they write nothing for a request refused
+  before sign-in, so it comes with use. Function logs, search `"logger":"encharge"`.
 - [ ] **KNOWN WALL — the sync stops working somewhere between about 300 and 600 leads.**
   **Supersedes the 12 Sep "revisit at about 2,000 contacts"**, which assumed GoHighLevel's
   rate (10 requests a second); the sync actually makes its requests one after another.

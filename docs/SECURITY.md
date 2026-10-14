@@ -905,7 +905,17 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
   security suite's catalog check caught the grant. Whoever could read the queue now holds a
   token that expires in two minutes and can do nothing but start the same sync under the same
   lock. (No browser can reach the `net` schema through the API at all; that is asserted
-  too.) The secret opens one door: start the
+  too.) **Constant time:** the signature comparison runs over all 64 hex characters,
+  XOR-accumulated, with no early exit; the checks before it (shape, two-minute window) look
+  only at the token, never at the secret. **Replay: harmless, not prevented.** A token is not
+  single-use. Within its two minutes it can be sent again: while a run holds the slot the
+  lock refuses it (409); once that run ends, it starts one more full sync of our own mirror,
+  because the schedule does not use the 60 s cooldown. Worst case is runs back to back for two
+  minutes — about two dozen at today's 3–6 s a run, a few hundred GoHighLevel reads on the
+  shared token, unchanged rows untouched. And it needs someone who can already run SQL as an
+  API role against the `net` schema, which the API does not serve. Preventing it would mean
+  remembering the last second accepted and refusing anything not newer — not built.
+  The secret opens one door: start the
   existing sync, under the existing lock; the cooldown does not apply to it, and it opens no
   other action (a session is still required for `sync`, `move`, `note`). **Not the
   service-role key**, which the platform's guide puts in the cron command: that would put the
