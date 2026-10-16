@@ -236,6 +236,8 @@ export const FILES_MESSAGES = {
   capMonth:
     "This month's budget for the assistant has been used up, so this page was not read and the file was not attached.",
   readAgain: 'That page has to be opened again before it can be attached. Try again.',
+  readAgainDrive:
+    'That file has to be read from Google Drive again before it can be attached. Try again.',
   siteJustRead: 'That site was opened a moment ago. Wait a few seconds, then try again.',
   pageNotSaved:
     'The page was opened but could not be recorded just now, so it was not read. Try again.',
@@ -307,6 +309,8 @@ const REQUEST = z.discriminatedUnion('action', [
     /** Milestone 5 part 2: the fetch these bytes came from, and the page's own title. */
     fetchId: UUID.optional(),
     title: z.string().max(2_000).optional(),
+    /** Milestone 5 part 3a: the Drive read these bytes came from. */
+    driveReadId: UUID.optional(),
   }),
   z.object({
     action: z.literal('fetch_page'),
@@ -339,6 +343,8 @@ const REQUEST = z.discriminatedUnion('action', [
     extractMs: z.number().min(0).max(86_400_000).optional(),
     /** The fetch that handed the browser the page it then refused. */
     fetchId: UUID.optional(),
+    /** The Drive read that handed the browser the file it then refused. */
+    driveReadId: UUID.optional(),
   }),
 ]);
 
@@ -364,6 +370,7 @@ function toView(record: FileRecord): FileView {
     fetchedAt: record.fetchedAt,
     valuesMissing: record.valuesMissing,
     readAsSent: record.readAsSent,
+    driveFileId: record.driveFileId,
   };
 }
 
@@ -556,9 +563,31 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
 
   // From a link (Milestone 5 part 2)? Then only against the server's own record of having
   // fetched exactly these bytes. The database checks again, under a lock (FL007); this check
-  // is here so that each way of failing gets its own sentence.
+  // is here so that each way of failing gets its own sentence. From Drive (part 3a): the same,
+  // against the record of the read — and the name is Drive's, never the browser's.
   let sourceHost: string | null = null;
-  if (request.fetchId !== undefined) {
+  let driveName: string | null = null;
+  if (request.fetchId !== undefined && request.driveReadId !== undefined) {
+    return bad('A file comes from a link or from Drive, not both.');
+  }
+  if (request.driveReadId !== undefined) {
+    if (request.kind === 'html') return refusedHere('active_content');
+    const found = await deps.files.getDriveRead(request.driveReadId);
+    if (!found.ok) {
+      log.error('drive read record unavailable for an upload', { error: found.error });
+      return failure(503, found.error.code, FILES_MESSAGES.storeDown, true);
+    }
+    const receipt = found.value;
+    // "Never read", "somebody else's", "refused" and "gone with a disconnect" are one answer.
+    const usable = receipt?.userId === user.userId && receipt.status === 'fetched' ? receipt : null;
+    if (usable?.name == null) {
+      return failure(409, 'FETCH_EXPIRED', FILES_MESSAGES.readAgainDrive, true);
+    }
+    if (usable.byteSize !== request.byteSize || usable.contentHash !== request.contentHash) {
+      return bad('What was sent is not the file that was read from Drive.');
+    }
+    driveName = usable.name;
+  } else if (request.fetchId !== undefined) {
     const found = await deps.files.getFetch(request.fetchId);
     if (!found.ok) {
       log.error('fetch record unavailable for an upload', { error: found.error });
@@ -610,11 +639,13 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     uploadedBy: user.userId,
     requestId: request.requestId,
     // A page is named by its own title where it has one, and by its host where it has not;
-    // either way the words are the page's, and are cleaned like a stranger's file name.
+    // either way the words are the page's, and are cleaned like a stranger's file name. A
+    // Drive file is named as Drive named it when it was read (the database insists too).
     name:
-      sourceHost === null
+      driveName ??
+      (sourceHost === null
         ? sanitiseFileName(request.name)
-        : sanitiseTitle(request.title ?? request.name, sourceHost),
+        : sanitiseTitle(request.title ?? request.name, sourceHost)),
     kind: request.kind,
     byteSize: request.byteSize,
     contentHash: request.contentHash,
@@ -624,6 +655,7 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     retentionDays:
       request.kind === 'html' ? deps.config.pageRetentionDays : deps.config.retentionDays,
     ...(request.fetchId === undefined ? {} : { fetchId: request.fetchId }),
+    ...(request.driveReadId === undefined ? {} : { driveReadId: request.driveReadId }),
   });
   if (!begun.ok) {
     if (fileStoreReason(begun.error) === 'too_many_files') return refusedHere('too_many_files');
@@ -647,7 +679,7 @@ async function begin(ctx: Ctx, request: ActionRequest<'begin'>): Promise<FilesPa
     extractMs: request.extractMs ?? null,
     resumed: begun.value.existing && !begun.value.duplicate,
     duplicate: begun.value.duplicate,
-    source: sourceHost === null ? 'upload' : 'link',
+    source: driveName !== null ? 'drive' : sourceHost === null ? 'upload' : 'link',
   });
   return {
     status: 200,
@@ -877,7 +909,12 @@ async function finish(ctx: Ctx, request: ActionRequest<'finish'>): Promise<Files
     visionPages: done.value.visionPages,
     totalMs: ctx.now().getTime() - new Date(file.createdAt).getTime(),
     outcome: done.value.duplicate ? 'duplicate' : done.value.already ? 'already' : 'attached',
-    source: stored.value.sourceHost === null ? 'upload' : 'link',
+    source:
+      stored.value.driveFileId !== null
+        ? 'drive'
+        : stored.value.sourceHost === null
+          ? 'upload'
+          : 'link',
     valuesMissing: stored.value.valuesMissing,
     readAsSent: stored.value.readAsSent,
     replaced: done.value.replaced,
@@ -1110,6 +1147,11 @@ async function refusedByBrowser(
     extractMs: request.extractMs ?? null,
     at: 'browser',
     ...(request.fetchId === undefined ? {} : { fetchId: request.fetchId, source: 'link' }),
+    // The Drive record is not closed here: it is checked byte for byte at `begin`, these
+    // bytes were refused, and it expires with the read's fifteen minutes in any case.
+    ...(request.driveReadId === undefined
+      ? {}
+      : { driveReadId: request.driveReadId, source: 'drive' }),
   });
   if (request.fetchId !== undefined) {
     // The page was fetched and then found to be a paywall, a login page, nothing at all.

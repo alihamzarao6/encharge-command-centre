@@ -65,6 +65,7 @@ const page = (overrides: Partial<AttachedFile> = {}): AttachedFile => ({
   valuesMissing: 0,
   readAsSent: false,
   removedReason: null,
+  driveFileId: null,
   ...overrides,
 });
 
@@ -81,6 +82,8 @@ const item = (overrides: Partial<UploadItem> = {}): UploadItem => ({
   estimate: null,
   source: 'link',
   url: RATES,
+  driveFileId: null,
+  reconnect: false,
   ...overrides,
 });
 

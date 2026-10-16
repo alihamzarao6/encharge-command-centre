@@ -50,6 +50,8 @@ export interface AttachedFile {
   readonly readAsSent: boolean;
   /** Why a removed file went: taken back, timed out, or read again. Null while it is here. */
   readonly removedReason: 'user' | 'expired' | 'replaced' | null;
+  /** Milestone 5 part 3a: the Google Drive file it was read from. Null otherwise. */
+  readonly driveFileId: string | null;
 }
 
 export interface VisionEstimate {
@@ -77,6 +79,8 @@ export type FilesRequest =
       /** A page that was fetched: the server's record of the fetch, and the page's title. */
       readonly fetchId?: string;
       readonly title?: string;
+      /** A file read from Google Drive: the server's record of that read. */
+      readonly driveReadId?: string;
     }
   | {
       readonly action: 'append';
@@ -103,6 +107,7 @@ export type FilesRequest =
       readonly reason: RefusalCode;
       readonly extractMs: number;
       readonly fetchId?: string;
+      readonly driveReadId?: string;
     };
 
 export interface BeginReply {
@@ -242,6 +247,7 @@ function completeFile(file: AttachedFile): AttachedFile {
     valuesMissing: typeof loose.valuesMissing === 'number' ? loose.valuesMissing : 0,
     readAsSent: loose.readAsSent === true,
     removedReason: null,
+    driveFileId: typeof loose.driveFileId === 'string' ? loose.driveFileId : null,
   };
 }
 
@@ -534,10 +540,11 @@ export type ConversationFileRow = {
   values_missing: number;
   read_as_sent: boolean;
   removed_reason: string | null;
+  drive_file_id: string | null;
 };
 
 export const CONVERSATION_FILE_COLUMNS =
-  'id, conversation_id, uploaded_by, name, kind, byte_size, page_count, vision_pages, status, created_at, expires_at, source_url, source_host, fetched_at, values_missing, read_as_sent, removed_reason';
+  'id, conversation_id, uploaded_by, name, kind, byte_size, page_count, vision_pages, status, created_at, expires_at, source_url, source_host, fetched_at, values_missing, read_as_sent, removed_reason, drive_file_id';
 
 const KINDS: readonly string[] = ['pdf', 'docx', 'xlsx', 'csv', 'text', 'image', 'html'];
 
@@ -569,6 +576,7 @@ export function toAttachedFiles(rows: readonly ConversationFileRow[]): readonly 
         row.removed_reason === 'replaced'
           ? row.removed_reason
           : null,
+      driveFileId: typeof row.drive_file_id === 'string' ? row.drive_file_id : null,
     });
   }
   return out;

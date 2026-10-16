@@ -31,7 +31,8 @@
     "crm": "tsx scripts/crm.ts",
     "files": "tsx scripts/files.ts",
     "pages": "tsx scripts/pages.ts",
-    "connector": "tsx scripts/connector.ts"
+    "connector": "tsx scripts/connector.ts",
+    "drive": "tsx scripts/drive.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

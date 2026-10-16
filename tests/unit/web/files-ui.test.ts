@@ -56,6 +56,7 @@ const FILE: AttachedFile = {
   valuesMissing: 0,
   readAsSent: false,
   removedReason: null,
+  driveFileId: null,
 };
 
 const item = (overrides: Partial<UploadItem> = {}): UploadItem => ({
@@ -71,6 +72,8 @@ const item = (overrides: Partial<UploadItem> = {}): UploadItem => ({
   estimate: null,
   source: 'file',
   url: null,
+  driveFileId: null,
+  reconnect: false,
   ...overrides,
 });
 
@@ -308,6 +311,7 @@ describe('reading the files endpoint', () => {
       values_missing: 0,
       read_as_sent: false,
       removed_reason: null,
+      drive_file_id: null,
       ...overrides,
     });
     expect(
@@ -336,6 +340,7 @@ describe('reading the files endpoint', () => {
         valuesMissing: 0,
         readAsSent: false,
         removedReason: null,
+        driveFileId: null,
       },
       {
         id: 'f2',
@@ -355,6 +360,7 @@ describe('reading the files endpoint', () => {
         valuesMissing: 0,
         readAsSent: false,
         removedReason: null,
+        driveFileId: null,
       },
     ]);
     // A page read from a link carries where it came from; a reason nobody defined is no reason.

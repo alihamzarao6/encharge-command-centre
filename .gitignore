@@ -18,6 +18,7 @@ supabase/functions/admin/index.ts
 supabase/functions/crm/index.ts
 supabase/functions/files/index.ts
 supabase/functions/connector/index.ts
+supabase/functions/drive/index.ts
 web/dist/
 tests/e2e/.output/
 supabase/.branches/

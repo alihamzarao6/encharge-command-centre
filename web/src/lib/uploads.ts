@@ -26,6 +26,13 @@
  * Try again and "attached whole or not at all" are exactly what they are for a file. What a
  * link adds is one step at the front (`fetching`), and a promise back to whoever asked —
  * the message box, which may be waiting to send once the page is in.
+ *
+ * Milestone 5 part 3a: A FILE FROM GOOGLE DRIVE IS ONE MORE THING IN THE SAME QUEUE. `addDrive`
+ * asks our server to read the file from his Drive (the browser holds no Google credential and
+ * never contacts Google), then reads the bytes with the same readers — as a file, never as a
+ * web page — and sends the text through the same steps, against the server's record of the
+ * read. The same Drive file picked twice is one read; a failure that is the CONNECTION, not
+ * the file, says so and points at Settings, because "Try again" cannot fix it.
  */
 import {
   FILE_LIMITS,
@@ -44,6 +51,7 @@ import type {
   ReplyFor,
   VisionEstimate,
 } from './filesApi.js';
+import type { DriveFile, DriveOutcome } from './driveApi.js';
 import type { ExtractedPage, Extraction, ExtractionOk } from './files/types.js';
 
 /** A file as the browser hands it over. `bytes` is not called until its turn comes. */
@@ -87,10 +95,20 @@ export interface UploadItem {
   readonly message: string | null;
   readonly retryable: boolean;
   readonly estimate: VisionEstimate | null;
-  /** Where it came from: chosen on this device, or a link the person asked to have read. */
-  readonly source: 'file' | 'link';
-  /** For a link: the address, as sent. Null for a file. */
+  /** Where it came from: chosen on this device, a link he asked to have read, or his Drive. */
+  readonly source: 'file' | 'link' | 'drive';
+  /** For a link: the address, as sent. Null otherwise. */
   readonly url: string | null;
+  /** For a file from Drive: the Drive file asked for. Null otherwise. */
+  readonly driveFileId: string | null;
+  /** The failure is the Drive CONNECTION: the way out is Settings, not "Try again". */
+  readonly reconnect: boolean;
+}
+
+/** A file he picked from Drive, as the picker hands it over. The name is a hint only. */
+export interface PickedDriveFile {
+  readonly fileId: string;
+  readonly name: string | null;
 }
 
 /** How reading a link ended, for whoever asked for it. */
@@ -148,6 +166,12 @@ export interface UploadsDeps {
     signal: AbortSignal,
     onProgress: (received: number, total: number) => void,
   ) => Promise<FilesOutcome<FetchedPage>>;
+  /** Has OUR server read one file from his Drive and hands back its bytes. Never throws. */
+  readonly readDrive: (
+    request: { readonly requestId: string; readonly fileId: string },
+    signal: AbortSignal,
+    onProgress: (received: number, total: number) => void,
+  ) => Promise<DriveOutcome<DriveFile>>;
   readonly hash: (bytes: Uint8Array) => Promise<string>;
   readonly call: FilesCall;
   /** The conversation's files, read under RLS; null = could not. */
@@ -170,6 +194,11 @@ export interface UploadsStore {
    * way or the other; never rejects. An address already being read is the same read.
    */
   readonly addLink: (url: string) => Promise<LinkOutcome>;
+  /**
+   * Read these files from his Drive into the conversation, one at a time like any upload. A
+   * Drive file already on its way in is not asked for twice.
+   */
+  readonly addDrive: (files: readonly PickedDriveFile[]) => void;
   /** Yes to reading a scan. */
   readonly confirm: (localId: string) => void;
   /** Stop an upload, or take a stopped one off the list. Nothing of it is kept. */
@@ -214,6 +243,10 @@ interface Work {
   readonly link: { readonly url: string; readonly host: string } | null;
   /** What our server handed back for that link, once it has. */
   fetched: FetchedPage | null;
+  /** A file from his Drive. Null otherwise. */
+  readonly drive: { readonly fileId: string } | null;
+  /** What our server handed back for that Drive file, once it has. */
+  fromDrive: DriveFile | null;
   /** How it ended, when it ended well. */
   outcome: LinkOutcome | null;
   /** Whoever is waiting to hear. */
@@ -322,13 +355,16 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       progress === undefined || progress.total <= 1
         ? failure.message
         : UPLOAD_MESSAGES.stoppedAt(progress.done, progress.total, failure.message);
+    // A Drive failure that is the connection itself: Settings is the way out (D122).
+    const reconnect = 'reconnect' in failure && failure.reconnect === true;
     if (failure.failure === 'refused') {
-      update(localId, { phase: 'refused', message: failure.message, retryable: false });
+      update(localId, { phase: 'refused', message: failure.message, retryable: false, reconnect });
     } else {
       update(localId, {
         phase: 'failed',
         message,
         retryable: failure.failure === 'retryable',
+        reconnect,
       });
     }
     set({ announcement: `${nameOf(localId)} ${notDone(localId)} ${message}` });
@@ -347,6 +383,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     // has already been shown, and the report carries a size and a reason, never the file.
     // For a page it also closes the server's record of the fetch: those bytes were refused.
     const fetchId = work.get(localId)?.fetched?.fetchId;
+    const driveReadId = work.get(localId)?.fromDrive?.readId;
     void deps.call({
       action: 'refused',
       kind,
@@ -354,6 +391,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       reason: code,
       extractMs: work.get(localId)?.extractMs ?? 0,
       ...(fetchId === undefined ? {} : { fetchId }),
+      ...(driveReadId === undefined ? {} : { driveReadId }),
     });
   };
 
@@ -429,6 +467,63 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
             ? sanitiseTitle(extraction.title, fetched.host)
             : sanitiseFileName(fetched.fileName),
       });
+    }
+
+    // 0b. A file from Drive: our server reads it from his Drive, then it is read here as a FILE
+    // (never as a web page: `fromLink` is not set), exactly as one chosen on this device.
+    if (job.drive !== null && job.extraction === null) {
+      if (job.fromDrive === null) {
+        update(localId, { phase: 'fetching', done: 0, total: 0, message: null, reconnect: false });
+        set({ announcement: `Getting ${nameOf(localId)} from Google Drive.` });
+        const read = await deps.readDrive(
+          // A new id for every attempt: the server reads one file per id, once.
+          { requestId: deps.newRequestId(), fileId: job.drive.fileId },
+          signal,
+          (received, total) => {
+            if (!cancelled()) update(localId, { done: received, total });
+          },
+        );
+        if (cancelled()) return;
+        if (read.kind === 'error') {
+          if (read.failure === 'unauthenticated') await deps.onSessionExpired();
+          stop(localId, read);
+          return;
+        }
+        job.fromDrive = read.reply;
+        // Drive's name at the moment it was read — renamed since it was picked, it is this one.
+        update(localId, { name: read.reply.name, byteSize: read.reply.bytes.length });
+      }
+      const fromDrive = job.fromDrive;
+      update(localId, { phase: 'reading', done: 0, total: 0, message: null });
+      set({ announcement: `Reading ${nameOf(localId)}.` });
+      const started = deps.now();
+      let extraction: Extraction;
+      try {
+        extraction = await deps.extract(
+          { name: fromDrive.fileName, bytes: fromDrive.bytes, contentType: fromDrive.contentType },
+          (done, total) => {
+            if (!cancelled()) update(localId, { done, total });
+          },
+          signal,
+        );
+      } catch {
+        refuse(localId, 'corrupt', refusal('corrupt').message, null);
+        return;
+      }
+      job.extractMs = Math.round(deps.now() - started);
+      if (cancelled()) {
+        if (extraction.ok) extraction.dispose();
+        return;
+      }
+      if (!extraction.ok) {
+        refuse(localId, extraction.refusal.code, extraction.refusal.message, extraction.kind);
+        return;
+      }
+      job.extraction = extraction;
+      job.contentHash = fromDrive.contentHash;
+      // The bytes have been read; only what was read is kept from here.
+      job.fromDrive = { ...fromDrive, bytes: new Uint8Array(0) };
+      update(localId, { kind: extraction.kind });
     }
 
     // 1. Read it, here. Size first: a file that is too big is never even loaded.
@@ -514,7 +609,7 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       action: 'begin',
       requestId: job.requestId,
       conversationId: state.conversationId,
-      name: sanitiseFileName(job.file?.name ?? job.fetched?.fileName ?? ''),
+      name: sanitiseFileName(job.file?.name ?? job.fetched?.fileName ?? job.fromDrive?.name ?? ''),
       kind: extraction.kind,
       byteSize: nameOfSize(localId),
       contentHash: job.contentHash ?? '',
@@ -528,6 +623,9 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
             fetchId: job.fetched.fetchId,
             ...(typeof extraction.title === 'string' ? { title: extraction.title } : {}),
           }),
+      // A file from Drive: `begin` checks it against the server's record of the read, and
+      // names it as Drive did.
+      ...(job.fromDrive === null ? {} : { driveReadId: job.fromDrive.readId }),
     });
     if (begun.kind === 'ok' && state.conversationId === null) {
       // The claim opened a conversation, and the thread is still on "new": this is that
@@ -546,13 +644,14 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
     }
     if (begun.kind === 'error') {
       if (begun.failure === 'unauthenticated') await deps.onSessionExpired();
-      if (begun.code === 'FETCH_EXPIRED' && job.link !== null) {
-        // The server no longer stands behind what it fetched (it was too long ago, or these
-        // are not the bytes it handed over). Nothing read from them is kept: "Try again"
-        // opens the page afresh, and a scan is asked about again, since it may have changed.
+      if (begun.code === 'FETCH_EXPIRED' && (job.link !== null || job.drive !== null)) {
+        // The server no longer stands behind what it fetched (it was too long ago, these are
+        // not the bytes it handed over, or Drive was disconnected since). Nothing read from
+        // them is kept: "Try again" reads it afresh, and a scan is asked about again.
         job.extraction?.dispose();
         job.extraction = null;
         job.fetched = null;
+        job.fromDrive = null;
         job.contentHash = null;
         job.confirmed = false;
       }
@@ -565,7 +664,9 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       set((current) => ({
         announcement:
           link === null
-            ? `${nameOf(localId)} is already attached to this conversation.`
+            ? job.drive === null
+              ? `${nameOf(localId)} is already attached to this conversation.`
+              : `${nameOf(localId)} is already in this conversation, unchanged in Google Drive.`
             : `${nameOf(localId)} has not changed since it was last read.`,
         readLinks:
           link === null
@@ -663,7 +764,9 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
       files: [...current.files.filter((file) => file.id !== attached.id), attached],
       announcement:
         link === null
-          ? `${nameOf(localId)} attached: ${pages}.${notes}`
+          ? job.drive === null
+            ? `${nameOf(localId)} attached: ${pages}.${notes}`
+            : `${nameOf(localId)} attached from Google Drive: ${pages}.${notes}${replaced ? ' It replaces the earlier read of this file.' : ''}`
           : `Page read: ${nameOf(localId)}, from ${link.host}. ${pages}.${notes}${replaced ? ' It replaces the earlier read of this page.' : ''}`,
       readLinks:
         link === null ? current.readLinks : { ...current.readLinks, [link.url]: attached.id },
@@ -760,6 +863,8 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
           file,
           link: null,
           fetched: null,
+          drive: null,
+          fromDrive: null,
           outcome: null,
           waiters: [],
           requestId: deps.newRequestId(),
@@ -784,6 +889,8 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
           estimate: null,
           source: 'file',
           url: null,
+          driveFileId: null,
+          reconnect: false,
         };
       });
       set((current) => ({ uploads: [...current.uploads, ...items] }));
@@ -816,6 +923,8 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
           file: null,
           link: { url: target.href, host },
           fetched: null,
+          drive: null,
+          fromDrive: null,
           outcome: null,
           waiters: [resolve],
           requestId: deps.newRequestId(),
@@ -843,11 +952,73 @@ export function createUploadsStore(deps: UploadsDeps): UploadsStore {
               estimate: null,
               source: 'link',
               url: target.href,
+              driveFileId: null,
+              reconnect: false,
             },
           ],
         }));
         void pump();
       });
+    },
+
+    addDrive: (picked) => {
+      const items: UploadItem[] = [];
+      const asked = new Set<string>();
+      for (const choice of picked) {
+        // Only an id of Drive's shape is ever sent; the server checks again.
+        if (!/^[A-Za-z0-9_-]{8,200}$/.test(choice.fileId) || asked.has(choice.fileId)) continue;
+        // The same file already on its way in is the same read; a stopped attempt at it is
+        // replaced by this one rather than left beside it.
+        const running = state.uploads.find(
+          (item) => item.driveFileId === choice.fileId && ACTIVE.includes(item.phase),
+        );
+        if (running !== undefined) continue;
+        for (const stale of state.uploads.filter((item) => item.driveFileId === choice.fileId)) {
+          drop(stale.localId);
+        }
+        asked.add(choice.fileId);
+        const localId = nextLocalId();
+        work.set(localId, {
+          file: null,
+          link: null,
+          fetched: null,
+          drive: { fileId: choice.fileId },
+          fromDrive: null,
+          outcome: null,
+          waiters: [],
+          requestId: deps.newRequestId(),
+          abort: new AbortController(),
+          extraction: null,
+          contentHash: null,
+          extractMs: 0,
+          fileId: null,
+          answer: null,
+          confirmed: false,
+        });
+        items.push({
+          localId,
+          // The picker's name is a hint until the server says what Drive calls it now.
+          name:
+            choice.name === null || choice.name.trim() === ''
+              ? 'A file from Google Drive'
+              : sanitiseFileName(choice.name),
+          byteSize: 0,
+          kind: null,
+          phase: 'waiting',
+          done: 0,
+          total: 0,
+          message: null,
+          retryable: false,
+          estimate: null,
+          source: 'drive',
+          url: null,
+          driveFileId: choice.fileId,
+          reconnect: false,
+        });
+      }
+      if (items.length === 0) return;
+      set((current) => ({ uploads: [...current.uploads, ...items] }));
+      void pump();
     },
 
     confirm: (localId) => {

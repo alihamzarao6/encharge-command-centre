@@ -335,6 +335,24 @@ line, error body or stored record other than the address column itself;
 in `web_fetches.requested_url` for one day (§11) and in `conversation_files.source_url` while
 the page is kept, both readable only as §6 says.
 
+### A file picked from Google Drive (Milestone 5 part 3a, 16 Oct 2026) — the same wrapper, no new door
+
+Drive is a new way for a file's bytes to arrive, not a new way to read them (the brief's
+decision 3). The bytes go through part 1's readers in the browser — as a file, never as a web
+page (an `html` file from Drive is refused, as an uploaded one is) — and the text reaches the
+model in part 1's wrapper, exactly as an upload's does: no `source=` attribute, and none of the
+web-page rules, because a file from his own Drive is not a page anyone in the world can write.
+The defences above apply unchanged, and a Drive file adds no instruction of its own to the
+system prompt. That it is the same request is proven, not argued:
+`tests/unit/files/drive-injection.test.ts` reads the three injection fixtures with the real
+reader, stores each as a Drive row, loads it through the real store adapter and turn builder,
+and hashes the request — it is byte-for-byte the request part 1 recorded the live model
+refusing (`tests/unit/files/injection-live.test.ts`), with the planted instruction once, inside
+the wrapper. With the store treating a Drive row as a page (a host and a read time are what
+make a row "from a link"), 9 of its 10 tests fail; the tenth is that trigger shape, kept as a
+canary. `tests/integration/drive.test.ts` follows a Drive file's text into the model's request
+on a real stack. Where the connection and its tokens live: §12b.
+
 ---
 
 ## 4. Database access
@@ -647,7 +665,10 @@ chunk, 3× more, for a task that is not hard. At 300 turns a month that is ~60 c
 ## 9. Third-party tokens
 
 - OAuth tokens in Supabase Vault or n8n's credential store. `social_accounts.token_ref` holds
-  a reference, never the token.
+  a reference, never the token. *(Google Drive, M5 part 3a, is the exception and the stricter
+  case: its refresh tokens are sealed in the function with a key held only in the function's
+  secrets, so the database never holds a usable one — Vault would decrypt them inside the
+  database for anyone with SQL as the service role. §12b, D124.)*
 - Automated refresh. Alert 7 days before expiry.
 - Minimum scopes only — read insights, nothing else.
 - Token values never logged, never returned by any API, never rendered in Notion.
@@ -817,6 +838,18 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
   has used throughout, so nothing changes in the code).
 - **No other party.** No search service, no scraping, rendering or extraction service, no
   proxy. A page's text reaches Anthropic with a question, exactly as a file's does.
+- **A file picked from Google Drive (Milestone 5 part 3a, D121).** Held exactly as an
+  attachment is — the text read out of it, 30 days, Remove, the nightly purge — and **never its
+  bytes**: they pass through the `drive` function's memory to the browser and are written
+  nowhere, so his Drive stays the only copy of the file. Beside the text: the Drive file's id
+  and its one address (`conversation_files.drive_file_id`, `source_url`), visible to whoever
+  can see the conversation and gone when the file is; and one row per read in `drive_reads` —
+  who, which Drive file, Google's type, the size and SHA-256, no content, no browser access —
+  deleted after 24 hours and at once on disconnect. The connection itself
+  (`drive_connections`) holds the Google account's address, so the page can say which account
+  is connected, and the refresh token sealed (§12b). Disconnecting does not delete text already
+  attached to conversations; the confirm step says so. Google learns which files the app opened
+  for him — it is his grant — and nothing about the conversation they were opened for.
 
 ---
 
@@ -1038,6 +1071,135 @@ The 2026-07-28 ("no handshake") half of the protocol against a real client: the 
 client still opens with `initialize`, so that half is tested against the specification's own
 examples only.
 
+## 12b. Google Drive — his own files, through his own grant (Milestone 5 part 3a, 16 Oct 2026)
+
+A person connects his Google Drive once, then picks a file and asks about it. The grant is
+his: what it can reach is decided by Google's `drive.file` scope — **only files he picks
+through this app, nothing else in his Drive** — and the one scope is checked on every grant
+(the brief's decision 1; a wider grant is revoked, never kept). Decisions: `docs/MEMORY.md`
+D119–D127; code `src/lib/drive/`; migration `20261016010000_drive.sql`.
+
+**Where each credential lives — and where it never goes.**
+
+| Credential | Lives | Never |
+|---|---|---|
+| OAuth client secret | `GOOGLE_DRIVE_CLIENT_SECRET`, the `drive` function's secrets | the browser, the database, a log, a fixture |
+| Refresh token | `drive_connections.refresh_token_sealed` — **AES-256-GCM, sealed in the function** with `DRIVE_TOKEN_KEY` (function secret only), the person and the token id as associated data (D124) | readable from the database alone; the browser; a log |
+| Access token | minted from the refresh token for one request, in the function's memory for that request | stored anywhere; returned in any reply; logged |
+| Authorization code | `drive_oauth_states.code_sealed`, sealed, from the callback until `connect_finish` takes it (≤ 10 minutes), then deleted | exchanged by the callback; sent to the browser by us |
+| PKCE verifier | `drive_oauth_states.verifier_sealed`, sealed | anywhere else |
+| `state` | its SHA-256 only, single-use, ten minutes | stored in clear |
+
+The sealed columns are in tables whose one policy is `false`: no signed-in session reads a row
+of `drive_connections`, `drive_oauth_states` or `drive_reads`, its own included
+(`tests/security/drive.test.ts`). A person's status comes from the function, which reads it as
+the server. A database dump, a leaked service-role key or a SQL injection yields ciphertext
+that needs a key held in a different system; a ciphertext copied to another person's row does
+not open (the associated data).
+
+**What reaches the browser.** *As built (the shared part):* nothing of Google's. The browser
+holds its own Supabase session and nothing else; it never contacts Google for a file — our
+function reads the file and hands over the bytes (`readDriveFile`, checked by length and
+SHA-256 before they are believed). `npm run web:check` fails a build that contains a Google
+token, client secret or API key by shape, or the Drive secret or sealing key by value
+(`tests/unit/web/bundleCheck.test.ts`, `scripts/check-bundle.ts`).
+
+*Picking a file (D119, decided after the OnePick probe):* with **OnePick**, Google's own picker
+page is opened by the consent address and the picked ids come back to our server with the code
+— nothing changes above. **If the in-page Picker has to be used instead, decision 5 is narrowed
+to exactly this (the reviewer's words, 16 Oct):** *the refresh token, the authorization code and
+the client secret never reach the browser, and a short-lived access token does, in memory only
+while the Picker is open, scoped to drive.file so it can only touch files he has already picked
+through this app.* Said plainly,
+so nobody reads more into it: Google cannot issue a read-only `drive.file` token or one that
+lives less than about an hour, so that token could read — and change — the files he has picked
+before, for up to an hour, if script running in our page took it. That is the cost of the
+in-page Picker, accepted by the reviewer on 16 Oct as the fallback, and the 375 px check on
+Google's own Picker is then mandatory.
+
+**The connect flow, and what each step is for.**
+
+1. `connect_start` (signed in) → a random `state` (256 bits) and a PKCE verifier; the state's
+   hash and the sealed verifier are stored for ten minutes (at most five open per person,
+   DV001); Google's consent address is returned — `drive.file`, `access_type=offline`,
+   `prompt=consent`, `code_challenge` S256, `response_mode=form_post`.
+2. **The callback** (`…/drive/callback`, no session) holds Google's code, sealed, against the
+   attempt — **once**: a second arrival of the same callback, a replayed one, an invented one or
+   one after ten minutes changes nothing and lands on Settings as "stale". It exchanges
+   nothing, because nothing here can prove who is in the browser. With `form_post` the code
+   arrives in the request body, so it is in no URL and no request log; in `query` mode it would
+   sit in the platform's request log — single-use, consumed within seconds, and useless without
+   the client secret and the PKCE verifier, both server-side.
+3. `connect_finish` (signed in) takes the attempt — deleting it — and only **the same person
+   who started it** gets anything back (D123). *The attack this closes:* an insider starts a
+   flow under their own account, sends the consent address to a colleague, the colleague
+   approves with their own Google account, and the insider's account would hold the colleague's
+   Drive. A different person gets `wrong_user`, the code dies unexchanged, and the attempt
+   cannot be finished by anyone afterwards (tested in the unit, integration and security
+   suites).
+4. The code becomes tokens (never retried: a code works once). The granted scope must be
+   **exactly** `drive.file`: unticked on Google's screen → not connected, and the useless token
+   let go (unless a connection already exists — see below); anything wider → revoked at once,
+   whatever it costs. No refresh token → not connected. The account is named from Drive's own
+   `about.get` — address and permission id — so no `openid`/`email` scope is added (D126).
+5. **The same account again** replaces the stored token and never revokes the old one: Google
+   revokes the whole grant for that user and app, so revoking the old token would kill the new
+   one too. **A different account** is revoked at Google *first*; if Google cannot be reached,
+   the new account's token is revoked instead and nothing changes (D125). If another Connect
+   lands in between, the row is not overwritten (DV002) and this attempt's token is let go
+   unless it shares the grant now stored.
+
+**Disconnect means revoke at Google.** The refresh token is revoked; the row is deleted only
+when Google confirms it, or answers that the grant was already gone. Google unreachable → the
+row is kept and he is told Drive is *still* connected. The read records go with the row
+(cascade), so bytes fetched under the connection can no longer be attached. Text already
+attached to conversations stays — kept and removed like any upload (D121) — and the confirm
+step says so before he presses it. A token that will not open (the key changed) cannot be
+revoked from here: the row is removed and he is told where to finish it himself
+(`myaccount.google.com/connections`).
+
+**A broken connection is never silent (D122).** Every Drive call refreshes the access token
+first. Google's `invalid_grant`, or a 401 after a good refresh, marks the connection `broken`
+with a reason and a time — only if the row still holds that token — and nothing is retried. The
+Assistant says so where it happened (visible and in the live region) with a link to Settings;
+Settings checks live on every visit.
+
+**A read** (`read_file`): the person's own connection only (the function never accepts a user
+id; it uses the session's); one id reads one file, once; twenty reads a minute per person
+(DR001); `files.get` with `supportsAllDrives=true`; Google's three editor types exported per
+D120, everything else downloaded; a folder, the bin, a blocked download, any other Google type,
+zero bytes and anything over part 1's 20 MB (Google's own export cap is 10 MB) refused in a
+sentence; a shortcut followed once, never twice; 45 s to the first byte, 90 s in all, inside the
+platform's 150 s; transient answers (429, a 403 "slow down", 5xx, a dropped connection) retried
+with backoff and jitter, and a circuit breaker per Google origin. The server records the read —
+the Drive file, Google's type, what it was exported as, the size and SHA-256 of what it handed
+over — and `begin` attaches those bytes and no others, from this person, within fifteen minutes,
+named as Drive named it (FL007 otherwise). A web page never comes from Drive: an `html` kind
+with a Drive receipt is refused, as an uploaded web page always was.
+
+**Prompt injection.** A Drive file is read by part 1's readers and reaches the model in part 1's
+wrapper — as an upload does, with no web-source attribute and none of the web-page rules (§3).
+Nothing about Drive changes that path; `tests/integration/drive.test.ts` follows a Drive file's
+text into the request.
+
+**What is logged.** Per read: who, the read id, a type group (`google_doc`, `pdf`, …), whether
+it was exported or reached through a shortcut, the bytes, the milliseconds, the outcome. Per
+connection event: who and the outcome. **Never a file's name, a word of its content, a token, a
+code, a state or the client secret** (`tests/unit/drive/page.test.ts` asserts none appears, and
+that no log line carries a redaction either — a leak the logger caught would still be a leak).
+The logger also redacts Google's token shapes by pattern, as a net.
+
+**Not verified, at the time of writing.** Anything against Google itself: the OAuth client did
+not exist when this was built. The shapes Google answers with are its documented ones
+(`tests/fixtures/google/README.md`); the probe (`npm run drive -- probe`) is what checks them.
+A deactivated team member's grant stays at Google until they remove it or it lapses after six
+months unused; it cannot be used, because every Drive call needs an active staff session —
+revoking it on deactivation would be a change to the Team page, not made here.
+
+**Who owns the Google Cloud project (D127).** The reviewer, for now; it moves to an account the
+client owns before handover (TASKS, Milestone 8). Until then the client's Drive grants are to a
+project he does not own.
+
 ## 13. Pre-handover security checklist
 
 - [ ] All keys rotated; developer copies invalidated
@@ -1051,3 +1213,4 @@ examples only.
 - [ ] Cost caps active and tested by deliberately tripping one
 - [ ] Alerting verified end-to-end by triggering a real failure
 - [ ] Runbook covers: key rotation, restore, replay, token refresh, unpausing a capped workflow
+- [ ] **Google Drive (M5 part 3a):** the Google Cloud project "Fundd Command Centre" moved to an account the client owns (D127); the Drive OAuth client secret and `DRIVE_TOKEN_KEY` rotated after the move (every connected person then reconnects); the consent screen's support and developer addresses are his

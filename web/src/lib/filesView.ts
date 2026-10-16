@@ -30,6 +30,13 @@ export const EXPIRED_PAGE_TEXT =
   'A web page was read here. Pages are kept for a day, so it has been removed. Read it again for the current version.';
 export const REPLACED_PAGE_TEXT =
   'A web page was read here and has been read again since. This earlier copy was removed.';
+/** Milestone 5 part 3a: a document read again — from Drive, or from a link — is not a page. */
+export const REPLACED_FILE_TEXT =
+  'A file was read here and has been read again since. This earlier copy was removed.';
+
+export const OPEN_IN_DRIVE_LABEL = 'Open in Google Drive';
+export const READ_AGAIN_DRIVE_LABEL = 'Read again from Drive';
+export const RECONNECT_LABEL = 'Connect Google Drive in Settings';
 
 export const READ_PAGE_LABEL = 'Read this page';
 export const READ_AGAIN_LABEL = 'Read again';
@@ -44,7 +51,7 @@ export function goneText(
     // Past its date, and the nightly purge has not been round yet.
     return page ? EXPIRED_PAGE_TEXT : EXPIRED_FILE_TEXT;
   }
-  if (file.removedReason === 'replaced') return REPLACED_PAGE_TEXT;
+  if (file.removedReason === 'replaced') return page ? REPLACED_PAGE_TEXT : REPLACED_FILE_TEXT;
   if (file.removedReason === 'expired' || isExpired(file, now)) {
     return page ? EXPIRED_PAGE_TEXT : EXPIRED_FILE_TEXT;
   }
@@ -98,14 +105,19 @@ export function pageSummary(
   return [KIND_LABEL.html, host, when].filter((part) => part !== '').join(' · ');
 }
 
-/** For a PDF or other document that was reached by a link: where it came from, and when. */
+/**
+ * For a document reached by a link, or read from Google Drive: where it came from, and when.
+ * A Drive file says "Google Drive", never the host its one address happens to use.
+ */
 export function sourceNote(
-  file: Pick<AttachedFile, 'sourceHost' | 'fetchedAt'>,
+  file: Pick<AttachedFile, 'sourceHost' | 'fetchedAt'> & Partial<Pick<AttachedFile, 'driveFileId'>>,
   now: number,
   timeZone?: string,
 ): string | null {
   if (file.sourceHost === null || file.fetchedAt === null) return null;
-  return `from ${file.sourceHost.replace(/^www\./, '')}, read ${readWhen(file.fetchedAt, now, timeZone)}`;
+  const from =
+    typeof file.driveFileId === 'string' ? 'Google Drive' : file.sourceHost.replace(/^www\./, '');
+  return `from ${from}, read ${readWhen(file.fetchedAt, now, timeZone)}`;
 }
 
 /** Said under a page whose figures were left for a script to fill in. Null when none were. */
@@ -190,14 +202,17 @@ export function uploadStatus(item: UploadItem): string | null {
       ? ` ${String(Math.min(item.done + 1, item.total))} of ${String(item.total)}`
       : '';
   const link = item.source === 'link';
+  const drive = item.source === 'drive';
   switch (item.phase) {
     case 'waiting':
-      return link ? 'Waiting for the one before it…' : 'Waiting for the file before it…';
+      return link || drive ? 'Waiting for the one before it…' : 'Waiting for the file before it…';
     case 'fetching':
-      // Before the first byte there is nothing to measure; after it, there is.
-      return item.total > 0
-        ? `Downloading… ${formatBytes(item.done)} of ${formatBytes(item.total)}`
-        : 'Opening the page…';
+      // Before the first byte there is nothing to measure; after it, there is. A Google Doc,
+      // Sheet or Slides deck is prepared by Google before the first byte: that wait is said.
+      if (item.total > 0) {
+        return `Downloading… ${formatBytes(item.done)} of ${formatBytes(item.total)}`;
+      }
+      return drive ? 'Getting it from Google Drive…' : 'Opening the page…';
     case 'reading':
       if (link) return item.total > 1 ? `Reading it… page${of}` : 'Reading the page…';
       return item.total > 1 ? `Reading the file… page${of}` : 'Reading the file…';
@@ -272,6 +287,9 @@ export function busyNote(uploads: readonly UploadItem[]): string | null {
   const active = uploads.find((item) => item.phase !== 'failed' && item.phase !== 'refused');
   if (active === undefined) return null;
   if (active.phase === 'confirm') return `Choose whether to read ${active.name} before you send.`;
+  if (active.source === 'drive') {
+    return `Wait for ${active.name} to come in from Google Drive before you send.`;
+  }
   return active.source === 'link'
     ? `Wait for the page from ${active.name} to be read before you send.`
     : `Wait for ${active.name} to finish before you send.`;

@@ -28,7 +28,7 @@ invoiced (13 Oct 2026)**: the app as a working
 screen rather than a chat window, leads and pipeline live from GoHighLevel, lead detail, the
 client moves a lead between stages himself (the drop is the confirmation — D81 narrows D9),
 the same on phone and laptop (D78) · **5 Files, documents and research — in progress** (website
-reading sits here; parts 1 and 2 shipped) · 6 Talking to it, and your day · 7 Advertising and social · 8 Content and handover.
+reading sits here; parts 1 and 2 shipped; part 3a, Google Drive, in progress — D119–D127) · 6 Talking to it, and your day · 7 Advertising and social · 8 Content and handover.
 Also out of scope, stated to the client in writing (D82): a drag-and-drop dashboard builder,
 agent software that acts on its own, the Quickli calculator, the separate finance CRM.
 
@@ -130,6 +130,7 @@ npm run files -- ask <file> "<q>" # M5 part 1: LIVE — one answer from that fil
 npm run pages -- check <url>      # M5 part 2: what the address rules and DNS say about a link — no request to the site
 npm run pages -- extract <file|url> # M5 part 2: read a page with the app's own readers and print what came out; `-- fetch <url>` the guarded fetch from THIS machine (host/status/bytes/outcome, never the page); `-- ask <file|url> "<q>"` and `-- unread "<message with a link>"` are LIVE
 npm run connector -- help        # MCP connector (goodwill, off the milestone list): `-- issue <email> [--label "…"]` makes a key and shows it ONCE, `-- list [<email>]`, `-- revoke <key-id>`
+npm run drive -- probe           # M5 part 3a: LIVE, on this machine — a localhost callback, Google's OnePick picker, what came back (never the code); with the client secret in .env, reads each picked file through the app's own plan and readers, then revokes. `-- url [--onepick]` prints the consent address only
 npm run web:dev         # dashboard dev server (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env)
 npm run web:build       # static build → web/dist
 npm run web:check       # grep web/dist for key shapes and the voice prompt — must print 0 hits

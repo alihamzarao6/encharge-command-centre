@@ -111,6 +111,7 @@ const view = (id: string, overrides: Partial<AttachedFile> = {}): AttachedFile =
   valuesMissing: 0,
   readAsSent: false,
   removedReason: null,
+  driveFileId: null,
   ...overrides,
 });
 
@@ -192,6 +193,8 @@ function rig(conversationId: string | null = CONV): Rig {
       for (let i = 0; i < 40; i += 1) await new Promise((resolve) => setImmediate(resolve));
     },
     store: createUploadsStore({
+      // These tests read links; Drive files are tests/unit/web/drive-uploads.test.ts.
+      readDrive: () => Promise.reject(new Error('uploads-links.test.ts does not read Drive files')),
       fetchPage: (request, signal, onProgress) => {
         r.fetches.push({ ...request, signal });
         const scripted = r.fetchAnswers.shift();

@@ -76,3 +76,55 @@ describe('scan — the GoHighLevel token', () => {
     expect(scan([file], { GHL_PRIVATE_INTEGRATION_TOKEN: 'pit' })).toEqual([]);
   });
 });
+
+/**
+ * Milestone 5 part 3a (PHASE-ACCEPTANCE M5 part 3a, D4): no Google token, client secret or the
+ * key that opens the sealed tokens ever reaches the bundle. The shapes catch any of Google's
+ * tokens from anywhere; the values catch the two Drive secrets in the build environment by
+ * name. Built by concatenation so no token-shaped literal sits in this file.
+ */
+describe('scan — Google Drive', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bundle-check-drive-'));
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const accessToken = ['ya', '29.', 'a0AfB_byC', 'Q'.repeat(40)].join('');
+  const refreshToken = ['1', '//', '0g', 'R'.repeat(40)].join('');
+  const clientSecret = ['GOCSPX', '-', 'S'.repeat(28)].join('');
+  const apiKey = ['AI', 'za', 'Sy', 'K'.repeat(33)].join('');
+
+  it.each([
+    ['google-access-token-shape', accessToken],
+    ['google-refresh-token-shape', refreshToken],
+    ['google-client-secret-shape', clientSecret],
+    ['google-api-key-shape', apiKey],
+  ])('flags %s wherever it came from', (check, value) => {
+    const file = join(dir, `${check}.js`);
+    writeFileSync(file, `const t="${value}";`);
+    const findings = scan([file], {});
+    expect(findings.map((f) => f.check)).toEqual([check]);
+    expect(findings[0]?.snippet.length).toBeLessThanOrEqual(13);
+  });
+
+  it('flags the Drive client secret and the sealing key from the environment, by name', () => {
+    const file = join(dir, 'values.js');
+    const sealKey = 'drive-token-key-value-long-enough';
+    const secret = 'drive-client-secret-value-long';
+    writeFileSync(file, `const a="${sealKey}";const b="${secret}";`);
+    expect(
+      scan([file], { DRIVE_TOKEN_KEY: sealKey, GOOGLE_DRIVE_CLIENT_SECRET: secret }).map(
+        (f) => f.check,
+      ),
+    ).toEqual(['value:GOOGLE_DRIVE_CLIENT_SECRET', 'value:DRIVE_TOKEN_KEY']);
+  });
+
+  it('the public parts a page may hold — the client id, the scope, the Drive address — are not findings', () => {
+    const file = join(dir, 'public.js');
+    writeFileSync(
+      file,
+      'const s="https://www.googleapis.com/auth/drive.file";const u="https://drive.google.com/file/d/1abc/view";const id="123456789012-abc.apps.googleusercontent.com";',
+    );
+    expect(scan([file], {})).toEqual([]);
+  });
+});

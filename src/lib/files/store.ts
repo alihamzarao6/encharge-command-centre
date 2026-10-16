@@ -64,6 +64,18 @@ type FileDbRow = {
   fetched_at: string | null;
   values_missing: number;
   read_as_sent: boolean;
+  drive_file_id: string | null;
+};
+
+type DriveReadDbRow = {
+  id: string;
+  user_id: string;
+  drive_file_id: string;
+  status: string;
+  name: string | null;
+  byte_size: number | null;
+  content_hash: string | null;
+  fetched_at: string | null;
 };
 
 type FetchDbRow = {
@@ -118,6 +130,12 @@ export type FilesDatabase = {
         Update: Partial<FetchDbRow>;
         Relationships: [];
       };
+      drive_reads: {
+        Row: DriveReadDbRow;
+        Insert: Partial<DriveReadDbRow>;
+        Update: Partial<DriveReadDbRow>;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -136,6 +154,7 @@ export type FilesDatabase = {
           p_max_files: number;
           p_abandoned_minutes: number;
           p_fetch_id?: string;
+          p_drive_read_id?: string;
         };
         Returns: {
           id: string;
@@ -261,6 +280,8 @@ export interface FileView {
   readonly valuesMissing: number;
   /** The page shows nothing until its scripts run, and was read as the site sent it. */
   readonly readAsSent: boolean;
+  /** Milestone 5 part 3a: the Google Drive file it was read from. Null otherwise. */
+  readonly driveFileId: string | null;
 }
 
 /** A file as the endpoint needs it to decide what a request may do. */
@@ -284,6 +305,8 @@ export interface BeginFileInput {
   readonly retentionDays: number;
   /** Set for a page that was fetched: the database checks the attachment against it. */
   readonly fetchId?: string;
+  /** Set for a file read from Drive: the same, against the record of that read. */
+  readonly driveReadId?: string;
 }
 
 export interface BeginFileResult {
@@ -333,6 +356,19 @@ export interface FetchReceipt {
   readonly status: 'started' | 'fetched' | 'refused' | 'failed';
   readonly finalUrl: string | null;
   readonly finalHost: string | null;
+  readonly byteSize: number | null;
+  readonly contentHash: string | null;
+  readonly fetchedAt: string | null;
+}
+
+/** What the server recorded about one file it read from Drive for someone. */
+export interface DriveReadReceipt {
+  readonly id: string;
+  readonly userId: string;
+  readonly driveFileId: string;
+  readonly status: 'started' | 'fetched' | 'refused' | 'failed';
+  /** Drive's name for the file when it was read, cleaned. */
+  readonly name: string | null;
   readonly byteSize: number | null;
   readonly contentHash: string | null;
   readonly fetchedAt: string | null;
@@ -425,6 +461,8 @@ export interface FileStore extends TurnFileSource {
   /** How a read ended. False when the record is not this person's. */
   completeFetch(input: CompleteFetchInput): Promise<Result<boolean>>;
   getFetch(fetchId: string): Promise<Result<FetchReceipt | null>>;
+  /** Milestone 5 part 3a: the record of a Drive read, for `begin` to check against. */
+  getDriveRead(readId: string): Promise<Result<DriveReadReceipt | null>>;
 }
 
 function mapPostgrest(error: PostgrestError, operation: string): AppError {
@@ -468,7 +506,7 @@ function asLegibility(value: string): Legibility {
 }
 
 const FILE_COLUMNS =
-  'id, conversation_id, user_id, scope, uploaded_by, name, kind, byte_size, expected_pages, vision_pages, page_count, char_count, status, created_at, expires_at, source_url, source_host, fetched_at, values_missing, read_as_sent';
+  'id, conversation_id, user_id, scope, uploaded_by, name, kind, byte_size, expected_pages, vision_pages, page_count, char_count, status, created_at, expires_at, source_url, source_host, fetched_at, values_missing, read_as_sent, drive_file_id';
 
 type FileColumns = Pick<
   FileDbRow,
@@ -492,6 +530,7 @@ type FileColumns = Pick<
   | 'fetched_at'
   | 'values_missing'
   | 'read_as_sent'
+  | 'drive_file_id'
 >;
 
 function toRecord(row: FileColumns): Result<FileRecord> {
@@ -525,6 +564,7 @@ function toRecord(row: FileColumns): Result<FileRecord> {
     fetchedAt: row.fetched_at,
     valuesMissing: row.values_missing,
     readAsSent: row.read_as_sent,
+    driveFileId: row.drive_file_id,
     expectedPages: row.expected_pages,
     conversationAuthorId: row.user_id,
     scope: row.scope,
@@ -557,6 +597,7 @@ export function supabaseFileStore(
           p_max_files: FILE_LIMITS.maxFilesPerConversation,
           p_abandoned_minutes: FILE_LIMITS.abandonedAfterMinutes,
           ...(input.fetchId === undefined ? {} : { p_fetch_id: input.fetchId }),
+          ...(input.driveReadId === undefined ? {} : { p_drive_read_id: input.driveReadId }),
         });
         if (error !== null) return err(mapPostgrest(error, 'begin_conversation_file'));
         const row = data[0];
@@ -717,7 +758,7 @@ export function supabaseFileStore(
         const files = await client
           .from('conversation_files')
           .select(
-            'id, name, kind, status, created_at, expires_at, source_host, fetched_at, values_missing, read_as_sent',
+            'id, name, kind, status, created_at, expires_at, source_host, fetched_at, values_missing, read_as_sent, drive_file_id',
           )
           .eq('conversation_id', conversationId)
           .in('status', ['ready', 'removed'])
@@ -727,10 +768,14 @@ export function supabaseFileStore(
           return err(mapPostgrest(files.error, 'conversation_files.forTurn'));
         const everHadFile = files.data.length > 0;
         // A removed page keeps its kind and loses its address, so `html` is what says a page
-        // was ever read here; a live document from a link still has its host.
-        const everHadPage = files.data.some(
-          (row) => row.kind === 'html' || typeof row.source_host === 'string',
-        );
+        // was ever read here; a live document from a link still has its host. A file from
+        // Drive is his own document, not a page anyone in the world can write: it reads to the
+        // model exactly as an upload does, without the web-page rules (Milestone 5 part 3a).
+        const fromLink = (row: {
+          source_host: string | null;
+          drive_file_id: string | null;
+        }): boolean => typeof row.source_host === 'string' && typeof row.drive_file_id !== 'string';
+        const everHadPage = files.data.some((row) => row.kind === 'html' || fromLink(row));
         // Past its date but not yet purged: already not usable. The schedule removes the row;
         // this makes the promise true in the hours before it runs.
         // Compared as instants, not as text: the database writes "+00:00" where JavaScript
@@ -780,7 +825,9 @@ export function supabaseFileStore(
             kind: row.kind,
             createdAt: row.created_at,
             pages: byFile.get(row.id) ?? [],
-            ...(typeof row.source_host === 'string' && typeof row.fetched_at === 'string'
+            ...(fromLink(row) &&
+            typeof row.source_host === 'string' &&
+            typeof row.fetched_at === 'string'
               ? {
                   source: {
                     host: row.source_host,
@@ -878,6 +925,40 @@ export function supabaseFileStore(
         });
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'web_fetches.get'));
+      }
+    },
+
+    getDriveRead: async (readId) => {
+      try {
+        const { data, error } = await client
+          .from('drive_reads')
+          .select('id, user_id, drive_file_id, status, name, byte_size, content_hash, fetched_at')
+          .eq('id', readId)
+          .limit(1);
+        if (error !== null) return err(mapPostgrest(error, 'drive_reads.get'));
+        const row = data[0];
+        if (row === undefined) return ok(null);
+        const status = row.status;
+        if (
+          status !== 'started' &&
+          status !== 'fetched' &&
+          status !== 'refused' &&
+          status !== 'failed'
+        ) {
+          return err(new AppError('INTERNAL', 'drive_reads row outside its check constraints'));
+        }
+        return ok({
+          id: row.id,
+          userId: row.user_id,
+          driveFileId: row.drive_file_id,
+          status,
+          name: row.name,
+          byteSize: row.byte_size,
+          contentHash: row.content_hash,
+          fetchedAt: row.fetched_at,
+        });
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'drive_reads.get'));
       }
     },
   };

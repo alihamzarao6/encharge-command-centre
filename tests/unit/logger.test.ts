@@ -89,6 +89,24 @@ describe('redactString', () => {
       'GET https://example.com/path responded 200',
     );
   });
+
+  // Milestone 5 part 3a: Google's credentials, shaped like the real thing and built by
+  // concatenation. None is ever logged on purpose; this is the net under that rule.
+  it.each([
+    ['an access token', ['ya', '29.', 'a0AfB_byC-', 'Q'.repeat(30)].join('')],
+    ['a refresh token', ['1', '//', '0gR', 'R'.repeat(30)].join('')],
+    ['an authorization code', ['4', '/', '0AdC', 'C'.repeat(30)].join('')],
+    ['an OAuth client secret', ['GOCSPX', '-', 'S'.repeat(28)].join('')],
+    ['a browser API key', ['AI', 'za', 'Sy', 'K'.repeat(33)].join('')],
+  ])('redacts a Google %s wherever it appears', (_name, value) => {
+    expect(redactString(`google said ${value} here`)).toBe(`google said ${REDACTED} here`);
+  });
+
+  it('leaves the public Drive address and the scope alone', () => {
+    const text =
+      'https://drive.google.com/file/d/1DocAbCdEfGhIjKlMnOp/view https://www.googleapis.com/auth/drive.file';
+    expect(redactString(text)).toBe(text);
+  });
 });
 
 describe('serialiseForLog — redaction at the serialiser level', () => {

@@ -17,6 +17,11 @@ export interface WebConfig {
   readonly crmUrl: string;
   /** Milestone 5 part 1: attaching a file. The list of a conversation's files is read under RLS. */
   readonly filesUrl: string;
+  /**
+   * Milestone 5 part 3a: Google Drive — connect, status, disconnect, read a picked file. Every
+   * Google credential stays behind this address; the browser holds none.
+   */
+  readonly driveUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -35,5 +40,6 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
     adminUrl: `${supabaseUrl}/functions/v1/admin`,
     crmUrl: `${supabaseUrl}/functions/v1/crm`,
     filesUrl: `${supabaseUrl}/functions/v1/files`,
+    driveUrl: `${supabaseUrl}/functions/v1/drive`,
   };
 }

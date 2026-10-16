@@ -30,6 +30,7 @@ import {
 } from 'react';
 
 import { streamTurn } from '../lib/chatApi.js';
+import { readDriveFile } from '../lib/driveApi.js';
 import { extractInBrowser, hashInBrowser } from '../lib/files/lazy.js';
 import {
   CONVERSATION_FILE_COLUMNS,
@@ -57,6 +58,7 @@ import { AssistantPanel } from './AssistantPanel.js';
 import { Leads } from './Leads.js';
 import { Memory } from './Memory.js';
 import { Overview } from './Overview.js';
+import { Settings } from './Settings.js';
 import { ThreadContext } from './ThreadContext.js';
 import { UploadsContext } from './UploadsContext.js';
 import { Users } from './Users.js';
@@ -74,6 +76,8 @@ export const SECTIONS: readonly Section[] = [
   { id: 'assistant', label: 'Assistant' },
   { id: 'memory', label: 'Memory' },
   { id: 'team', label: 'Team' },
+  // Milestone 5 part 3a: where Google Drive is connected. Part 4 fills the rest of it.
+  { id: 'settings', label: 'Settings' },
 ];
 
 const ICONS: Readonly<Record<SectionId, string>> = {
@@ -82,6 +86,7 @@ const ICONS: Readonly<Record<SectionId, string>> = {
   assistant: '💬',
   memory: '🧠',
   team: '👥',
+  settings: '⚙️',
 };
 
 const INDEX_ROUTE: LeadsRoute = { kind: 'index' };
@@ -211,6 +216,22 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
         return fetchPage(
           {
             filesUrl: webConfig.filesUrl,
+            anonKey: webConfig.anonKey,
+            fetch: fetch.bind(globalThis),
+          },
+          data.session?.access_token ?? latestSession.current.access_token,
+          request,
+          signal,
+          onProgress,
+        );
+      },
+      // Milestone 5 part 3a: OUR server reads the file from his Drive. This browser holds no
+      // Google credential and never contacts Google.
+      readDrive: async (request, signal, onProgress) => {
+        const { data } = await supabase.auth.getSession();
+        return readDriveFile(
+          {
+            driveUrl: webConfig.driveUrl,
             anonKey: webConfig.anonKey,
             fetch: fetch.bind(globalThis),
           },
@@ -410,6 +431,9 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
                 staff={staff}
                 onSessionExpired={() => onSessionExpired(null)}
               />
+            )}
+            {section === 'settings' && (
+              <Settings session={session} onSessionExpired={() => onSessionExpired(null)} />
             )}
           </main>
 

@@ -21,6 +21,7 @@ import type {
   BeginFileInput,
   BeginFileResult,
   ClaimFetchResult,
+  DriveReadReceipt,
   FetchReceipt,
   FinishFileResult,
   FileRecord,
@@ -181,6 +182,8 @@ export interface StoredFetch extends FetchReceipt {
 export interface MemoryFileStore extends FileStore {
   readonly files: Map<string, StoredFile>;
   readonly fetches: Map<string, StoredFetch>;
+  /** Milestone 5 part 3a: `drive_reads`, as the drive endpoint leaves it. */
+  readonly driveReads: Map<string, DriveReadReceipt>;
   /** Fail the next call of a method with this error, once. */
   readonly failOnce: Map<keyof FileStore, AppError>;
   readonly calls: string[];
@@ -198,6 +201,7 @@ export function memoryFileStore(
 ): MemoryFileStore {
   const files = new Map<string, StoredFile>();
   const fetches = new Map<string, StoredFetch>();
+  const driveReads = new Map<string, DriveReadReceipt>();
   const failOnce = new Map<keyof FileStore, AppError>();
   const calls: string[] = [];
   const gate = <T>(method: keyof FileStore, run: () => Result<T>): Promise<Result<T>> => {
@@ -217,6 +221,7 @@ export function memoryFileStore(
   const store: MemoryFileStore = {
     files,
     fetches,
+    driveReads,
     failOnce,
     calls,
     everHadFile: false,
@@ -241,7 +246,28 @@ export function memoryFileStore(
         }
         // From a link: only against the server's own record of those bytes (FL007).
         const receipt = input.fetchId === undefined ? null : (fetches.get(input.fetchId) ?? null);
-        if (input.fetchId !== undefined) {
+        // From Drive: the same, against the record of the read (migration 20261016010000).
+        const drive =
+          input.driveReadId === undefined ? null : (driveReads.get(input.driveReadId) ?? null);
+        if (input.fetchId !== undefined && input.driveReadId !== undefined) {
+          return err(refused('bad_receipt'));
+        }
+        if (input.driveReadId !== undefined) {
+          const fetchedAt = drive?.fetchedAt ?? null;
+          const fresh =
+            fetchedAt !== null &&
+            now().getTime() - Date.parse(fetchedAt) < FILE_LIMITS.abandonedAfterMinutes * 60_000;
+          if (
+            drive?.userId !== input.uploadedBy ||
+            drive.status !== 'fetched' ||
+            !fresh ||
+            drive.contentHash !== input.contentHash ||
+            drive.byteSize !== input.byteSize ||
+            input.kind === 'html'
+          ) {
+            return err(refused('bad_receipt'));
+          }
+        } else if (input.fetchId !== undefined) {
           const fetchedAt = receipt?.fetchedAt ?? null;
           const fresh =
             fetchedAt !== null &&
@@ -262,12 +288,18 @@ export function memoryFileStore(
           (f) => f.contentHash === input.contentHash && f.record.status === 'ready',
         );
         if (same !== undefined) {
-          if (receipt !== null && same.record.sourceUrl !== null) {
-            // Asked again and the site sent the same bytes: current as of this fetch.
+          const readAt = receipt?.fetchedAt ?? drive?.fetchedAt ?? null;
+          if (readAt !== null && same.record.sourceUrl !== null) {
+            // Asked again and the same bytes came back: current as of this read — and a Drive
+            // file takes the name Drive gives it now.
             same.record = {
               ...same.record,
-              fetchedAt: receipt.fetchedAt,
+              fetchedAt: readAt,
               expiresAt: new Date(now().getTime() + input.retentionDays * 86_400_000).toISOString(),
+              name:
+                drive !== null && same.record.driveFileId === drive.driveFileId
+                  ? drive.name
+                  : same.record.name,
             };
           }
           return ok({
@@ -302,7 +334,7 @@ export function memoryFileStore(
             id,
             conversationId: input.conversationId,
             uploadedBy: input.uploadedBy,
-            name: input.name,
+            name: drive === null ? input.name : drive.name,
             kind: input.kind,
             byteSize: input.byteSize,
             pageCount: 0,
@@ -311,11 +343,15 @@ export function memoryFileStore(
             status: 'reading',
             createdAt: created.toISOString(),
             expiresAt: new Date(created.getTime() + input.retentionDays * 86_400_000).toISOString(),
-            sourceUrl: receipt?.finalUrl ?? null,
-            sourceHost: receipt?.finalHost ?? null,
-            fetchedAt: receipt?.fetchedAt ?? null,
+            sourceUrl:
+              drive === null
+                ? (receipt?.finalUrl ?? null)
+                : `https://drive.google.com/file/d/${drive.driveFileId}/view`,
+            sourceHost: drive === null ? (receipt?.finalHost ?? null) : 'drive.google.com',
+            fetchedAt: drive === null ? (receipt?.fetchedAt ?? null) : drive.fetchedAt,
             valuesMissing: 0,
             readAsSent: false,
+            driveFileId: drive?.driveFileId ?? null,
             expectedPages: input.expectedPages,
             conversationAuthorId: conversation.userId,
             scope: conversation.scope,
@@ -425,6 +461,7 @@ export function memoryFileStore(
                 sourceUrl: null,
                 sourceHost: null,
                 fetchedAt: null,
+                driveFileId: null,
               };
               replaced += 1;
             }
@@ -452,7 +489,7 @@ export function memoryFileStore(
         file.pages.clear();
         file.contentHash = null;
         file.removedReason = 'user';
-        // The tombstone names nothing — not the address either.
+        // The tombstone names nothing — not the address, not the Drive file either.
         file.record = {
           ...file.record,
           status: 'removed',
@@ -460,6 +497,7 @@ export function memoryFileStore(
           sourceUrl: null,
           sourceHost: null,
           fetchedAt: null,
+          driveFileId: null,
         };
         return ok(true);
       }),
@@ -494,7 +532,9 @@ export function memoryFileStore(
                 method: page.method,
                 legibility: page.legibility,
               })),
-            ...(record.sourceHost === null || record.fetchedAt === null
+            ...(record.sourceHost === null ||
+            record.fetchedAt === null ||
+            record.driveFileId !== null
               ? {}
               : {
                   source: {
@@ -509,7 +549,8 @@ export function memoryFileStore(
         const everHadPage = [...files.values()].some(
           (file) =>
             file.record.conversationId === conversationId &&
-            (file.record.kind === 'html' || file.record.sourceHost !== null),
+            (file.record.kind === 'html' ||
+              (file.record.sourceHost !== null && file.record.driveFileId === null)),
         );
         return ok({ files: out, everHadFile: store.everHadFile, everHadPage });
       }),
@@ -566,6 +607,8 @@ export function memoryFileStore(
       }),
 
     getFetch: (fetchId) => gate('getFetch', () => ok(fetches.get(fetchId) ?? null)),
+
+    getDriveRead: (readId) => gate('getDriveRead', () => ok(driveReads.get(readId) ?? null)),
   };
   return store;
 }

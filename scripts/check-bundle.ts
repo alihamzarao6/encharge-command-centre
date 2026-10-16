@@ -61,6 +61,14 @@ const SHAPES: readonly { readonly name: string; readonly pattern: RegExp }[] = [
     name: 'jwt-shape',
     pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
   },
+  // Milestone 5 part 3a: Google. The refresh token, the client secret and every access token
+  // live in the `drive` function and its database row (sealed); none has a VITE_ name. A
+  // browser API key, should the in-page Picker ever be built, is handed over by the server at
+  // the moment the Picker opens — never compiled in.
+  { name: 'google-access-token-shape', pattern: /ya29\.[A-Za-z0-9._-]{20,}/ },
+  { name: 'google-refresh-token-shape', pattern: /1\/\/0[A-Za-z0-9_-]{20,}/ },
+  { name: 'google-client-secret-shape', pattern: /GOCSPX-[A-Za-z0-9_-]{10,}/ },
+  { name: 'google-api-key-shape', pattern: /AIza[0-9A-Za-z_-]{35}/ },
 ];
 
 /**
@@ -121,6 +129,10 @@ export function scan(
     ['VOYAGE_API_KEY', env['VOYAGE_API_KEY']],
     // Milestone 4: the GoHighLevel token, same rule — server-side only, no VITE_ name.
     ['GHL_PRIVATE_INTEGRATION_TOKEN', env['GHL_PRIVATE_INTEGRATION_TOKEN']],
+    // Milestone 5 part 3a: the Drive OAuth client's secret and the key that opens the sealed
+    // tokens. Both are the `drive` function's alone (drive/config.ts); neither has a VITE_ name.
+    ['GOOGLE_DRIVE_CLIENT_SECRET', env['GOOGLE_DRIVE_CLIENT_SECRET']],
+    ['DRIVE_TOKEN_KEY', env['DRIVE_TOKEN_KEY']],
   ] as const;
 
   for (const file of files) {
@@ -167,7 +179,16 @@ function main(): void {
     `check-bundle: scanned ${String(files.length)} file(s) under web/dist`,
     ...files.map((f) => `  ${relative(ROOT, f)} (${String(statSync(f).size)} bytes)`),
     `  shapes: ${SHAPES.map((s) => s.name).join(', ')}`,
-    `  values: ${(['SUPABASE_SERVICE_ROLE_KEY', 'ANTHROPIC_API_KEY', 'VOYAGE_API_KEY'] as const)
+    `  values: ${(
+      [
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'ANTHROPIC_API_KEY',
+        'VOYAGE_API_KEY',
+        'GHL_PRIVATE_INTEGRATION_TOKEN',
+        'GOOGLE_DRIVE_CLIENT_SECRET',
+        'DRIVE_TOKEN_KEY',
+      ] as const
+    )
       .map(
         (name) =>
           `${name} ${process.env[name] === undefined ? '(unset — shape check only)' : '(present, checked)'}`,
@@ -179,7 +200,7 @@ function main(): void {
   process.stdout.write(`${lines.join('\n')}\n`);
   if (findings.length === 0) {
     process.stdout.write(
-      'check-bundle: 0 hits — no service role key, no Anthropic key, no Voyage key, no voice prompt, not a dev build\n',
+      'check-bundle: 0 hits — no service role key, no Anthropic key, no Voyage key, no GoHighLevel token, no Google token or Drive secret, no voice prompt, not a dev build\n',
     );
     return;
   }

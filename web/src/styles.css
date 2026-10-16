@@ -3140,3 +3140,130 @@ body.is-dragging * {
     flex: 1 1 calc(100% - 40px);
   }
 }
+
+/* ---------------------------------------------------------------------------------------
+   Settings, and its Google Drive section (Milestone 5 part 3a). Plain on purpose: part 4's
+   settings screen places the section as it is.
+   --------------------------------------------------------------------------------------- */
+
+.settings {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings__title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.settings__section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.settings__heading {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.drive__state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 4px solid var(--line);
+  padding-left: 12px;
+}
+
+.drive__state--ok {
+  border-left-color: var(--ok);
+}
+
+.drive__state--warn {
+  border-left-color: var(--accent);
+}
+
+.drive__state--problem {
+  border-left-color: var(--danger);
+}
+
+/* The headline answers the whole question; an address can be long, and wraps. */
+.drive__headline {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.drive__detail {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.drive__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.drive__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.drive__notice {
+  font-size: 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.drive__notice--ok {
+  background: #ecfdf3;
+  color: var(--ok);
+}
+
+.drive__notice--problem {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.button--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+/* A file from Drive in the thread: its way back to Drive, and reading it again. */
+.file__drive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 2px;
+}
+
+.file__reconnect {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: var(--navy-700);
+  font-weight: 600;
+}

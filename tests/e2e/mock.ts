@@ -24,7 +24,7 @@
  * memory only through the verified server path.
  */
 import type { Page, Route } from '@playwright/test';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { E2E_SUPABASE_URL } from './playwright.config.js';
 
@@ -75,6 +75,49 @@ export interface ScriptedFile {
   values_missing?: number;
   read_as_sent?: boolean;
   removed_reason?: string | null;
+  /** Milestone 5 part 3a. Absent = not from Drive. */
+  drive_file_id?: string | null;
+}
+
+/** Milestone 5 part 3a: what the scripted Drive endpoint finds for one Drive file id. */
+export type ScriptedDriveFile =
+  | {
+      /** Drive's name for it when it is read. */
+      name: string;
+      body: string | Buffer;
+      /** The name handed to the reader; default `name`. */
+      fileName?: string;
+      contentType?: string;
+      googleType?: string | null;
+      /** How long Google takes to hand it over. */
+      delayMs?: number;
+    }
+  /** Refused (in the bin, a Form…): 422 with this code and sentence. */
+  | { refused: string; message: string }
+  /** Google did not answer usefully: this status, retryable. */
+  | { failed: number; message: string };
+
+export type ScriptedDriveStatus =
+  | { state: 'unavailable' }
+  | { state: 'not_connected' }
+  | {
+      state: 'connected';
+      email: string;
+      connectedAt: string;
+      lastUsedAt: string | null;
+      checked: boolean;
+    }
+  | { state: 'broken'; email: string; brokenAt: string; reason: string; message: string };
+
+export interface DriveScript {
+  /** Where the connection starts. Default: not connected. */
+  status?: ScriptedDriveStatus;
+  /** What Google holds, by Drive file id. */
+  files?: Record<string, ScriptedDriveFile>;
+  /** How connect_finish ends. Default: connected as broker@example.com. */
+  finish?: { outcome: string; message: string; note?: string | null };
+  /** Google cannot be reached when Drive is disconnected. */
+  disconnectFails?: boolean;
 }
 
 /** What the scripted server finds at an address when it is asked to fetch it. */
@@ -354,6 +397,8 @@ export interface MockOptions {
   spentTodayUsd?: number;
   /** Every chat reply waits this long first, so a test can act while a question is in flight. */
   chatDelayMs?: number;
+  /** Milestone 5 part 3a: the Drive connection and what is in the Drive. */
+  drive?: DriveScript;
 }
 
 export interface MockState {
@@ -406,6 +451,14 @@ export interface MockState {
   /** Every page image that reached the endpoint. */
   readonly pageImages: SentPageImage[];
   filesDelayMs: number;
+  /** Milestone 5 part 3a: every POST to /functions/v1/drive. */
+  readonly driveCalls: { body: Record<string, unknown>; authorization: string | null }[];
+  /** The connection as the endpoint would report it; a test may change it mid-way. */
+  driveStatus: ScriptedDriveStatus;
+  /** What Google holds; a test may change a file between two reads. */
+  readonly driveFiles: Record<string, ScriptedDriveFile>;
+  /** Every visit to Google's consent page, as the browser made it. */
+  readonly googleVisits: string[];
 }
 
 /**
@@ -594,7 +647,18 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     files: [...(options.files ?? [])],
     pageImages: [],
     filesDelayMs: options.filesDelayMs ?? 0,
+    driveCalls: [],
+    driveStatus: options.drive?.status ?? { state: 'not_connected' },
+    driveFiles: { ...(options.drive?.files ?? {}) },
+    googleVisits: [],
   };
+  /** The scripted drive endpoint's record of each read: what `begin` is checked against. */
+  const driveReceipts = new Map<
+    string,
+    { fileId: string; name: string; byteSize: number; contentHash: string; fetchedAt: string }
+  >();
+  /** Where the app is served from, as its own requests say: Google sends him back there. */
+  let appOrigin = 'http://127.0.0.1:4173';
   /** Uploads claimed and not yet finished, by file id. */
   const pendingFiles = new Map<
     string,
@@ -614,6 +678,8 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       missing: number;
       /** The reader marked the page as read as the site sent it. */
       asSent: boolean;
+      /** Milestone 5 part 3a: the Drive file this upload was claimed against, if any. */
+      driveFileId: string | null;
     }
   >();
   /** The scripted server's record of each fetch: what `begin` is checked against. */
@@ -650,6 +716,21 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
   await page.route('https://api.anthropic.com/**', async (route) => {
     (state as { anthropicCalls: number }).anthropicCalls += 1;
     await route.abort();
+  });
+
+  // Milestone 5 part 3a: Google's consent screen, stood in for. The browser is sent here by a
+  // full-page navigation; Google would ask him, then send him to OUR callback, which sends him
+  // to /settings with the attempt to finish. Both hops are folded into one redirect here: the
+  // callback's own behaviour is the server's, tested in tests/unit/drive/page.test.ts.
+  await page.route('https://accounts.google.com/**', async (route) => {
+    const url = route.request().url();
+    state.googleVisits.push(url);
+    const attempt = new URL(url).searchParams.get('state') ?? '';
+    await route.fulfill({
+      status: 302,
+      headers: { location: `${appOrigin}/settings?drive=returned&attempt=${attempt}` },
+      body: '',
+    });
   });
 
   await page.route(`${E2E_SUPABASE_URL}/**`, async (route) => {
@@ -1374,6 +1455,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         fetchedAt: f.fetched_at ?? null,
         valuesMissing: f.values_missing ?? 0,
         readAsSent: f.read_as_sent ?? false,
+        driveFileId: f.drive_file_id ?? null,
       });
       const notFound = {
         error: {
@@ -1493,7 +1575,26 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         const hash = asText(body['contentHash']);
         const fetchId = asText(body['fetchId']);
         const receipt = fetchId === '' ? undefined : receipts.get(fetchId);
-        if (fetchId !== '' || asText(body['kind']) === 'html') {
+        // Milestone 5 part 3a: a Drive file is attached only against the server's record of
+        // the read, and is named as Drive named it.
+        const driveReadId = asText(body['driveReadId']);
+        const driveReceipt = driveReadId === '' ? undefined : driveReceipts.get(driveReadId);
+        if (driveReadId !== '') {
+          const matches =
+            driveReceipt?.contentHash === hash &&
+            driveReceipt.byteSize === Number(body['byteSize']);
+          if (!matches) {
+            await json(route, 409, {
+              error: {
+                code: 'FETCH_EXPIRED',
+                message:
+                  'That file has to be read from Google Drive again before it can be attached. Try again.',
+                retryable: true,
+              },
+            });
+            return;
+          }
+        } else if (fetchId !== '' || asText(body['kind']) === 'html') {
           // A page is attached only against the bytes the server itself fetched.
           const matches =
             receipt?.contentHash === hash && receipt.byteSize === Number(body['byteSize']);
@@ -1517,6 +1618,10 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
         if (same !== undefined) {
           // The site was asked again and nothing had changed: that copy is as fresh as this read.
           if (receipt !== undefined) same.fetched_at = receipt.fetchedAt;
+          if (driveReceipt !== undefined && same.drive_file_id === driveReceipt.fileId) {
+            same.fetched_at = driveReceipt.fetchedAt;
+            same.name = driveReceipt.name;
+          }
           await json(route, 200, {
             action: 'begin',
             fileId: same.id,
@@ -1536,20 +1641,29 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           contentHash: hash,
           // A page is called by its own title, cleaned; with none, by the site it came from.
           name:
-            asText(body['kind']) === 'html' && receipt !== undefined
-              ? cleanTitle(asText(body['title']), receipt.host)
-              : asText(body['name']),
+            driveReceipt !== undefined
+              ? driveReceipt.name
+              : asText(body['kind']) === 'html' && receipt !== undefined
+                ? cleanTitle(asText(body['title']), receipt.host)
+                : asText(body['name']),
           kind: asText(body['kind']),
           byteSize: Number(body['byteSize']),
           expected: Number(body['totalPages']),
           stored: new Set(),
           vision: 0,
           source:
-            receipt === undefined
-              ? null
-              : { url: receipt.finalUrl, host: receipt.host, fetchedAt: receipt.fetchedAt },
+            driveReceipt !== undefined
+              ? {
+                  url: `https://drive.google.com/file/d/${driveReceipt.fileId}/view`,
+                  host: 'drive.google.com',
+                  fetchedAt: driveReceipt.fetchedAt,
+                }
+              : receipt === undefined
+                ? null
+                : { url: receipt.finalUrl, host: receipt.host, fetchedAt: receipt.fetchedAt },
           missing: 0,
           asSent: false,
+          driveFileId: driveReceipt?.fileId ?? null,
         });
         if (!state.conversations.some((c) => c.id === conversationId)) {
           state.conversations.unshift({
@@ -1664,6 +1778,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           values_missing: pending.missing,
           read_as_sent: pending.asSent,
           removed_reason: null,
+          drive_file_id: pending.driveFileId,
         };
         // A newer read of the same address takes the place of the older one.
         let replaced = 0;
@@ -1679,6 +1794,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
               older.source_url = null;
               older.source_host = null;
               older.fetched_at = null;
+              older.drive_file_id = null;
               older.removed_reason = 'replaced';
               replaced += 1;
             }
@@ -1699,6 +1815,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
           row.source_url = null;
           row.source_host = null;
           row.fetched_at = null;
+          row.drive_file_id = null;
           row.removed_reason = 'user';
           await json(route, 200, { action: 'remove', fileId, removed: true });
           return;
@@ -1708,6 +1825,165 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       }
       if (action === 'refused') {
         await json(route, 200, { action: 'refused', logged: true });
+        return;
+      }
+      await json(route, 400, {
+        error: { code: 'BAD_REQUEST', message: 'Invalid request: action.', retryable: false },
+      });
+      return;
+    }
+
+    // Milestone 5 part 3a: the drive endpoint, as the browser sees it. It holds the connection
+    // and the Drive; the browser holds neither, and never contacts Google for a file.
+    if (path === '/functions/v1/drive' && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      state.driveCalls.push({ body, authorization: request.headers()['authorization'] ?? null });
+      const origin = request.headers()['origin'];
+      if (typeof origin === 'string' && origin !== '') appOrigin = origin;
+      const action = asText(body['action']);
+      const connectionError = (code: string, message: string, status = 409): Promise<void> =>
+        json(route, status, { error: { code, message, retryable: false } });
+      if (action === 'status') {
+        await json(route, 200, { action: 'status', ...state.driveStatus });
+        return;
+      }
+      if (action === 'connect_start') {
+        const attempt = randomUUID();
+        await json(route, 200, {
+          action: 'connect_start',
+          authorizeUrl: `https://accounts.google.com/o/oauth2/v2/auth?client_id=e2e.apps.googleusercontent.com&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file')}&state=${attempt}`,
+        });
+        return;
+      }
+      if (action === 'connect_finish') {
+        const finish = options.drive?.finish ?? {
+          outcome: 'connected',
+          message: 'Google Drive is connected as broker@example.com.',
+        };
+        if (finish.outcome === 'connected') {
+          state.driveStatus = {
+            state: 'connected',
+            email: 'broker@example.com',
+            connectedAt: new Date().toISOString(),
+            lastUsedAt: null,
+            checked: true,
+          };
+        }
+        await json(route, 200, { action: 'connect_finish', note: null, ...finish });
+        return;
+      }
+      if (action === 'disconnect') {
+        if (options.drive?.disconnectFails === true) {
+          await json(route, 503, {
+            error: {
+              code: 'GOOGLE_UNREACHABLE',
+              message:
+                "Google could not be reached, so Drive is still connected and Google still holds this app's access. Try again.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        const was = state.driveStatus.state;
+        state.driveStatus = { state: 'not_connected' };
+        driveReceipts.clear();
+        await json(route, 200, {
+          action: 'disconnect',
+          disconnected: was === 'connected' || was === 'broken',
+          message:
+            was === 'connected' || was === 'broken'
+              ? "Google Drive is disconnected, and Google has removed this app's access. Files already added to conversations stay there until they are removed, or for 30 days."
+              : 'Google Drive was not connected, so there was nothing to disconnect.',
+        });
+        return;
+      }
+      if (action === 'picked') {
+        await json(route, 200, { action: 'picked', logged: true });
+        return;
+      }
+      if (action === 'read_file') {
+        if (
+          state.driveStatus.state === 'not_connected' ||
+          state.driveStatus.state === 'unavailable'
+        ) {
+          await connectionError(
+            'NOT_CONNECTED',
+            'Google Drive is not connected, so nothing was read. Connect it in Settings, then pick the file again.',
+          );
+          return;
+        }
+        if (state.driveStatus.state === 'broken') {
+          await connectionError(
+            'CONNECTION_BROKEN',
+            "Google Drive is no longer connected: Google stopped accepting this app's access. It may have been removed in your Google account, or not used for six months. Nothing was read. Connect it again in Settings.",
+          );
+          return;
+        }
+        const fileId = asText(body['fileId']);
+        const requestId = asText(body['requestId']);
+        const found = state.driveFiles[fileId];
+        if (found === undefined) {
+          await json(route, 422, {
+            error: {
+              code: 'DRIVE_REFUSED',
+              message:
+                'That file is no longer in your Google Drive, or this app was not given access to it. Pick it again from Drive.',
+              retryable: false,
+              refusal: 'drive_file_gone',
+            },
+          });
+          return;
+        }
+        if ('refused' in found) {
+          await json(route, 422, {
+            error: {
+              code: 'DRIVE_REFUSED',
+              message: found.message,
+              retryable: false,
+              refusal: found.refused,
+            },
+          });
+          return;
+        }
+        if ('failed' in found) {
+          await json(route, found.failed, {
+            error: { code: 'DRIVE_NOT_READ', message: found.message, retryable: true },
+          });
+          return;
+        }
+        if ((found.delayMs ?? 0) > 0) await new Promise((r) => setTimeout(r, found.delayMs));
+        const bytes = typeof found.body === 'string' ? Buffer.from(found.body, 'utf8') : found.body;
+        const contentHash = createHash('sha256').update(bytes).digest('hex');
+        driveReceipts.set(requestId, {
+          fileId,
+          name: found.name,
+          byteSize: bytes.length,
+          contentHash,
+          fetchedAt: new Date().toISOString(),
+        });
+        const meta = {
+          action: 'read_file',
+          readId: requestId,
+          name: found.name,
+          fileName: found.fileName ?? found.name,
+          contentType: found.contentType ?? 'text/plain',
+          byteSize: bytes.length,
+          contentHash,
+          googleType: found.googleType ?? null,
+          fileId,
+        };
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'access-control-allow-origin': '*',
+            'access-control-expose-headers': 'x-drive-meta',
+            'content-type': 'application/octet-stream',
+            'x-content-type-options': 'nosniff',
+            'content-disposition': 'attachment',
+            'x-drive-meta': Buffer.from(JSON.stringify(meta), 'utf8').toString('base64url'),
+          },
+          body: bytes,
+        });
         return;
       }
       await json(route, 400, {

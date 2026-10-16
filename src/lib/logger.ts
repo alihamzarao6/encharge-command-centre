@@ -67,6 +67,13 @@ const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, // Authorization header values
   /\bpa-[A-Za-z0-9_-]{16,}/g, // Voyage AI (Stage 3 memory layer)
   /\bfcc_[a-hjkmnp-z2-9]{12}_[A-Za-z0-9_-]{43}/g, // a connector key (its 12-character id alone is public)
+  // Google (Milestone 5 part 3a): an access token, a refresh token, an authorization code, an
+  // OAuth client secret, a browser API key. None is ever logged on purpose; this is the net.
+  /\bya29\.[A-Za-z0-9._-]{16,}/g,
+  /\b1\/\/[A-Za-z0-9_-]{16,}/g,
+  /\b4\/[A-Za-z0-9_-]{16,}/g,
+  /\bGOCSPX-[A-Za-z0-9_-]{10,}/g,
+  /\bAIza[0-9A-Za-z_-]{35}/g,
 ];
 
 const MAX_DEPTH = 8;

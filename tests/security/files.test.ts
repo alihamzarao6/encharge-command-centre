@@ -62,7 +62,7 @@ const REAL_POLICY = `status <> 'reading'
 
 const FUNCTIONS = [
   // As migration 20261012020000 (part 2) left them: begin gained the fetch, finish the gap mark.
-  'public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer, uuid)',
+  'public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer, uuid, uuid)',
   'public.append_conversation_file_pages(uuid, jsonb)',
   'public.finish_conversation_file(uuid, uuid, integer, text, text)',
   'public.remove_conversation_file(uuid, uuid, text)',

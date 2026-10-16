@@ -18,6 +18,7 @@ import {
 } from 'react';
 
 import type { MemoryActor } from '../../../src/lib/memory/access.js';
+import type { AttachedFile } from '../lib/filesApi.js';
 import { busyNote } from '../lib/filesView.js';
 import { isBusy, type BrowserFile, type UploadsState, type UploadsStore } from '../lib/uploads.js';
 
@@ -47,6 +48,8 @@ export interface Attachments {
   readonly store: UploadsStore;
   readonly actor: MemoryActor;
   readonly attach: (files: Iterable<File>) => void;
+  /** Milestone 5 part 3a: read a Drive file again from his Drive, replacing this copy. */
+  readonly readAgainFromDrive: (file: AttachedFile) => void;
   /** Why a message cannot be sent yet, or null. */
   readonly sendBlockedNote: string | null;
   /** A file is being dragged over the conversation. */
@@ -71,6 +74,14 @@ export function useAttachments(): Attachments {
   const attach = useCallback(
     (files: Iterable<File>): void => {
       store.add(toBrowserFiles(files));
+    },
+    [store],
+  );
+
+  const readAgainFromDrive = useCallback(
+    (file: AttachedFile): void => {
+      if (file.driveFileId !== null)
+        store.addDrive([{ fileId: file.driveFileId, name: file.name }]);
     },
     [store],
   );
@@ -102,6 +113,7 @@ export function useAttachments(): Attachments {
     store,
     actor,
     attach,
+    readAgainFromDrive,
     sendBlockedNote: isBusy(state) ? busyNote(state.uploads) : null,
     dragging,
     dropHandlers,

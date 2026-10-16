@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": 403,
+    "message": "The domain administrators have disabled Drive apps.",
+    "errors": [
+      {
+        "message": "The domain administrators have disabled Drive apps.",
+        "domain": "usageLimits",
+        "reason": "domainPolicy"
+      }
+    ]
+  }
+}

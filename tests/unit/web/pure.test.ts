@@ -137,7 +137,7 @@ describe('login messages', () => {
 });
 
 describe('web config', () => {
-  it('derives the chat, memory, admin, crm and files URLs and strips a trailing slash', () => {
+  it('derives the chat, memory, admin, crm, files and drive URLs and strips a trailing slash', () => {
     expect(
       resolveWebConfig({
         VITE_SUPABASE_URL: 'https://x.supabase.co/',
@@ -151,7 +151,21 @@ describe('web config', () => {
       crmUrl: 'https://x.supabase.co/functions/v1/crm',
       filesUrl: 'https://x.supabase.co/functions/v1/files',
       chatUrl: 'https://x.supabase.co/functions/v1/chat',
+      driveUrl: 'https://x.supabase.co/functions/v1/drive',
     });
+  });
+
+  it('takes nothing of Google from the build environment, even when it is there (M5 part 3a)', () => {
+    const secret = ['GOCSPX', '-', 'S'.repeat(28)].join('');
+    const config = resolveWebConfig({
+      VITE_SUPABASE_URL: 'https://x.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'k',
+      GOOGLE_DRIVE_CLIENT_SECRET: secret,
+      VITE_GOOGLE_DRIVE_CLIENT_SECRET: secret,
+      DRIVE_TOKEN_KEY: 'drive-token-key-value',
+    });
+    expect(JSON.stringify(config)).not.toContain(secret);
+    expect(JSON.stringify(config)).not.toContain('drive-token-key-value');
   });
 
   it('refuses a build with either value missing', () => {

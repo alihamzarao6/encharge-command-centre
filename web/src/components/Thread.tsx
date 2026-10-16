@@ -27,6 +27,8 @@ export interface ThreadAttachments {
   readonly onConfirm: (localId: string) => void;
   readonly onCancel: (localId: string) => void;
   readonly onRetry: (localId: string) => void;
+  /** Milestone 5 part 3a: read a Drive file again, as it is in Drive now. */
+  readonly onReadAgain?: (file: AttachedFile) => void;
 }
 
 interface Props {
@@ -263,6 +265,9 @@ export function Thread({
             now={now}
             removing={attachments.removing}
             onRemove={attachments.onRemove}
+            {...(attachments.onReadAgain === undefined
+              ? {}
+              : { onReadAgain: attachments.onReadAgain })}
           />
         ),
       )}

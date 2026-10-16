@@ -112,6 +112,7 @@ export function AssistantPanel({ onClose, onOpenFullPage }: Props): ReactElement
           onConfirm: attachments.store.confirm,
           onCancel: attachments.store.cancel,
           onRetry: attachments.store.retry,
+          onReadAgain: attachments.readAgainFromDrive,
         }}
         testId="panel-thread"
       />

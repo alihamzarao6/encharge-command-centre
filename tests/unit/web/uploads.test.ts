@@ -103,6 +103,7 @@ const view = (id: string, conversationId = CONV, pageCount = 2): AttachedFile =>
   valuesMissing: 0,
   readAsSent: false,
   removedReason: null,
+  driveFileId: null,
 });
 
 const ESTIMATE: VisionEstimate = {
@@ -172,6 +173,7 @@ function rig(conversationId: string | null = CONV): Rig {
       hash: () => Promise.resolve('a'.repeat(64)),
       // These tests attach files; links are tests/unit/web/uploads-links.test.ts.
       fetchPage: () => Promise.reject(new Error('uploads.test.ts does not read links')),
+      readDrive: () => Promise.reject(new Error('uploads.test.ts does not read Drive files')),
       call: <R extends FilesRequest>(request: R): Promise<FilesOutcome<ReplyFor<R['action']>>> => {
         r.requests.push(request);
         if (r.holdWhen(request)) {

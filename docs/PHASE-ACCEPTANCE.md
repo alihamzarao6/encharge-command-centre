@@ -1094,6 +1094,84 @@ heard) · the region pin from the deployed app (verified with `curl` during the 
 signed-in read on the live app (it writes to the production database, and nothing is
 deployed) · how often the three script-filled lenders change their markup.
 
+### Part 3a — A file from his own Google Drive · shared build done 16 Oct 2026; the picking step waits on the OnePick probe · NOT committed, NOT deployed
+
+*Decisions D119–D127 (`MEMORY.md` §2). Part A stopped on the brief's fixed decisions 2 and 5
+(Google's in-page Picker needs an access token in the browser); the reviewer ruled OnePick
+first, with the in-page Picker pre-approved as the fallback under decision 5 narrowed, word for
+word, in `SECURITY.md` §12b. Everything that does not depend on which Picker wins is built and
+tested here. The Google Cloud project is the reviewer's until Milestone 8 (D127, `TASKS.md`).*
+
+| # | Criterion | How it is proven | 16 Oct |
+|---|---|---|---|
+| G1 | **Scope is `drive.file` and nothing wider.** Asked for alone; a grant that comes back wider is revoked and never kept; one that comes back without it connects nothing | `google.test.ts` "asks for drive.file and nothing else", "the granted scope"; `page.test.ts` "anything wider than drive.file is never kept", "he unticked the Drive box" | ✅ |
+| G2 | **No token, code or client secret reaches the browser.** The exchange and every refresh are in the `drive` function; the callback hands the browser only the app's own `/settings` address. **The bundle check fails when the Google shapes are taken out** | `bundleCheck.test.ts` "scan — Google Drive" — **5 tests fail with the four Google shapes and the two Drive secrets removed from `check-bundle.ts`** (run 16 Oct); `npm run web:check` 0 hits; e2e `expectNoGoogleCredential` on everything the browser sent and stored; `page.test.ts` "the callback answers with the app's own Settings address and nothing of Google's" | ✅ (the in-page Picker fallback would narrow this exactly as SECURITY §12b says) |
+| G3 | The refresh token is **sealed** (AES-256-GCM, the user id and token id as associated data, the key only in the function's secrets); the held code and the PKCE verifier too. A sealed value moved to another row does not open | `crypto.test.ts` (12); `page.test.ts` "turns the code into a connection … SEALED token"; migration checks the sealed shape | ✅ |
+| G4 | **Only the person who pressed Connect can finish it** (D123): the callback exchanges nothing; a signed-in `finish` from the same user does, once, within ten minutes | `page.test.ts` "FINISHED BY A DIFFERENT SIGNED-IN PERSON", "the callback arriving TWICE", "a finish replayed after it succeeded is stale"; `tests/integration/drive.test.ts` (CI) "every step is single-use …" | ✅ unit · CI for the database |
+| G5 | **One user cannot read another's connection or Drive files.** No browser session reads a connection, a read record or an attempt — its owner included; the file row follows part 1's owner-or-shared rule. **Each fails without its protection** | `tests/security/drive.test.ts` (CI) incl. "4. each of those fails without its protection" in rolled-back transactions; replayed on PostgreSQL 17 on 16 Oct: the colleague sees **0** rows as built, **1** with either policy made `true`, **0** after rollback (98 schema assertions pass) | ✅ replay · CI is its first run |
+| G6 | **Disconnect revokes at Google, then deletes the row.** Google unreachable → the row is kept and he is told it is still connected. **The test fails when the revoke is skipped** | `page.test.ts` "disconnect (revoke at Google, THEN delete …)" — **2 tests fail with the revoke replaced by a pretend success** (run 16 Oct); `tests/integration/drive.test.ts` (CI) "disconnect revokes at Google, deletes the connection AND its reads"; e2e "DISCONNECT", "Google unreachable when disconnecting" | ✅ unit · CI |
+| G7 | **A broken connection is never silent** (A3, D122): found by the status check or by a read, recorded with a reason, shown on Settings as "Not working — why, when, and the way back", and in the thread pointing at Settings | `page.test.ts` "status (A3 …)", "THE REFRESH TOKEN REJECTED on a later read", "access REVOKED FROM HIS GOOGLE ACCOUNT …"; `drive-uploads.test.ts` "A BROKEN CONNECTION …"; e2e "BROKEN", "A BROKEN CONNECTION found by a read" | ✅ |
+| G8 | **Docs, Sheets and Slides are exported (A1, D120)** — .docx, .xlsx, PDF — and every Drive file goes through **part 1's readers unchanged**, read in the browser as a file, never as a page | `formats.test.ts`; `page.test.ts` "%s is exported, recorded and handed over", "%s is downloaded as it is and left to the readers"; `drive-uploads.test.ts` "this device reads it as a FILE" | ✅ (real files: Part D below) |
+| G9 | **Kept like an upload (A2, D121):** the text 30 days, Remove, the nightly purge; the bytes never stored; read again → the newer copy replaces the older; the name, address and read time are the server's record of the read, never the browser's | `page-drive.test.ts` (11); `drive-uploads.test.ts` "read again, changed/unchanged"; `tests/integration/drive.test.ts` (CI); e2e "READ AGAIN FROM DRIVE" | ✅ unit · CI for the database |
+| G10 | **Prompt injection: a Drive file reaches the model as the very request part 1 recorded the live model refusing** — the document rules only, no `source=`, the planted instruction once and inside the wrapper. **9 of its 10 tests fail when the store treats a Drive row as a page** (run 16 Oct) | `tests/unit/files/drive-injection.test.ts` — the three injection fixtures through the real reader, the real store adapter and the real turn builder, hashed against `tests/fixtures/files/recorded/*.protected.json`; the 10th test is the canary in the trigger shape | ✅ |
+| G11 | **Each read and pick is logged — who, type, size, how long, outcome — never the file's name, its content or any token** | `page.test.ts` "NEVER the file's name, content or any token in a log line or an error", "picked"; the logger redacts Google token shapes (`logger.test.ts`); `tests/integration/drive.test.ts` (CI) "no log line carries …" | ✅ |
+| G12 | Settings at 375 / 768 / 1280: four unambiguous states (not connected · connected as … · not working · not set up), disconnect asks first, every control reachable by keyboard, the outcome announced | `tests/e2e/drive.spec.ts` × 3 widths (17 tests = 51); screenshots `docs/assets/milestone-5/drive-*.png` | ✅ |
+| G13 | **The picking step in the Assistant** (OnePick or, if Google refuses it for a web client, the in-page Picker with the mandatory 375 px check) | — | ⏳ waits on the OAuth client id (`npm run drive -- probe`) |
+| G14 | `npm run typecheck && npm run lint && npm run test:regress` green; CI green with zero skipped | the 16 Oct "M5 part 3a · build" entry in `MEMORY.md` | ✅ local, 16 Oct: typecheck and lint clean · unit 3,486 passed, 0 failed (295 stack-backed skipped, no Docker) · coverage 93.11% lines / 89.72% branches · browser **675 of 675**, zero skipped · CI waits on the commit, which waits on the review |
+
+**Every case in the brief's Part C, and where it is tested.**
+
+| Part C | Case | Test |
+|---|---|---|
+| Connection | He cancels at Google's consent screen | `page.test.ts` "he cancels at Google's consent screen: nothing is exchanged, nothing is stored"; e2e "he cancels at Google" |
+| Connection | He approves, then revokes access from his Google account page | `page.test.ts` "access removed in his Google account: the check finds it" (status) and "access REVOKED … (a 401)" (read); e2e "BROKEN" |
+| Connection | The refresh token is rejected on a later read | `page.test.ts` "THE REFRESH TOKEN REJECTED on a later read"; `google.test.ts` "a revoked or lapsed grant is grant_invalid" |
+| Connection | He connects a second Google account over the first | `page.test.ts` "A SECOND GOOGLE ACCOUNT over the first: the first is revoked at Google, then replaced", and the same account again (not revoked — D125), and both failure orders |
+| Connection | Two people on the team connect their own Drives | `page.test.ts` "TWO PEOPLE connect their own Drives"; "one person's disconnect never touches another's"; `tests/security/drive.test.ts` (CI) |
+| Connection | The callback arrives with a wrong or replayed state | `page.test.ts` "no state / a malformed state / a state nobody issued … lands as stale", "a finish replayed after it succeeded"; e2e "a stale or replayed return" |
+| Connection | The callback arrives twice | `page.test.ts` "the callback arriving TWICE: the second changes nothing and cannot replace the code" |
+| Connection | He disconnects while a read is in flight | `page.test.ts` "DISCONNECTED WHILE A READ IS IN FLIGHT: the bytes are not handed over"; `drive-uploads.test.ts` "DISCONNECTED IN FLIGHT"; `tests/integration/drive.test.ts` (CI): nothing read under it attaches |
+| File | A Google Doc, Sheet, Slides deck | `page.test.ts` "%s is exported, recorded and handed over" (three rows); `formats.test.ts`; **real files: Part D** |
+| File | A PDF, Word, Excel, CSV, image, plain text file | `page.test.ts` "%s is downloaded as it is and left to the readers" (six rows); part 1's reader tests; **real files: Part D** |
+| File | A type we refuse, with a clear message | `page.test.ts` "%s is refused with a clear sentence, and nothing is downloaded" (Form, folder, …); `drive-uploads.test.ts` "a type the readers refuse is refused with part 1's sentence"; e2e "a file Drive refuses" |
+| File | A shortcut to another file | `page.test.ts` "A SHORTCUT is followed to the file it points at, once", "a shortcut whose file was never opened through the app", "a shortcut to a shortcut"; `formats.test.ts` |
+| File | In a shared drive; shared with him and not his own | `page.test.ts` "a file in a SHARED DRIVE, or shared with him and not his own, is read the same way"; `google.test.ts` asks with `supportsAllDrives`; **real account: Part D** |
+| File | Picked, then deleted or binned | `page.test.ts` "a file DELETED (Drive says not found)" and "a file in the bin" — "pick it again" |
+| File | Renamed between picking and reading | `page.test.ts` "a file RENAMED between picking and reading takes Drive's name at the moment it is read"; `drive-uploads.test.ts` "RENAMED" |
+| File | Larger than part 1's limit | `page.test.ts` "a file over the 20 MB limit" (from Drive's size, before downloading), "a body that turns out over the limit"; `google.test.ts` "a declared length over part 1's limit"; Google's own 10 MB export cap has its own sentence |
+| File | Zero bytes | `page.test.ts` "a zero-byte file", "one that turns out empty too" |
+| File | Instructions aimed at the assistant | `drive-injection.test.ts` (G10) |
+| Run | Google returns 401, 403, 429, 5xx | `google.test.ts` "reading Google's failures", "a 401 mid-read …", "a 403 rate limit, then a 200", "a 5xx on every attempt …"; `page.test.ts` "Google %s: retryable, in words, and recorded as failed", "a Workspace administrator's block" |
+| Run | The export takes long enough to matter | `google.test.ts` "a slow Google": a 30 s export waited for; nothing after 45 s is a timeout, not asked again; a stalled body abandoned at 90 s; e2e "a slow Google: the wait is said while it lasts, and Send waits for it" |
+| Run | Two files picked at once | `page.test.ts` "TWO FILES PICKED AT ONCE are two reads, two records"; `drive-uploads.test.ts` "read one after the other, never at the same time" |
+| Run | The same file picked twice | `drive-uploads.test.ts` "THE SAME FILE PICKED TWICE is read once"; `page.test.ts` (two reads, one hash, begin attaches it once) |
+| Run | The spend cap reached mid-read | A Drive read is no model call (`page.test.ts` "the endpoint has no Claude client to spend with"). A Slides deck of pictures asks first, as a scan does, and the cap mid-read leaves nothing attached: `drive-uploads.test.ts` |
+| Interface | 375 / 768 / 1280, no horizontal scroll | every `drive.spec.ts` test ends on the scroll check |
+| Interface | Inputs at 16 px or larger | Settings has no text input; part 1's e2e "text inputs stay at 16px" covers the composer |
+| Interface | The Picker reachable and dismissable by keyboard | **⏳ waits on the probe.** If OnePick: it is Google's full page, and "back" returns him. If the in-page Picker: tested at 375 px, mandatory (reviewer, 15 Oct) |
+| Interface | Screen reader hears the picked file and any refusal | `drive-uploads.test.ts` announcements; e2e "A BROKEN CONNECTION found by a read: said … to a screen reader", "a file Drive refuses … the reason announced". The announcement for the pick itself lands with G13 |
+| Interface | Connect and disconnect states never ambiguous | e2e "not connected", "CONNECT", "BROKEN", "connected, but Google could not confirm it just now", "not set up", "Keep it connected" changes nothing |
+
+**Part D — real files, real account.** *Waiting on the OAuth client id from the reviewer; the
+probe is built (`npm run drive -- probe`, RUNBOOK §1i) and reads each picked file through the
+same plan, fetch and part 1 reader as the product, prints what came out, and revokes. This
+section is filled from that run.*
+
+**What a Drive read costs (for the spend cap).** Reading a file from Drive is **no model call**:
+the function fetches the bytes, the browser's readers extract the text, exactly as an upload.
+Typed files (Docs, Sheets, Word, Excel, CSV, text, typed PDFs) are **$0** to attach. A Slides
+deck exports as a PDF, and a slide that is a picture is read as a scan — asked first, priced and
+capped as part 1 measured: **$0.013–$0.023 a page** on Sonnet, the cap reserving $0.077. The
+question afterwards costs what part 1 and part 2 measured for a document of the same length.
+Google charges nothing for Drive API calls at this volume; the limit that matters is ours,
+twenty reads a minute per person.
+
+**Could not be verified from this machine:** the two stack suites and the migration from zero
+(no Docker — CI is the first run; the SQL was replayed on PostgreSQL 17, 98 assertions and the
+policy mutations above) · anything against Google itself until the client id arrives: OnePick
+for a web client, real exports, a shared drive, the revoke endpoint's real answer · a real phone
+· a real screen reader.
+
 ---
 
 ## Milestone 6 — Talking to it, and your day · 350

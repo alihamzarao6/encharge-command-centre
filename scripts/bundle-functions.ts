@@ -35,6 +35,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'files', entry: 'src/functions/files/index.ts' },
   // MCP connector, stage 1: the endpoint the client's own AI connects to.
   { name: 'connector', entry: 'src/functions/connector/index.ts' },
+  // Milestone 5 part 3a: connecting Google Drive and reading a file he picked from it.
+  { name: 'drive', entry: 'src/functions/drive/index.ts' },
 ];
 
 const BANNER = [

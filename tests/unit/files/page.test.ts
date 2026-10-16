@@ -736,6 +736,7 @@ describe('finish', () => {
         'charCount',
         'conversationId',
         'createdAt',
+        'driveFileId',
         'expiresAt',
         'fetchedAt',
         'id',
@@ -751,8 +752,13 @@ describe('finish', () => {
         'visionPages',
       ].sort(),
     );
-    // An uploaded file came from nowhere on the web.
-    expect(done.file).toMatchObject({ sourceUrl: null, sourceHost: null, fetchedAt: null });
+    // An uploaded file came from nowhere on the web, and not from Drive.
+    expect(done.file).toMatchObject({
+      sourceUrl: null,
+      sourceHost: null,
+      fetchedAt: null,
+      driveFileId: null,
+    });
     expect(done.replaced).toBe(0);
   });
 

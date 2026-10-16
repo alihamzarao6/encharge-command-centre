@@ -62,6 +62,10 @@ Every one is a pure function in `src/lib/`, and every one has a bug class only a
 | `web/lib/files/html*` (the page reader) | 23 invented pages (`tests/fixtures/web/`), one per case: tables with spans and empty cells, tabs and accordions, script-filled figures marked and counted, a paywall (declared and undeclared), login, bot challenge, consent wall, cookie banner over content, mostly navigation, picture-only, `<meta refresh>` and script redirects, non-Latin and right-to-left text, encodings, broken markup. **Hidden-markup injection: 59 canaries — hidden blocks, and text hidden inside a visible sentence, table or tab — none comes out, and a naive tag-stripper would pass at least 25. A second page, `injection-revealed.html`, is in the exact shape the reader's one fallback triggers on (nothing visible, everything behind `opacity:0`): 20 canaries hidden any other way still do not come out, and the instruction hidden by opacity — which that fallback does read — is followed to the request in the wrapper suites.** A page nested past the depth the reader tracks is refused. **Shipped 12 Oct** — `tests/unit/web/files-html.test.ts` (262) |
 | `web/lib/links`, `filesView` (pages), `uploads` (links), `filesApi.fetchPage` | Link detection (only a link, in a sentence, several, punctuation, very long, refused forms said in the server's words); the strip's five states; the ask-once wording; read time by the reader's own calendar; the queue's link flow — fetch → read → begin with the receipt → finish, the same link twice is one read, a second link waits, Stop, Try again under a new id, an expired receipt starts over; the fetch call checks length and SHA-256 and never sends the address anywhere but our endpoint. **Shipped 12 Oct** — `tests/unit/web/links.test.ts` (48), `uploads-links.test.ts` (36) |
 | `web/lib/uploads` | The queue: one file at a time; the question before a scan; resume from the page it stopped at; stop while the claim is in flight tells the server to drop it; a duplicate is never removed by a stop. **Shipped 12 Oct** |
+| `drive/*` (Milestone 5 part 3a) | **The connection:** cancel at Google, a revoked grant found by a status check and by a read, a refresh token rejected later, a second Google account over the first (revoked first) and the same account again (never revoked), two people each with their own, a wrong or replayed state, the callback twice, **finished by a different signed-in person (D123)**, disconnect revoking at Google before deleting and keeping the row when Google is unreachable, disconnect while a read is in flight. **The file:** every A1 type exported or downloaded, every refusal a sentence, shortcuts once, the bin, renamed, too large, zero bytes, 401 / 403 / 429 / 5xx, a slow export. **No token, code, verifier, state or file name in any reply or log line, and no redaction either.** Sealing: wrong owner, wrong key, one flipped bit, malformed — none opens. Google's answers from `tests/fixtures/google/` (documented shapes, labelled; the probe checks them live). **Built 16 Oct, not yet committed** — `tests/unit/drive/` (crypto · formats · stream · google · store · config · page · limits · wiring) |
+| `files/page` (`begin` with a Drive read), `files/store` (Drive rows) | Attached only against the server's record of the Drive read (this person's, fetched, recent, the same bytes), named as Drive named it, kept 30 days; a newer read of the same Drive file replaces the older; a Drive file reads to the model as an upload does (no source, no web-page rules). **Built 16 Oct, not yet committed** — `tests/unit/files/page-drive.test.ts`, `store.test.ts` |
+| `files/drive-injection` (Milestone 5 part 3a) | **Prompt injection on the Drive path.** The three injection fixtures through the real reader, stored as Drive rows, loaded by the real store adapter (`supabaseFileStore.forTurn` over a PostgREST-shaped stub) and the real turn builder: the request hashes to part 1's recorded protected request, the rules are the document rules only, the planted instruction is once and inside one wrapper with no `source=`. A row with a host and a read time but no Drive id (the trigger shape) reads as a page and does NOT match — the canary. With the Drive exception removed from `forTurn`, 9 of 10 fail. **Built 16 Oct, not yet committed** — `tests/unit/files/drive-injection.test.ts` |
+| `web/lib/driveApi`, `driveView`, `uploads` (Drive), `filesView` (Drive) | Bytes believed only when their length and SHA-256 are what the server reported; a connection failure is "Settings", never "Try again"; the four Drive states, no two alike; the return from Google read once and cleaned; a Drive file in the queue: read as a file (never a web page), two at once one after the other, the same twice once, renamed, refused, broken, disconnected in flight, the scan question and the spend cap mid-read. **Built 16 Oct, not yet committed** — `tests/unit/web/drive.test.ts`, `drive-uploads.test.ts`; `bundleCheck.test.ts` (Google token shapes and the Drive secrets by value); `pure.test.ts` (the browser's config takes nothing of Google's) |
 | `crm/ghl/idempotency` | Same input twice produces one contact and one opportunity, not two |
 | `notion/writeback` | Only editable fields accepted; read-only fields rejected with a logged reason |
 | `memory/facts` | Supersede logic, current-facts query, scope isolation |
@@ -250,6 +254,25 @@ Coverage required:
   **Neither has run on this machine (no Docker): CI is their first execution.** Their SQL —
   every statement the migration makes and every fixture the security suite inserts — was
   replayed on a local PostgreSQL 17 (85 assertions) before commit
+- **Google Drive (Milestone 5 part 3a, `tests/integration/drive.test.ts`, 10 tests):** the real
+  drive and files endpoints, the real stores and a real chat turn, with Google and Anthropic
+  scripted — the migration's objects (three tables, forced RLS, one `begin_conversation_file`
+  with fourteen parameters, the purge still scheduled); a connection made through
+  connect_start → the callback → connect_finish and stored SEALED (opened back with the key and
+  the right owner only); every step single-use, and a different signed-in person cannot finish
+  someone else's Connect; a Drive file attached under Drive's name and its one address, thirty
+  days, audited as `drive`; a changed read replacing the older one; a question about it in
+  front of the model as a wrapped document without the web-page rules; a broken grant recorded;
+  disconnect deleting the connection AND its reads so nothing read under it attaches; the purge
+  clearing reads past a day and attempts past ten minutes (this run's only); no log line with a
+  token, a code, a name or the content. `tests/security/drive.test.ts` (10 tests): no session
+  reads a connection, a read record or an attempt — the owner included; **the cross-user test**
+  — the colleague cannot learn the author's connection, sealed token, Drive reads or Drive file
+  by any filter, the colleague's request uses only the colleague's own token, and cannot attach
+  bytes the author read; nothing can be written from a session; each protection weakened inside
+  a rolled-back transaction shows the read then succeeds. **Neither has run on this machine
+  (no Docker): CI is their first execution.** The migration's SQL was replayed on a local
+  PostgreSQL 17 first (98 assertions) — which found two defects before any stack did
 - **Lead-type routing:** a consumer-type record inserted end to end must produce zero crawl
   requests, zero LLM calls and zero rankings
 - Full pipeline against a fixture org: intake → discovery → enrich → rank → push (mocked GHL
@@ -433,6 +456,18 @@ measured in `x-page-meta`), holds `begin` to its record of the fetch, and replac
 read at `finish`. Screenshots `links-*` at the three widths under `docs/assets/milestone-5/`.
 The integration job gains `tests/integration/web-pages.test.ts` and
 `tests/security/web-pages.test.ts`, and replays migration `20261012020000` from zero.
+*Milestone 5 part 3a (16 Oct 2026):* the browser job gains `tests/e2e/drive.spec.ts` — the
+Drive section of Settings in all four states, connect through a stand-in for Google's consent
+page and back (finished with his own session, the address cleaned), cancel, a stale return,
+disconnect with its question (the safe answer focused) and with Google unreachable, keyboard
+reach; a Drive file in the thread, opened in Drive, read again (replacing the older copy), a
+colleague's file not read again from his Drive, a broken connection found by a read pointing at
+Settings, a refusal, a slow Google with Send waiting — at 375 / 768 / 1280 with no horizontal
+scroll, and nothing of Google's in anything the browser sent or stored. The e2e mock answers the
+drive endpoint as the function does and holds `begin` to its record of the read. Screenshots
+`drive-*` under `docs/assets/milestone-5/`. The integration job gains
+`tests/integration/drive.test.ts` and `tests/security/drive.test.ts`, and replays
+`20261016010000` from zero.
 
 *Status 24 Aug 2026 (Stage 2 part 2):* step 6 is live as a second CI job (`integration`):
 Supabase CLI pinned to the `supabase` devDependency version → `supabase start` →

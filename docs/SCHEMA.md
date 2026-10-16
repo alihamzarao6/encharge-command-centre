@@ -776,6 +776,89 @@ fields: the text is kept whole, for a day, and every part of it carries the four
 `extraction_method` and `confidence` on each part. If a knowledge store is ever wanted, §2a
 still describes it.
 
+### Google Drive — drive_connections, drive_oauth_states, drive_reads, and one column on conversation_files (Milestone 5 part 3a, 16 Oct 2026)
+
+A file picked from Drive is **a `conversation_files` row like any other** (D121) — same
+ownership, same policy, same text table, same wrapper, the same 30 days — and its bytes are
+stored nowhere. What Drive adds is the connection (one per person), the single-use attempt that
+makes it, and the server's record of each file it read. Migration `20261016010000_drive.sql`.
+SECURITY §12b says why each column is where it is.
+
+**Added to `conversation_files`.** `drive_file_id text` — the Drive file the row was read from,
+copied from `drive_reads`, never from the browser; null for an upload or a link, **and null again
+once the row is removed** (the tombstone check now covers it). A Drive row's `source_url` is the
+file's **one canonical address**, `https://drive.google.com/file/d/<id>/view`, and its
+`source_host` is `drive.google.com` (`conversation_files_drive_source_check`), so part 2's "a
+newer read of the same address replaces the older one" replaces an older read of the same Drive
+file. A Drive row reads to the model as an upload does: `forTurn` gives it no `source`, and it
+does not make a conversation one "with a page in it".
+
+**`drive_connections` — one per person.**
+
+| Column | Holds |
+|---|---|
+| `user_id` PK | FK `auth.users`, on delete cascade |
+| `token_id uuid` | Which token the row holds now. A new token gets a new id, so a write meant for an older one (mark broken, delete after revoking) never lands on a newer one |
+| `google_account_id` | Drive's permission id: tells "the same account again" from "a different account" (D125) |
+| `google_email` | Shown so the page can say which account is connected (D126). Never logged |
+| `refresh_token_sealed` | `v1.<iv>.<ciphertext+tag>`, AES-256-GCM sealed in the function, the person and the token id as associated data (D124). Pattern and length checked apart (PostgreSQL allows no repetition count over 255) |
+| `granted_scope` | What Google granted — always exactly `drive.file`; nothing else is ever written |
+| `status`, `broken_reason`, `broken_at` | `active` or `broken` with a reason code and a time (D122); `drive_connections_broken_check` holds the three together |
+| `connected_at`, `last_used_at` | |
+
+**`drive_oauth_states` — one per press of Connect.** `state_hash` (SHA-256 hex of the state sent
+to Google, unique), `user_id`, `verifier_sealed`, `code_sealed` and `callback_error` (exactly one
+set once the callback returned — `drive_oauth_states_returned_check`), `created_at`,
+`expires_at` (ten minutes), `returned_at`.
+
+**`drive_reads` — the server's record of each read.** `id` (the browser's request id; one id
+reads one file, once), `user_id` (FK **`drive_connections`**, on delete cascade — a disconnect
+takes the records with it), `drive_file_id`, `status` (`started` · `fetched` · `refused` ·
+`failed`), `outcome` (a reason code), `name` (Drive's name when read, cleaned), `google_mime`,
+`exported_as`, `byte_size`, `content_hash`, `modified_at`, `duration_ms`, `created_at`,
+`fetched_at`. `drive_reads_fetched_check`: no `fetched` row without its name, size, hash and
+time. **No content is stored here.**
+
+**Who reads what.** All three tables: RLS enabled and forced, **one policy, `using (false)`** —
+no browser session reads a row, its owner included; `authenticated` holds `SELECT` (what
+`tests/security/rls.test.ts` asserts of every table), `service_role` all, `anon` nothing. Proven
+in `tests/security/drive.test.ts`, including that an "own rows" policy would hand a browser its
+own sealed token.
+
+**Functions (`service_role` only).**
+
+- `create_drive_oauth_state(p_user_id, p_state_hash, p_verifier_sealed, p_ttl_seconds,
+  p_max_open)` → id. `DV001` past `p_max_open` open attempts per person.
+- `return_drive_oauth_state(p_state_hash, p_code_sealed, p_error)` → `(id, user_id)` or no row.
+  The callback: **once per state, only while fresh**.
+- `take_drive_oauth_state(p_id, p_user_id)` → `(outcome, state_hash, verifier_sealed,
+  code_sealed, callback_error)`. Deletes the attempt whatever the outcome; only `ok` — the same
+  person, fresh, returned with a code — hands back anything sealed (D123).
+- `save_drive_connection(p_user_id, p_expected_token_id, p_token_id, p_account_id, p_email,
+  p_refresh_sealed, p_scope)` → `(replaced, same_account)`. Under a per-person lock; `DV002`
+  when the row is not the one the caller saw. Audited `DRIVE_CONNECTED`, without the address.
+- `mark_drive_connection_broken(p_user_id, p_token_id, p_reason)` → boolean; audited
+  `DRIVE_BROKEN`. `delete_drive_connection(p_user_id, p_token_id)` → boolean; called only after
+  Google confirmed the revocation; audited `DRIVE_DISCONNECTED`.
+- `claim_drive_read(p_id, p_user_id, p_drive_file_id, p_per_minute)` → `(claimed, existing)`;
+  `DR001` past the per-minute limit; a foreign-key error when there is no connection.
+  `complete_drive_read(…)` → boolean, scoped to the person.
+- `begin_conversation_file(…, p_fetch_id uuid default null, p_drive_read_id uuid default
+  null)` — **dropped and recreated with a fourteenth parameter.** With a Drive read the
+  attachment is checked against the record — this person's, `fetched`, within 15 minutes, still
+  under a live connection, the same size and SHA-256, not `html` — and takes the Drive file,
+  address, time **and name** from it; `FL007` otherwise. The same bytes already attached and
+  read again: that row's time moves forward and it takes Drive's current name (renamed in Drive).
+- `finish_conversation_file` — same signature; the audit row's `source` is `drive` for a Drive
+  file. `remove_conversation_file` — same signature; nulls `drive_file_id`.
+  `purge_conversation_files` — also deletes `drive_reads` older than a day and attempts past
+  their ten minutes.
+
+The new `begin` parameter has a default and is passed by name, so the `files` function deployed
+before this migration keeps working until its own redeploy (RUNBOOK §1i). Code:
+`src/lib/drive/` (limits · crypto · formats · stream · google · store · config · page · wiring ·
+meta), `src/lib/files/` (store · page), `web/src/lib/driveApi.ts`, `web/src/lib/driveView.ts`.
+
 ### connector_keys, connector_key_secrets, connector_calls — the MCP connector (stage 1, 13 Oct 2026)
 
 Migration `20261013010000_connector.sql` (D101–D110). Goodwill work, not on the milestone

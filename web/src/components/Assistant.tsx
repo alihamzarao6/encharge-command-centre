@@ -578,6 +578,7 @@ export function Assistant({
                   onConfirm: attachments.store.confirm,
                   onCancel: attachments.store.cancel,
                   onRetry: attachments.store.retry,
+                  onReadAgain: attachments.readAgainFromDrive,
                 },
               }
             : {})}

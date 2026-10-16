@@ -64,7 +64,7 @@ const REAL_POLICY = `status <> 'reading'
 const FUNCTIONS = [
   'public.claim_web_fetch(uuid, uuid, text, text, integer, integer)',
   'public.complete_web_fetch(uuid, uuid, text, text, text, text, integer, text, bigint, text, integer, integer)',
-  'public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer, uuid)',
+  'public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer, uuid, uuid)',
   'public.finish_conversation_file(uuid, uuid, integer, text, text)',
 ];
 

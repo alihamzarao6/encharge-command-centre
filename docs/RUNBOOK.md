@@ -599,6 +599,85 @@ multiple of it clear of 900 seconds by a few minutes: that is when an interrupte
 paused). Then no row is written and the only sign is the copy's age: amber on the screens after
 an hour, red after a day, and his AI told the age on every answer.
 
+### 1i. Google Drive — setting up, deploying and running (Milestone 5 part 3a, 16 Oct 2026)
+
+He connects his Drive once on **Settings**, then a file from it arrives in a conversation the
+way an upload does. Why it works this way: `docs/MEMORY.md` D119–D127; tables and functions:
+`docs/SCHEMA.md` §4; every credential and where it lives: `docs/SECURITY.md` §12b.
+
+**Google's side (done once, by whoever owns the Google Cloud project — D127).**
+
+1. Google Cloud console → the project "Fundd Command Centre" → **APIs & Services → Library**:
+   enable **Google Drive API** (and **Google Picker API** only if the in-page Picker is used —
+   D119).
+2. **OAuth consent screen** (Google Auth Platform → Branding / Audience / Data access): User
+   type **External**; app name **Fundd Command Centre**; support and developer contact
+   addresses; scope **`…/auth/drive.file` only**; Audience → **Publish app** → *In production*.
+   With only `drive.file` Google asks for no verification and shows no "unverified app"
+   screen; in *Testing* every connection would die after seven days (the brief's decision 4).
+   Do not add a logo: a logo is what makes Google ask for brand verification.
+3. **Clients → Create client → Web application.** Authorised redirect URIs:
+   `https://mxdfptqdshdgdszizlbo.supabase.co/functions/v1/drive/callback` (the app), and — for
+   the probe on a developer's machine only — `http://localhost:8765/callback`. Remove the
+   localhost one at handover. Keep the client id and the client secret.
+
+**Deploy — §1f's order (nothing is live until the function has its three secrets):**
+
+1. Push a branch. CI green with zero skipped: the first from-zero replay of `20261016010000`,
+   and the first run of `tests/integration/drive.test.ts` and `tests/security/drive.test.ts`
+   (the migration's SQL was replayed on a plain PostgreSQL 17 first — 98 assertions).
+2. `supabase db push` — 24 of 24.
+3. The secrets, without printing them, from files OUTSIDE the repository:
+   `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" > "$TEMP/drive-key"`
+   then `npx supabase secrets set DRIVE_TOKEN_KEY="$(cat "$TEMP/drive-key")" GOOGLE_DRIVE_CLIENT_ID=<id> GOOGLE_DRIVE_CLIENT_SECRET="$(cat "$TEMP/drive-secret")"`.
+   **Keep `DRIVE_TOKEN_KEY` somewhere safe (the client's password manager):** without it every
+   stored connection is unreadable and every person must connect again. Delete the files.
+   `CHAT_ALLOWED_ORIGIN` (already set) is where Google sends him back.
+4. `npm run functions:bundle`, then `supabase functions deploy drive --no-verify-jwt` and
+   `supabase functions deploy files --no-verify-jwt` (`begin` learned the Drive receipt).
+   Check: an unauthenticated `curl -s -X POST <project>/functions/v1/drive -d '{"action":"status"}'`
+   → `401`; `curl -s -o /dev/null -w '%{http_code}' <project>/functions/v1/drive/callback` → `303`
+   (to `/settings?drive=stale`).
+5. Fast-forward and push `main`: the web deploy (Settings, the Drive section, a Drive file in the
+   thread).
+6. Acceptance: on the live app, **Settings → Connect Google Drive** → Google → back on Settings
+   reading "Connected as …"; then read a file of each type (PHASE-ACCEPTANCE M5 part 3a).
+   `select status, google_email, broken_reason from drive_connections` — one row, `active`.
+
+**Before any of that — the OnePick probe and the real-file reads, on a developer's machine,
+nothing deployed:** put `GOOGLE_DRIVE_CLIENT_ID` (and, to read files, `GOOGLE_DRIVE_CLIENT_SECRET`)
+in `.env`, then `npm run drive -- probe`. It prints Google's address; open it in a browser on the
+same machine, pick files, approve. It reports whether Google returned `picked_file_ids` (OnePick
+works for a web client) and, with the secret, reads every picked file through the app's own plan
+and readers and prints what came out — then revokes the grant. `--plain` shows the ordinary
+consent screen instead; `--mode query` tries the code in the address instead of the form body.
+
+**A connection says "Not working" — what the reason means:**
+
+| Reason | Means | Do |
+|---|---|---|
+| `grant_revoked` | Google refused the refresh token: access removed in his Google account, six months unused, a Workspace administrator's restriction or session limit | He connects again on Settings |
+| `access_lost` | Drive refused the access token on a read (removed in between) | He connects again |
+| `unreadable` | The stored token does not open: `DRIVE_TOKEN_KEY` changed or was lost | Put the old key back if it exists; otherwise everyone connects again |
+
+**A read failed — what the log says** (`drive` function logs, search `drive file not read`; the
+`outcome` field): `drive_file_gone` (deleted, or never opened through the app — pick it again) ·
+`drive_in_bin` · `drive_folder` · `drive_google_type` · `drive_download_blocked` (the owner turned
+downloading off) · `drive_shortcut_target` · `drive_domain_policy` (his Workspace administrator
+blocks the app) · `drive_export_too_large` (Google's 10 MB) · `too_large` (part 1's 20 MB) ·
+`empty` · `drive_busy` / `drive_unreachable` / `drive_timeout` (retryable; nothing to do unless it
+persists) · `connection_broken` (the table above) · `client_config` (**our** configuration: the
+client id, secret or redirect address Google holds does not match — check step 3 of Google's side
+and step 3 above).
+
+**Rotate the client secret:** Google Cloud → the client → add a secret → `supabase secrets set
+GOOGLE_DRIVE_CLIENT_SECRET=…` → delete the old secret in Google. Connections survive.
+**Rotate `DRIVE_TOKEN_KEY`:** there is no re-sealing tool — a new key makes every stored
+connection `unreadable`, and everyone connects again. Do it only when the key may have leaked.
+**Move the project to the client (D127, Milestone 8):** transfer the Google Cloud project, or
+create a new OAuth client under his account, set its id and secret, and have everyone connect
+again; then remove the localhost redirect.
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.

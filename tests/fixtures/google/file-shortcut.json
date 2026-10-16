@@ -1,0 +1,14 @@
+{
+  "id": "1CutAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+  "name": "Rate sheet",
+  "mimeType": "application/vnd.google-apps.shortcut",
+  "modifiedTime": "2026-10-15T01:02:03.000Z",
+  "trashed": false,
+  "capabilities": {
+    "canDownload": true
+  },
+  "shortcutDetails": {
+    "targetId": "1DocAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+    "targetMimeType": "application/vnd.google-apps.document"
+  }
+}

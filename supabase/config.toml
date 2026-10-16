@@ -496,3 +496,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/connector/index.ts"
 import_map = "./functions/connector/deno.json"
+
+# Milestone 5 part 3a: connecting Google Drive and reading a file he picked from it. verify_jwt
+# is off for two reasons: Google's callback (…/drive/callback) is a top-level navigation that
+# carries no session at all, and every other action verifies the caller against the allowlist
+# itself and answers 401 / 403 in its own words.
+[functions.drive]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/drive/index.ts"
+import_map = "./functions/drive/deno.json"

@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": 403,
+    "message": "The user has not granted the app 1234567890 read access to the file 1PdfAbCdEfGhIjKlMnOpQrStUvWxYz0123456789.",
+    "errors": [
+      {
+        "message": "The user has not granted the app 1234567890 read access to the file 1PdfAbCdEfGhIjKlMnOpQrStUvWxYz0123456789.",
+        "domain": "usageLimits",
+        "reason": "appNotAuthorizedToFile",
+        "location": "fileId",
+        "locationType": "parameter"
+      }
+    ]
+  }
+}

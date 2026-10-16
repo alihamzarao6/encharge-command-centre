@@ -18,7 +18,7 @@
  * Unknown paths land on the overview rather than a "not found" page: nothing has ever been
  * linked that could now be missing, and a broken-looking page is worse than the right one.
  */
-export type SectionId = 'overview' | 'leads' | 'assistant' | 'memory' | 'team';
+export type SectionId = 'overview' | 'leads' | 'assistant' | 'memory' | 'team' | 'settings';
 
 export const DEFAULT_SECTION: SectionId = 'overview';
 
@@ -28,6 +28,8 @@ const PATHS: Readonly<Record<SectionId, string>> = {
   assistant: '/assistant',
   memory: '/memory',
   team: '/team',
+  // Milestone 5 part 3a: where Google Drive is connected — and where Google sends him back.
+  settings: '/settings',
 };
 
 export type LeadsView = 'board' | 'list';

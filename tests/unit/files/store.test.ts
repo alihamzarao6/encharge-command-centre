@@ -639,6 +639,51 @@ describe('forTurn — what a turn may read', () => {
     expect(!down.ok && down.error.code).toBe('NETWORK');
   });
 
+  it('a file from Drive reads as an upload does: no web source, and no web-page rules (part 3a)', async () => {
+    stub((req) => {
+      if (req.path === '/rest/v1/conversation_files') {
+        return json([
+          fileRow('drive', {
+            kind: 'docx',
+            source_host: 'drive.google.com',
+            fetched_at: '2026-10-12T03:30:00Z',
+            drive_file_id: '1DocAbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
+          }),
+          fileRow('page', {
+            kind: 'html',
+            source_host: 'www.lender.example.org',
+            fetched_at: '2026-10-12T03:31:00Z',
+            drive_file_id: null,
+          }),
+        ]);
+      }
+      return json([pageRow('drive', 1), pageRow('page', 1)]);
+    });
+    const loaded = await store().forTurn(CONV_ID);
+    if (!loaded.ok) throw loaded.error;
+    const byId = new Map(loaded.value.files.map((file) => [file.id, file]));
+    expect(byId.get('drive')).not.toHaveProperty('source');
+    expect(byId.get('page')?.source).toMatchObject({ host: 'www.lender.example.org' });
+    // The page makes this a conversation with a page in it; the Drive file alone would not.
+    expect(loaded.value.everHadPage).toBe(true);
+    expect(seen[0]?.query).toContain('drive_file_id');
+
+    seen.length = 0;
+    stub((req) =>
+      req.path === '/rest/v1/conversation_files'
+        ? json([
+            fileRow('drive', {
+              source_host: 'drive.google.com',
+              fetched_at: '2026-10-12T03:30:00Z',
+              drive_file_id: '1DocAbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
+            }),
+          ])
+        : json([pageRow('drive', 1)]),
+    );
+    const driveOnly = await store().forTurn(CONV_ID);
+    expect(driveOnly.ok && driveOnly.value.everHadPage).toBe(false);
+  });
+
   it('a page row with an unknown method is left out rather than shown under a false label', async () => {
     stub((req) => {
       if (req.path === '/rest/v1/conversation_files') return json([fileRow('live')]);
@@ -717,10 +762,15 @@ describe('claimFetch — may this read go ahead', () => {
  * here, by reading the migration.
  */
 describe('the adapter and the migration agree', () => {
-  // Both migrations, in order. Part 2 (20261012020000) redefines begin, finish, remove and
-  // purge and adds columns, so a function is read at its LAST definition and a table as its
-  // `create table` plus every `add column` after it — what the database actually holds.
-  const sql = ['20261012010000_conversation_files.sql', '20261012020000_web_pages.sql']
+  // The three migrations, in order. Parts 2 (20261012020000) and 3a (20261016010000) redefine
+  // begin, finish, remove and purge and add columns, so a function is read at its LAST
+  // definition and a table as its `create table` plus every `add column` after it — what the
+  // database actually holds.
+  const sql = [
+    '20261012010000_conversation_files.sql',
+    '20261012020000_web_pages.sql',
+    '20261016010000_drive.sql',
+  ]
     .map((name) =>
       readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8'),
     )
@@ -813,24 +863,38 @@ describe('the adapter and the migration agree', () => {
       expect(declared.length, fn).toBeGreaterThan(0);
       expect(sent(`/rest/v1/rpc/${fn}`).sort(), fn).toEqual([...declared].sort());
     }
-    // An upload sends every parameter but the fetch; a page from a link sends that too.
+    // An upload sends every parameter but the two sources; a page from a link sends its fetch,
+    // and a file from Drive (part 3a) its read.
     const begin = parameters('begin_conversation_file');
+    expect(begin).toContain('p_drive_read_id');
     expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual(
-      begin.filter((name) => name !== 'p_fetch_id').sort(),
+      begin.filter((name) => name !== 'p_fetch_id' && name !== 'p_drive_read_id').sort(),
     );
     seen.length = 0;
     await s.begin({ ...BEGIN, kind: 'html', fetchId: FETCH_ID });
-    expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual([...begin].sort());
+    expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual(
+      begin.filter((name) => name !== 'p_drive_read_id').sort(),
+    );
+    seen.length = 0;
+    await s.begin({ ...BEGIN, driveReadId: FETCH_ID });
+    expect(sent('/rest/v1/rpc/begin_conversation_file').sort()).toEqual(
+      begin.filter((name) => name !== 'p_fetch_id').sort(),
+    );
   });
 
   it('the deployed function keeps working across the deploy: the new parameters have defaults', () => {
     // files v1 calls begin with twelve named arguments and finish with three. PostgREST
     // resolves a call by its argument names, so each added parameter must have a default.
     expect(declaration('begin_conversation_file')).toMatch(/p_fetch_id uuid default null/);
+    // Part 3a: files v5 (deployed) never sends p_drive_read_id, so it too must have a default.
+    expect(declaration('begin_conversation_file')).toMatch(/p_drive_read_id uuid default null/);
     expect(declaration('finish_conversation_file')).toMatch(/p_gap_mark text default null/);
     // …and the old signatures are gone, so there is exactly one function to resolve to.
     expect(sql).toContain(
       'drop function public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer);',
+    );
+    expect(sql).toContain(
+      'drop function public.begin_conversation_file(uuid, uuid, uuid, text, text, bigint, text, integer, integer, integer, integer, integer, uuid);',
     );
     expect(sql).toContain('drop function public.finish_conversation_file(uuid, uuid, integer);');
   });
@@ -888,6 +952,9 @@ describe('the adapter and the migration agree', () => {
     stub((req) => {
       if (req.path === '/rest/v1/conversation_files') return json([{ ...FILE_ROW, id: 'live' }]);
       if (req.path === '/rest/v1/conversation_file_pages') return json([]);
+      if (req.path === '/rest/v1/web_fetches' || req.path === '/rest/v1/drive_reads') {
+        return json([]);
+      }
       return undefined;
     });
     const s = store();
@@ -896,8 +963,10 @@ describe('the adapter and the migration agree', () => {
     await s.visionPagesStored(FILE_ID);
     await s.forTurn(CONV_ID);
     await s.getFetch(FETCH_ID);
-    expect(seen.length).toBeGreaterThanOrEqual(6);
+    await s.getDriveRead(FETCH_ID);
+    expect(seen.length).toBeGreaterThanOrEqual(7);
     expect(seen.some((req) => req.path === '/rest/v1/web_fetches')).toBe(true);
+    expect(seen.some((req) => req.path === '/rest/v1/drive_reads')).toBe(true);
     for (const req of seen) {
       const table = req.path.replace('/rest/v1/', '');
       const known = columns(table);
@@ -916,9 +985,14 @@ describe('the adapter and the migration agree', () => {
   });
 
   it('every refusal the functions raise is one the adapter can name', async () => {
-    const raised = [
+    // The Drive connection's own functions (part 3a) raise DV001, DV002 and DR001; those are
+    // named by the drive store (tests/unit/drive/store.test.ts), not by this one.
+    const driveCodes = ['DR001', 'DV001', 'DV002'];
+    const all = [
       ...new Set([...sql.matchAll(/using errcode = '(\w+)'/g)].map((match) => match[1] ?? '')),
-    ].sort();
+    ];
+    expect(all).toEqual(expect.arrayContaining(driveCodes));
+    const raised = all.filter((code) => !driveCodes.includes(code)).sort();
     expect(raised).toEqual([
       '02000',
       'FL001',

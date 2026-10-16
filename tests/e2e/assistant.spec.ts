@@ -424,13 +424,15 @@ test.describe('assistant', () => {
     // Milestone 4 part 2: the two "not yet built" entries are gone. An entry that opens a page
     // saying so invites a tap and returns nothing. Part 3 adds Leads, which exists.
     const nav = page.getByRole('navigation', { name: 'Sections' });
-    await expect(nav.getByRole('button')).toHaveCount(5);
+    // Milestone 5 part 3a adds Settings, which exists: the Drive connection lives there.
+    await expect(nav.getByRole('button')).toHaveCount(6);
     await expect(nav.getByRole('button')).toContainText([
       'Overview',
       'Leads',
       'Assistant',
       'Memory',
       'Team',
+      'Settings',
     ]);
     await expect(page.getByText(/not yet/i)).toHaveCount(0);
     await nav.getByRole('button', { name: /Memory/ }).click();
