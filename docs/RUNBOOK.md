@@ -678,6 +678,84 @@ connection `unreadable`, and everyone connects again. Do it only when the key ma
 create a new OAuth client under his account, set its id and secret, and have everyone connect
 again; then remove the localhost redirect.
 
+### 1j. Learned knowledge — deploying and running (Milestone 5 part 5, 17 Oct 2026)
+
+Every attached file and every page read from a link is now LEARNED: chunked at once, embedded at
+the pace Voyage allows, kept past the 30-day purge, and searched by meaning on every turn — in a
+brand-new conversation too. Why: the part 5 report; tables and functions: SCHEMA.md §4
+("knowledge_sources…"); the security case: SECURITY.md §3 ("What is LEARNED") and §11.
+
+**Deploy, in this order** (the §1f order — backend first; pushing `main` deploys the web):
+
+1. CI green with zero skipped on the branch.
+2. `npx supabase db push` — migration `20261017010000_knowledge.sql`. pg_cron and pg_net are
+   already enabled (§1e, §1h). The cron job `knowledge-drain` is created by the migration and is
+   inert until step 4.
+3. Function secret on the project (all functions share it): `KNOWLEDGE_DRAIN_SECRET` = 32 random
+   bytes, base64url (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`).
+   The `KNOWLEDGE_*` numbers are optional — unset, the free-plan defaults apply (.env.example).
+4. In the SQL editor, the two Vault entries the scheduler reads (it never sends the secret):
+   `select vault.create_secret('https://<ref>.supabase.co/functions/v1/memory', 'knowledge_drain_url');`
+   `select vault.create_secret('<the same secret as step 3>', 'knowledge_drain_secret');`
+5. `npm run functions:bundle`, then deploy **`chat`, `files` and `memory`** (all three changed:
+   the chat searches, the files function starts learning after an attach, the memory function
+   answers the scheduler).
+6. Push `main` (the web: the note under an answer, the delete confirmation, the attach hint).
+
+**What the migration does on its own.** Every file that is ready when it is applied is queued
+once (`knowledge_enqueue_ready_files`), newest first — otherwise everything attached before this
+deploy would never be learned, and its own conversation would fall back to its opening pages. On
+17 Oct that was 5 PDFs, 44 pages: about a quarter of an hour of learning on the free plan once
+step 4 is done.
+
+**Summaries.** A document with 24,000 characters or more is given a summary while it is learned:
+the fast model writes a breakdown of each run of about seven pages (five calls for the client's
+33-page transcript), stored and searched like any passage. An overview question ("break down week
+one") is answered from it. Nothing of such a document is embedded until its summary is written
+(`summary_status = 'done'`) or has failed three times (`'failed'` — it is learned without one).
+The calls go through the Anthropic client, so they are under the same spend cap and in
+`api_usage` as `knowledge.summary`. `KNOWLEDGE_SUMMARY=off` turns them off;
+`KNOWLEDGE_SUMMARY_MIN_CHARS` and `KNOWLEDGE_SUMMARY_BLOCK_CHARS` move the thresholds. Without an
+Anthropic key no summaries are written and nothing waits for one.
+
+**Check it is running.** `select status, summary_status, chunk_count, embedded_count, failure from
+knowledge_sources order by created_at desc limit 5;` — a new attachment goes `pending` →
+`learning` (summary `pending` → `done` for a long one) → `ready`. On the free plan a 33-page document takes about ten minutes (measured on
+a stand-in, 17 Oct). `select * from knowledge_drain_state;` shows the lease, the last outcome and
+any rest Voyage asked for. `select * from cron.job_run_details where jobid = (select jobid from
+cron.job where jobname = 'knowledge-drain') order by start_time desc limit 5;` shows the ticks;
+`dispatch_knowledge_drain()` returns `idle`, `busy`, `not_configured` or `requested`.
+
+**When a card is added to the Voyage account** (2,000 requests a minute): set
+`KNOWLEDGE_EMBED_BATCH_CHARS=100000`, `KNOWLEDGE_EMBED_REQUESTS_PER_RUN=20`,
+`KNOWLEDGE_EMBED_GAP_MS=0` as function secrets. No code change, no redeploy beyond the secrets.
+A 33-page document is then learned in one or two requests, seconds after it is attached.
+
+**Common situations**
+
+- *A document stays `learning`.* `knowledge_drain_state.last_outcome`: `rate_limited` /
+  `unavailable` rest 65 s and resume by themselves; `unauthorised` (the Voyage key was refused)
+  rests 15 minutes and logs an error — check `VOYAGE_API_KEY`; `spend_cap` — the Voyage cap
+  (`VOYAGE_DAILY_SPEND_CAP_USD`) is reached; it resumes tomorrow. `not_configured` from the
+  dispatcher means step 3 or 4 is missing: until then learning happens only right after an attach.
+- *A document is `failed`.* `text_gone`: its text was purged before it could be learned (a page
+  is kept one day) — read the page again. `no_text`: nothing readable in it.
+- *He wants the assistant to forget a document.* Remove the file in its conversation: that
+  forgets every copy. If the attachment has expired or its conversation was deleted (so there is
+  no Remove), an operator does it: find it with `select id, name, learned_at from
+  knowledge_sources where name ilike '%…%' and status = 'ready';` then
+  `select public.forget_knowledge('<id>', null, null, 'operator');` — every copy of those bytes
+  is forgotten and audited by id. Tell him it is done.
+- *He asks about "week three" and the note lists pages outside it.* A question that names a
+  section (week, module, lesson, chapter, session, unit, part, step, day…, with a number in
+  digits, words or roman) takes only the chunks labelled with it, plus one either side. The
+  labels come from the document itself — a heading line ("Week 3 — Referrals"), "welcome to week
+  three", "week three is all about…" — and carry forward until the next one. A course that never
+  introduces its weeks in any of those ways has no labels, and the question is matched by
+  meaning alone, as any other. To see what a document's chunks are labelled, run
+  `npm run knowledge -- chunk <file>` on a copy and `-- scores <file> "<question>" --rewrite` for
+  what a question finds (both on this machine, nothing stored).
+
 ### Adding a person — what the admin actually does
 
 1. **Team** in the nav → **+ Add someone** → their work email → **Create account**.

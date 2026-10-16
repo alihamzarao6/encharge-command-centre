@@ -284,6 +284,39 @@ Coverage required:
 - Notion writeback: attempt to change a read-only field, assert rejection and log entry
 - Cost cap: exceed a cap deliberately, assert the workflow pauses and alerts
 
+**Learned knowledge (Milestone 5 part 5).** Four layers, because pgvector does not run on the
+development machine:
+
+- `tests/unit/knowledge/` — the chunker (including the section a file's NAME gives, and names
+  that must give none), the drain (every Voyage refusal, interruption, the lease, the summary
+  written between capture and embedding), the summariser (`summarise.test.ts`: pages rebuilt
+  from passages, blocks, the wrapped request, validation and one retry, giving up, the
+  timeout, concurrency), retrieval through `createTurnDocuments` (every Part C retrieval case,
+  and overview questions answered from the summary), the injection canaries on the retrieval
+  path (through the real chat handler — now also a file whose name is an instruction and a
+  summary that carries one), the store adapter against stubbed PostgREST, the probes and the
+  decision-8 judge. They run against
+  `knowledge/local-store.ts`, an in-memory restatement of the migration's functions.
+- `tests/integration/knowledge.test.ts` — the same rules held against the real SQL. pg only,
+  so it also runs here on a throwaway PostgreSQL 17 with every migration replayed and a stand-in
+  `vector` type (a float8[] domain with an exact cosine operator; the test picks the vector
+  literal the column takes). On CI it runs on real pgvector. If the local store and the SQL
+  disagree, one of the two suites fails.
+- `tests/security/knowledge.test.ts` — real GoTrue sessions and PostgREST: nobody outside the
+  staff list reaches knowledge by any path, a teammate does from a private conversation. CI only.
+- `tests/e2e/knowledge.spec.ts` — the note under an answer at 375 / 768 / 1280, including after
+  a reload with the name looked up and a removed document naming nothing.
+
+Live (not CI): `npm run knowledge -- ask <file> "<q>" [--fresh]` learns a real file with real
+Voyage at the configured pace and answers through the real chat handler; `-- why <file>`
+re-measures decision 8 into `tests/fixtures/knowledge/why-after.json`; `-- record` re-records the
+retrieval-path injection probes; `-- scores <file> "<q>"… [--rewrite]` prints the nearest chunks
+for each question (page, ordinal, similarity, whether its section was named) — the measurement
+behind the floors. `--cache <file>` on `ask`, `why` and `scores` keeps vectors between runs (keyed
+by the SHA-256 of model, input type and text), so a re-measurement does not re-learn a document
+at three requests a minute. Changing `DOCUMENT_RULES` means re-recording those and
+`npm run files -- record`; changing the chunker (`CHUNKER_VERSION`) means re-learning.
+
 ---
 
 ## 5. n8n workflow tests

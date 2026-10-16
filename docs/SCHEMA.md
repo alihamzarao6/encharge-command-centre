@@ -903,6 +903,106 @@ All three: RLS enabled and forced, `anon` holds nothing, `authenticated` holds S
 `ghl_field_map`, and `ghl_notes` (notes written through the app, part 4). Nothing is derived
 that those cannot back.
 
+### knowledge_sources, knowledge_chunks, knowledge_drain_state — what is learned (Milestone 5 part 5, 17 Oct 2026)
+
+Migration `20261017010000_knowledge.sql`. Documents and pages, once read, are learned: cut into
+chunks, embedded, kept beyond the attachment's own purge, and searched by meaning on every turn.
+Two SIBLING tables to `memory_chunks`, not rows in it: a memory chunk is a summary of a range of
+one conversation's messages (`turn_range`, the no-overlap constraint, the deleted-conversation
+filter, the Memory page all assume that), and a document chunk is none of those. What is shared
+is the machinery — pgvector cosine, voyage-3 at 1,024 dimensions through `embed.ts`, the per-turn
+query embedding, the store-now-embed-later pattern (D70), the scheduler pattern (D111).
+
+**knowledge_sources** — one per attachment that became ready. `id · file_id → conversation_files
+on delete set null · conversation_id → conversations on delete set null · uploaded_by → auth.users
+on delete set null · scope ('workspace', checked) · kind · name · content_hash · source_url ·
+source_host · version_key (address, else 'sha:'||hash) · learned_at (page fetch time / upload ready
+time) · page_count · chunk_count · embedded_count · chunk_chars · chunker_version ·
+summary_status (none | pending | done | failed) · summary_attempts · status
+(pending | learning | ready | failed | forgotten) · failure (code) · created_at · captured_at ·
+ready_at · forgotten_at · forgotten_by · forgotten_reason (user | operator)`. Checks: a `ready`
+source has every chunk embedded; a `forgotten` source names nothing (no name, hash, address, key,
+chunks); `failed` ⇔ a failure code. Unique `file_id`. Readable by active staff (names on screen).
+`summary_status` (17 Oct): a document with at least `KNOWLEDGE_SUMMARY_MIN_CHARS` (24,000) of
+passages is captured `pending` and nothing of it is embedded until the fast model has written its
+summary (`done`) or failed `summary_attempts` times (`failed`, learned without one) — so it cannot
+turn ready without the summary it was meant to have. Shorter documents are `none`.
+
+**knowledge_chunks** — `(source_id, ordinal) pk · kind (passage | summary) · page_no · page_to ·
+page_label · extraction_method ·
+legibility · char_start · char_end · content (≤ 4,000) · section (≤ 120, null) · embedding
+vector(1024) null · embedded_at`. `section` is the part of the document a chunk belongs to
+("Week 3"; a chunk that runs across a boundary holds both, "Week 2, Week 3"): the chunker carries
+it forward from where the document introduces it, so a chunk on a page that never names its week
+still says which week it is — in the embedded header and in the page heading the model reads.
+Labels are spelled one way ("Week 3", never "Week three" or "Week III") so a question that names
+a section can be matched to it exactly. Measured 17 Oct: without it, "week three main points"
+found pages 33, 32 and 3 of a 33-page course; week three is pages 7–9. When the TEXT introduces
+no section, the document's NAME may give one ("Week_1_-_Transcript_Timestamps (1).pdf" → "Week 1",
+on every chunk): measured 17 Oct, the client's real transcript is 33 pages of prose that never
+introduce their week the way a heading would. Exactly one kind and number in the name, as whole
+words; only the label is kept, never the name's other words (a name is untrusted, and arrives from
+Drive picks too). A **summary** row (`kind = 'summary'`, `extraction_method = 'model_summary'`,
+`page_no..page_to`, its span its own length) is what the fast model wrote about a run of about
+seven pages while the document was learned (`src/lib/knowledge/summarise.ts`): stored after the
+passages, embedded and searched like them, never a neighbour, shown to the model inside the same
+wrapper and headed as written by this app. A check holds the two shapes apart. Provenance per row (rule 12): the page it sits inside and how that page was read;
+the source's address and date. A chunk never crosses a page; `content = page[char_start, char_end)`,
+so overlapping neighbours join without repeating. **No HNSW index, deliberately:** retrieval
+excludes the attachments that went in whole, and an approximate scan filters after taking its 40
+nearest — the excluded file would crowd out the answer. The search is exact; fine to ~100,000
+chunks. Policy `false`: no browser reads a word.
+
+**knowledge_drain_state** — one row: `lease_holder · lease_until · cooldown_until · last_run_at ·
+last_outcome`. Policy `false`.
+
+**messages.document_coverage jsonb** — on an assistant row: which documents the answer drew on
+and how much of each (`knowledge/coverage.ts`): ids, page numbers, counts, learning progress,
+dates. Never a name or text; ≤ 16 KB; must be an object.
+
+**Triggers on conversation_files:** becoming `ready` (insert or update) → one `pending` source
+(`on conflict do nothing`; nothing that can fail the attach, no Vault, no pg_net). Becoming
+`removed` with reason `user` → `forget_knowledge` for that source and every other source of the
+same bytes. `expired` and `replaced` do nothing: expiry keeps knowledge (decision 4), and the
+newest READY copy of an address or hash is what retrieval takes, so a re-read replaces the old one
+only once it is learned.
+
+**Functions** (`security invoker`, `service_role` only unless noted):
+
+- `capture_knowledge_source(source, chunker_version, chunks jsonb, summarise)` — pending →
+  learning, with `summary_status` pending when `summarise`. A source in any other state is left
+  as it is (no resurrection of a forgotten one).
+- `add_knowledge_summaries(source, summaries jsonb)` — only while learning with a pending summary:
+  appended after the passages, `summary_status` done. `fail_knowledge_summary(source,
+  max_attempts)` — one failed attempt; `failed` after the last. `knowledge_summaries_of(source)`
+  — all of one document's summary in page order (what an overview question is answered from).
+- `knowledge_enqueue_ready_files()` — **owner only**, run once at the end of the migration: every
+  file already ready when it was deployed is queued (newest first), so nothing attached before
+  part 5 is left unlearned.
+- `copy_knowledge_from_twin(source, chunker_version)` — the same bytes already learned with the
+  same chunker: copy chunks (summaries too) and vectors, and its summary status; ready at once.
+- `fail_knowledge_source(source, code)` — pending → failed (`text_gone`, `no_text`).
+- `attach_knowledge_embeddings(source, [{ordinal, embedding}])` — only while `learning`; flips to
+  `ready` in the same statement as the last vector.
+- `match_knowledge_chunks(query, user, attached_file_ids, exclude_file_ids, include_learned,
+  sections, limit, floor, attached_floor)` — each row says whether it is a passage or a summary
+  (`chunk_kind`, `page_to`). The caller must be active staff; this conversation's long
+  attachments (learning or ready, held to `attached_floor`), plus — when `include_learned` —
+  every other ready source (held to `floor`) that is the newest of its address and of its bytes, minus the files
+  that went in whole and their twins; exact cosine; each row says whether a near-identical chunk
+  (distance ≤ 0.06) of a NEWER document is among the results. A chunk of a section the question
+  names (`sections`, e.g. `{"Week 3"}`, from `sectionsNamedIn`) is `named`: it comes first and
+  skips the floor — a week is a place in the document, not a meaning to approximate. Naming a
+  section never widens which documents are searched.
+- `knowledge_neighbours(source, ordinals[])` — the passages either side of chosen ones (never a
+  summary).
+- `claim_knowledge_drain(holder, lease_seconds)` / `release_knowledge_drain(holder, outcome,
+  cooldown_seconds)` — one drain at a time; a refusal rests everyone.
+- `forget_knowledge(source, hash, actor, reason)` — every copy of the bytes; an audit row each.
+- `dispatch_knowledge_drain()` — **owner only**, run by pg_cron job `knowledge-drain` every
+  minute: does nothing when idle, busy, resting or not configured; else POSTs action
+  `knowledge-drain` to the `memory` function with a two-minute token signed by the Vault secret.
+
 ### tasks
 `id · title not null · description · assignee · due_date ·
 status (open|in_progress|done|cancelled) · priority ·

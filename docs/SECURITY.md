@@ -353,6 +353,90 @@ make a row "from a link"), 9 of its 10 tests fail; the tenth is that trigger sha
 canary. `tests/integration/drive.test.ts` follows a Drive file's text into the model's request
 on a real stack. Where the connection and its tokens live: §12b.
 
+### What is LEARNED (Milestone 5 part 5, 17 Oct 2026) — the same wrapper, a far longer reach
+
+Until part 5 a hostile document reached the model only in the conversation it was attached to,
+in front of the person who attached it. Now every document and page is learned
+(`knowledge_sources` / `knowledge_chunks`, migration 20261017010000) and an unrelated question
+weeks later, in someone else's conversation, can bring its text back. That is the largest and
+quietest injection surface in the project. It is held the same way, and proven on the new path:
+
+1. **The same fence.** Retrieved passages go in the user turn, in a `<document_excerpts>` block
+   under a sentence saying it is data, each document inside its own `<untrusted_document>` with
+   `from="learned earlier, in another conversation"` and its date. Never the system prompt.
+   `document_excerpts` is one of the tag names `defang` rewrites.
+2. **Defanged after joining.** Neighbouring chunks overlap and are joined before rendering; the
+   text is defanged AFTER the join, so a closing tag cut in two by a chunk boundary is rewritten
+   once it is whole again. Defanging each chunk and then joining would let it back
+   (`tests/unit/knowledge/injection.test.ts` shows both).
+3. **Our rules say what an excerpt is**, including that an instruction to forget or disregard
+   other documents is a sentence in a document, and that a summary is data written by this app
+   and not the document's own words (DOCUMENT_RULES `2026-10-17.3`).
+4. **No tools, ever** — unchanged; the request carries none.
+5. **A file NAME is untrusted input that now steers retrieval** (17 Oct). When a document's text
+   introduces no section, its name may give one ("Week_1_-_Transcript.pdf" → "Week 1"). Names are
+   chosen by whoever made the file and arrive from Drive picks too, so only a kind from a fixed
+   list and a number canonicalised to digits are ever taken from one (`sectionFromName`); the
+   label reaches the model only as part of a page heading inside the wrapper, defanged. The name
+   itself, as before, sits only in the wrapper's `name` attribute with `<`, `>`, quotes and the
+   tag names rewritten.
+6. **A SUMMARY is untrusted twice** (17 Oct). While a long document is learned, the fast model
+   writes a breakdown of each run of about seven pages (`src/lib/knowledge/summarise.ts`). Its
+   input is the document inside the same `<untrusted_document>` wrapper, defanged, under a system
+   prompt that says it is data and that an instruction in it is reported in one fixed sentence,
+   never followed or repeated; the call has no tools. Its output is stored as a chunk and treated
+   like document text from then on: validated for length and completeness (retried once with the
+   reason), wrapped and defanged when shown, headed as "written by this app from the document
+   when it was learned, not the document's own words", never in a system prompt.
+
+Canaries (`tests/unit/knowledge/injection.test.ts`, through the real chat handler): a hostile
+document learned in one conversation and surfaced for a teammate in a new one; the same for a web
+page; a chunk that is nothing but instructions, with a hostile name; text forged as our wrapper
+and our rules; a tag split across a chunk boundary; a memo telling the assistant to forget what it
+knows. **Mutation runs (17 Oct):** excerpts not defanged after the join → 2 fail; `document_excerpts`
+not defanged → 1; retrieved text placed outside the wrapper → 5; `defang` removed → 16 across the
+four files; each restored with its hash checked. Live recordings of the model on the same requests:
+`tests/fixtures/knowledge/recorded/`, held by `tests/unit/knowledge/injection-live.test.ts`.
+Added 17 Oct: a file whose NAME is an instruction (with a forged closing tag), surfaced by "break
+down week one" — every page heading is exactly `Page N · Week 1`, the name's words appear once,
+inside the `name` attribute; a SUMMARY that carries an instruction and a forged
+`</untrusted_document></document_excerpts>` — fenced, defanged, headed as this app's; and the
+summariser's own request — the hostile page closed once, defanged, the system prompt ours alone.
+Mutation runs: the label taken from the raw name → 13 fail (the canary among them); a summary's text not defanged → 1; a
+summary headed as if it were the document → 1; the summariser's input not defanged → 1.
+
+**Who can reach it.** Knowledge is the workspace's (fixed decision 3): a teammate retrieves what
+was learned from a document attached in someone else's PRIVATE conversation — by design, as R27
+already did for conversation notes. Nobody outside the staff list reaches anything:
+`knowledge_chunks` and `knowledge_drain_state` have a policy that is `false` (no browser reads a
+word of the text); `knowledge_sources` (names, dates, counts) is readable by active staff only; every
+function is `service_role` only; `match_knowledge_chunks` refuses a caller who is not active staff
+even though it runs as service_role. `tests/security/knowledge.test.ts` proves it on a real stack
+for a signed-out browser, a non-member and a deactivated member — tables, functions, writes, and
+the chat itself.
+
+**The search rewrite** (`src/lib/knowledge/query.ts`). Before the turn's query is embedded, the
+fast model is shown the person's message, the one before it and the NAMES of learned documents,
+and returns JSON: the text to search with (typos fixed — "weak one" → "week one") and whether
+the message is about a learned document at all. Names are untrusted text (a file is named by
+whoever made it), so they go in as JSON strings under an instruction that they are data — and,
+more to the point, the rewrite's output is ONLY ever embedded and used as a yes/no: it is never
+shown to the main model, never stored, never logged. The worst a hostile name can do is spoil
+one search (the floor then sends nothing) or switch the learned search off for one turn. A
+rewrite that fails, times out or answers off-format means the words as typed are searched.
+
+**Named sections.** When the search text names a section ("week 3", "lesson four"), the chunks
+labelled with it come first and skip the similarity floor (`sectionsNamedIn` →
+`match_knowledge_chunks(… sections …)`). Only digits-and-kind labels are matched, at most four,
+and only inside the documents the search may already look at — the active-staff check, the
+`include_learned` switch and the exclusions apply before the section does. So the worst a hostile
+name steering the rewrite toward "week 3" can do is fill one answer's budget with week 3 of some
+learned course: excerpts like any other, fenced and defanged, labelled on screen.
+
+**The drain's credential** is the D111 scheme with its own secret (`KNOWLEDGE_DRAIN_SECRET`, in
+Vault as `knowledge_drain_secret`): the database sends a two-minute token, never the secret, and
+the GoHighLevel schedule's token does not open this door (different action in the HMAC).
+
 ---
 
 ## 4. Database access
@@ -850,6 +934,19 @@ zone identifiers (`fe80::1%eth0`) — refused with every other numeric host.
   is connected, and the refresh token sealed (§12b). Disconnecting does not delete text already
   attached to conversations; the confirm step says so. Google learns which files the app opened
   for him — it is his grant — and nothing about the conversation they were opened for.
+- **What is learned outlives the 30-day purge (Milestone 5 part 5, fixed decision 4).** The
+  attachment's extracted text is still destroyed after 30 days (a page's after one); what was
+  learned from it — `knowledge_chunks`, about 1,500 characters each, and the document's name,
+  hash, address and date in `knowledge_sources` — is kept until a person removes the file.
+  **Removing** a file forgets every copy of those bytes: chunks deleted, the source left as a
+  tombstone that names nothing, one `KNOWLEDGE_FORGOTTEN` audit row by id. **Expiry** does not
+  forget. **Deleting the conversation** does not forget either (decided 16 Oct; the delete
+  confirmation says so and how to make it forget). Retention of learned documents was confirmed
+  by the client for his business (17 Oct). After expiry the file is no longer on screen to
+  remove; until Milestone 5 part 4 adds a way to forget it from the interface, an operator
+  forgets it with `select public.forget_knowledge('<source id>', null, null, 'operator')`
+  (RUNBOOK §1j). Voyage receives every learned chunk once, to embed it, and each question's
+  text — the same provider and the same text the memory layer already sent.
 
 ---
 
