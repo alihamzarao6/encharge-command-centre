@@ -685,6 +685,13 @@ the pace Voyage allows, kept past the 30-day purge, and searched by meaning on e
 brand-new conversation too. Why: the part 5 report; tables and functions: SCHEMA.md §4
 ("knowledge_sources…"); the security case: SECURITY.md §3 ("What is LEARNED") and §11.
 
+*(17 Oct 2026: done, in this order, `main` at `cefe400`; CI run 38972211765 green with zero
+skipped. `db push` applied Drive's `20261016010000` too — pending since 16 Oct and needed by
+this branch's functions. Step 4 went in through the CLI rather than the SQL editor, as §1h's step 5
+did: the value read from the file at run time, errors caught inside the statement, Vault's value
+checked against the function's by SHA-256. The five files already in production were queued by
+the migration and learned 22:11–22:24 UTC — `docs/MEMORY.md` 17 Oct "shipped".)*
+
 **Deploy, in this order** (the §1f order — backend first; pushing `main` deploys the web):
 
 1. CI green with zero skipped on the branch.
