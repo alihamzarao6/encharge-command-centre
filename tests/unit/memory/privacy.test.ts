@@ -126,11 +126,8 @@ describe('PRIVACY_EXPLANATION is a promise about four mechanisms', () => {
     // did not choose. Asserted on the recall block specifically, because the summariser hook
     // below it legitimately still carries the conversation's own scope.
     const recallBlock = chat.slice(
-      chat.indexOf('recall = await deps.memory.recall({'),
-      chat.indexOf(
-        '} catch (caught: unknown) {',
-        chat.indexOf('recall = await deps.memory.recall({'),
-      ),
+      chat.indexOf('await deps.memory.recall({'),
+      chat.indexOf('} catch (caught: unknown) {', chat.indexOf('await deps.memory.recall({')),
     );
     expect(recallBlock).toContain('scope: SHARED_MEMORY_SCOPE');
     expect(recallBlock).not.toContain('scope: conversation.scope');

@@ -19,6 +19,7 @@
  * surface; it does not change how chat works.
  */
 import type { ChatFailure, ChatOutcome, StreamHandlers, TurnInput } from './chatApi.js';
+import type { DocumentCoverage } from './coverage.js';
 import {
   clearPending,
   loadDraft,
@@ -48,6 +49,10 @@ export interface ThreadMessage {
   readonly createdAt?: string;
   /** The reply stopped at the length limit and is not the whole answer. */
   readonly truncated?: true;
+  /** Milestone 5 part 5: what the answer had of each document; the note under it reads this. */
+  readonly coverage?: DocumentCoverage;
+  /** Display names for that note, by file or source id. */
+  readonly names?: Readonly<Record<string, string>>;
 }
 
 export interface ThreadState {
@@ -278,6 +283,8 @@ export function createThreadStore(deps: ThreadDeps): ThreadStore {
             content: outcome.reply,
             status: 'saved',
             ...(outcome.truncated === true ? { truncated: true as const } : {}),
+            ...(outcome.coverage === undefined ? {} : { coverage: outcome.coverage }),
+            ...(outcome.names === undefined ? {} : { names: outcome.names }),
           },
         ],
       }));

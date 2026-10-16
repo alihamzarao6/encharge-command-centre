@@ -267,6 +267,12 @@ export interface RecallInput {
   readonly historyMessages: number;
   readonly message: string;
   readonly previousUserMessage: string | null;
+  /**
+   * Milestone 5 part 5: the turn's shared query embedding (chat.ts `memoisedQuery`), so recall
+   * and the document search cost Voyage one request between them. Absent → recall embeds for
+   * itself, as it always did.
+   */
+  readonly queryVector?: () => Promise<Result<readonly number[]>>;
 }
 
 /** What the reply carries back (ids and numbers only — never text) and what the log says. */
@@ -398,19 +404,30 @@ async function recallUnbounded(
   // Chunks: embed the query, then search. Skipped entirely when topK is 0.
   const chunks = (async (): Promise<readonly RecalledChunk[]> => {
     if (deps.config.topK === 0) return [];
-    const embedded = await deps.embedder.embed({
-      texts: [queryText(input.message, input.previousUserMessage)],
-      inputType: 'query',
-      operation: RECALL_OPERATION,
-      userId: input.userId,
-      conversationId: input.conversationId,
-    });
-    if (!embedded.ok) {
-      degraded.push('embed');
-      log.error('query embedding failed; turn goes without chunks', { error: embedded.error });
-      return [];
+    let vector: readonly number[] | undefined;
+    if (input.queryVector !== undefined) {
+      const shared = await input.queryVector();
+      if (!shared.ok) {
+        degraded.push('embed');
+        log.error('query embedding failed; turn goes without chunks', { error: shared.error });
+        return [];
+      }
+      vector = shared.value;
+    } else {
+      const embedded = await deps.embedder.embed({
+        texts: [queryText(input.message, input.previousUserMessage)],
+        inputType: 'query',
+        operation: RECALL_OPERATION,
+        userId: input.userId,
+        conversationId: input.conversationId,
+      });
+      if (!embedded.ok) {
+        degraded.push('embed');
+        log.error('query embedding failed; turn goes without chunks', { error: embedded.error });
+        return [];
+      }
+      vector = embedded.value.vectors[0];
     }
-    const vector = embedded.value.vectors[0];
     if (vector === undefined) {
       degraded.push('embed');
       return [];

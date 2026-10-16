@@ -180,10 +180,7 @@ describe('a turn with a file attached', () => {
     const result = await handleChatTurn(d, TURN);
     expect(result.status).toBe(200);
     const request = d.claude.calls[0];
-    const expected = buildDocumentBlock([PAYSLIP], {
-      message: TURN.message,
-      previousUserMessage: 'earlier question',
-    }).block;
+    const expected = buildDocumentBlock([PAYSLIP]).block;
     expect(request?.messages).toEqual([
       { role: 'user', content: [{ type: 'text', text: expected, cache: true }] },
       { role: 'user', content: 'earlier question' },
@@ -226,19 +223,21 @@ describe('a turn with a file attached', () => {
       documentContext: true,
     });
     expect(JSON.stringify(d.conversations.appended[0])).not.toContain('Harbour Lane');
-    // The reply says which file it was answered from, in ids and counts.
-    expect(result.status === 200 && result.body.documents).toEqual({
-      files: [
-        {
-          id: 'f1',
-          mode: 'whole',
-          pagesShown: 1,
-          pagesTotal: 1,
-          chars: expect.any(Number) as number,
-        },
+    // The reply says which file it was answered from — ids, page numbers, counts, the name for
+    // the note — and the same coverage, without the name, is stored on the assistant row.
+    const coverage = {
+      v: 1,
+      documents: [
+        { file: 'f1', origin: 'attached', kind: 'pdf', mode: 'whole', pages: [1], total: 1 },
       ],
+    };
+    expect(result.status === 200 && result.body.documents).toEqual({
+      coverage,
       chars: expect.any(Number) as number,
+      names: { f1: 'payslip.pdf' },
     });
+    expect(d.conversations.appended[0]).toMatchObject({ documentCoverage: coverage });
+    expect(JSON.stringify(d.conversations.appended[0]?.documentCoverage)).not.toContain('payslip');
     expect(JSON.stringify(result.body)).not.toContain('Harbour Lane');
   });
 
@@ -259,16 +258,33 @@ describe('a turn with a file attached', () => {
     expect(request?.system[1]?.text).toBe(DOCUMENT_RULES);
     expect(request?.messages).toEqual([{ role: 'user', content: 'What is the net pay?' }]);
     expect(DOCUMENT_RULES).toContain(
-      'no file is attached now. Say so and ask them to attach it again',
+      'it is not attached to this conversation and nothing in it matched this question',
     );
     expect(d.conversations.appended[0]).not.toHaveProperty('documentContext');
   });
 
-  it('a brand-new conversation has no files to load and is not asked', async () => {
-    const documents = documentsOf([PAYSLIP]);
-    const d = deps({ documents });
+  it('a brand-new conversation is asked only for what was learned — it has no files to read', async () => {
+    let filesAsked = 0;
+    const source = {
+      forTurn: () => {
+        filesAsked += 1;
+        return Promise.resolve(ok({ files: [PAYSLIP], everHadFile: true }));
+      },
+    };
+    const documents = createTurnDocuments(source);
+    const loads: (string | null)[] = [];
+    const d = deps({
+      documents: {
+        load: (input) => {
+          loads.push(input.conversationId);
+          return documents.load(input);
+        },
+      },
+    });
     await handleChatTurn(d, { token: 't', message: 'hello' });
-    expect(documents.loads).toBe(0);
+    // Loaded once, as a conversation with no id: what was learned may apply; no file can.
+    expect(loads).toEqual([null]);
+    expect(filesAsked).toBe(0);
     expect(d.claude.calls[0]?.system).toHaveLength(1);
   });
 
@@ -371,7 +387,7 @@ describe('a turn with a file attached', () => {
     await handleChatTurnStream(d, TURN, (event) => events.push(event));
     expect(events.map((event) => event.type)).toEqual(['start', 'delta', 'done']);
     const done = events.at(-1);
-    expect(done?.type === 'done' && done.reply.documents?.files[0]?.id).toBe('f1');
+    expect(done?.type === 'done' && done.reply.documents?.coverage.documents[0]?.file).toBe('f1');
     expect(d.conversations.appended[0]).toMatchObject({ documentContext: true });
     const failing: TurnDocuments = {
       load: () => Promise.resolve(err(new NetworkError('db down'))),
@@ -400,7 +416,8 @@ describe('a turn with a file attached', () => {
     const context: TurnDocumentContext = {
       rules: DOCUMENT_RULES,
       block: null,
-      summary: { files: [], chars: 0 },
+      excerpts: null,
+      summary: null,
     };
     const d = deps({ documents: { load: () => Promise.resolve(ok(context)) } });
     const result = await handleChatTurn(d, TURN);

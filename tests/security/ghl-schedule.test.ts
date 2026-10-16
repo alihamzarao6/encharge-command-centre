@@ -150,7 +150,9 @@ describe('the migration', () => {
     const senders = readdirSync(MIGRATIONS).filter((name) =>
       /net\.http_(post|get|delete)\(/.test(sqlOf(name)),
     );
-    expect(senders).toEqual([MIGRATION]);
+    // Milestone 5 part 5 added the one other sender, the knowledge drain's schedule, held to the
+    // same rules in tests/unit/knowledge/plumbing.test.ts.
+    expect(senders).toEqual([MIGRATION, '20261017010000_knowledge.sql']);
     expect(sql.match(/net\.http_post\(/g)).toHaveLength(1);
     expect(sql).toMatch(/\^https:\/\//);
   });

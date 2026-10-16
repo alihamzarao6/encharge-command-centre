@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "What rate would someone with a 15% deposit get?",
   "mode": "protected",
-  "recordedAt": "2026-10-14T03:54:26.187Z",
+  "recordedAt": "2026-10-16T21:06:18.667Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-14.1",
-  "requestSha256": "366e1d31a8e664b631638384381853027a182421492dbe3df5367fa12b0fc970",
-  "reply": "A 15% deposit means an LVR of 85%, which falls in the 80.01% to 90% band on the Example Lender page: interest rate 6.44% p.a., comparison rate 6.47% p.a. Monthly fee is shown as (blank) for that band.\n\nThis was read from www.examplelender.com.au on 13 Oct 2026, 12:00 pm Perth time — if you're relying on it now, worth checking the page again in case rates have moved.",
+  "rulesVersion": "2026-10-17.3",
+  "requestSha256": "3697f7fcd166d764274dd1ea4066fa6b67741971eefced5df68c9db6f338d0db",
+  "reply": "A 15% deposit means a 85% LVR, which falls in the 80.01% to 90% band.\n\nFrom the page on examplelender.com.au (read 13 Oct 2026, 12:00 pm Perth time): interest rate 6.44% p.a., comparison rate 6.47% p.a. The monthly fee for this band is shown as blank in the table.\n\nNote: this rate was current when the page was read; checking the page again would confirm it's still current.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 19,
-    "outputTokens": 150,
-    "cacheReadTokens": 5875,
-    "cacheWriteTokens": 0
+    "outputTokens": 146,
+    "cacheReadTokens": 3017,
+    "cacheWriteTokens": 3714
   },
-  "costUsd": 0.00407
+  "costUsd": 0.01708
 }

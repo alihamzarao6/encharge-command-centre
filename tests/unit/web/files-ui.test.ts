@@ -431,7 +431,9 @@ describe('what a person is shown', () => {
     expect(isExpired(FILE, NOW)).toBe(false);
     expect(isExpired({ expiresAt: '2026-10-12T04:00:00Z' }, NOW)).toBe(true);
     expect(isExpired({ expiresAt: 'nonsense' }, NOW)).toBe(false);
-    expect(RETENTION_HINT).toBe('Files are read on this device, kept for 30 days, then removed.');
+    expect(RETENTION_HINT).toBe(
+      'Files are read on this device and their text is kept for 30 days. What the assistant learns from a file stays after that; removing the file makes it forget.',
+    );
     expect(REMOVED_FILE_TEXT).not.toContain('payslip');
     expect(EXPIRED_FILE_TEXT).toContain('30 days');
   });

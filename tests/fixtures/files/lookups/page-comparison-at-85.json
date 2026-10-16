@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "What is the comparison rate for someone borrowing 85% of the value?",
   "mode": "protected",
-  "recordedAt": "2026-10-14T03:54:28.245Z",
+  "recordedAt": "2026-10-16T21:06:20.704Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-14.1",
-  "requestSha256": "b172babaf31a1b378e75cd6da6ae8a3a7598e79a66801b88d50b3c24b15a43ef",
-  "reply": "At 85% LVR (which falls in the LVR 80.01% to 90% band), the comparison rate is 6.47% p.a., per the Example Lender page (read 13 Oct 2026, 12:00 pm Perth time). This was current as of that reading — if you need it for anything time-sensitive, the page should be checked again for the current figure.",
+  "rulesVersion": "2026-10-17.3",
+  "requestSha256": "4db918a33f8d5aac5c13e783d858c61b45e02f33d24a9b1e337cde987830b066",
+  "reply": "At LVR 80.01% to 90%, the interest rate is 6.44% p.a. and the comparison rate is 6.47% p.a.\n\nThis is from the page on examplelender.com.au, read 13 Oct 2026, 12:00 pm Perth time. Note that rates are subject to change without notice per the document, so it's worth reading the page again if this is being used for anything beyond today.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 25,
-    "outputTokens": 113,
-    "cacheReadTokens": 5875,
+    "outputTokens": 127,
+    "cacheReadTokens": 6731,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.003533
+  "costUsd": 0.003999
 }

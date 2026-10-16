@@ -153,6 +153,7 @@ async function turnFor(
   if (turnFile === undefined) throw new Error('the store loaded no file');
   const context = await createTurnDocuments(store, undefined, () => NOW).load({
     conversationId: CONV_ID,
+    userId: '00000000-0000-4000-8000-0000000000aa',
     message: question,
     previousUserMessage: null,
   });

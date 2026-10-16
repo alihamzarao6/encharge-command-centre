@@ -16,6 +16,7 @@
  * assembled server-side (SECURITY.md §2, TASKS 2.6.3).
  */
 import { readSse } from '../../../src/lib/sse.js';
+import { parseCoverage, parseNames, type DocumentCoverage } from './coverage.js';
 
 export interface ChatSuccess {
   readonly kind: 'ok';
@@ -28,6 +29,12 @@ export interface ChatSuccess {
    * Only ever present as `true`; the interface says so under the reply.
    */
   readonly truncated?: true;
+  /**
+   * Milestone 5 part 5: what reached the model from documents, and their names for the note
+   * under the reply. Absent when no document was involved.
+   */
+  readonly coverage?: DocumentCoverage;
+  readonly names?: Readonly<Record<string, string>>;
 }
 
 export type ChatFailureKind =
@@ -106,6 +113,12 @@ function readErrorEnvelope(body: unknown): ErrorEnvelope | null {
   };
 }
 
+function documentsOf(value: unknown): Pick<ChatSuccess, 'coverage' | 'names'> {
+  if (!isRecord(value)) return {};
+  const coverage = parseCoverage(value['coverage']);
+  return coverage === null ? {} : { coverage, names: parseNames(value['names']) };
+}
+
 function readSuccess(body: unknown): ChatSuccess | null {
   if (
     isRecord(body) &&
@@ -121,6 +134,7 @@ function readSuccess(body: unknown): ChatSuccess | null {
       assistantMessageId: body['assistantMessageId'],
       reply: body['reply'],
       ...(body['stopReason'] === 'max_tokens' ? { truncated: true as const } : {}),
+      ...documentsOf(body['documents']),
     };
   }
   return null;

@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "What rate would I get on a 500k loan with a 20% deposit?",
   "mode": "protected",
-  "recordedAt": "2026-10-14T03:54:31.153Z",
+  "recordedAt": "2026-10-16T21:06:23.153Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-14.1",
-  "requestSha256": "72d276c1537ac0afdead6f54007ab1837b69c8645516e76d5f05350962da1f94",
-  "reply": "A 20% deposit means an LVR of 80%, which falls in the \"LVR 60.01% to 80%\" band on the Example Lender page (read 13 Oct 2026, 12:00 pm Perth time).\n\nThat band shows:\nInterest rate: 6.14% p.a.\nComparison rate: 6.17% p.a.\nMonthly fee: $0\n\nNote: this is a lookup from the lender's page, not a loan assessment — whether this product or lender suits a specific deal is a separate call. Also, this rate may have changed since the page was read; check the live page for the current figure.",
+  "rulesVersion": "2026-10-17.3",
+  "requestSha256": "cda191e6af9a6730b0724c4abb549c8e7b7cb8247364bd7fd27ccd03e7702517",
+  "reply": "A 20% deposit means an LVR of 80%, which falls in the \"LVR 60.01% to 80%\" band.\n\nFrom the page on examplelender.com.au (read 13 Oct 2026, 12:00 pm Perth time), the Example Basic Home Loan variable rate for that band is:\n\nInterest rate: 6.14% p.a.\nComparison rate: 6.17% p.a.\nMonthly fee: $0\n\nNote: this is the variable rate table only; I haven't checked it against the fixed rate options above, which may be worth comparing for a $500k loan.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 25,
-    "outputTokens": 191,
-    "cacheReadTokens": 5875,
+    "outputTokens": 187,
+    "cacheReadTokens": 6731,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.004703
+  "costUsd": 0.004899
 }

@@ -41,7 +41,7 @@
  * client.ts, but nothing is saved to `messages` and the caller is told, so the interface
  * never renders a blank bubble.
  */
-import { ensureError, type AppError, type Result } from '../errors.js';
+import { ensureError, ok, type AppError, type Result } from '../errors.js';
 import type { Logger } from '../logger.js';
 import { verifyStaffAccess, type StaffIdentity, type VerifyDeps } from '../auth/verify.js';
 import type {
@@ -55,9 +55,20 @@ import type { TokenUsage } from './pricing.js';
 import { buildSystemBlocks, type SystemBlock } from './prompt.js';
 import { titleFromFirstMessage } from '../memory/naming.js';
 import { SHARED_MEMORY_SCOPE } from '../memory/privacy.js';
-import type { RecallInput, RecallOutcome, RecallSummary } from '../memory/retrieve.js';
-import type { DocumentTurnSummary, TurnDocumentContext, TurnDocuments } from '../files/context.js';
+import {
+  queryText,
+  type RecallInput,
+  type RecallOutcome,
+  type RecallSummary,
+} from '../memory/retrieve.js';
+import {
+  documentsMessage,
+  type DocumentTurnSummary,
+  type TurnDocumentContext,
+  type TurnDocuments,
+} from '../files/context.js';
 import { UNREAD_LINK_RULES, mentionsLink } from '../files/rules.js';
+import type { DocumentCoverage } from '../knowledge/coverage.js';
 
 export interface ConversationRow {
   readonly id: string;
@@ -94,6 +105,11 @@ export interface AppendTurnInput {
    * rows so the shared-memory summariser leaves the turn out (D89).
    */
   readonly documentContext?: boolean;
+  /**
+   * Milestone 5 part 5: what reached the model from documents, stored on the assistant row so
+   * the note under the reply survives a reload. Ids and numbers only.
+   */
+  readonly documentCoverage?: DocumentCoverage;
   readonly assistant: {
     readonly content: string;
     readonly model: string;
@@ -153,6 +169,14 @@ export interface ChatDeps {
    */
   readonly documents?: TurnDocuments;
   /**
+   * Milestone 5 part 5: the turn's ONE query embedding, made at most once and shared by memory
+   * recall and the document search. On the free Voyage plan (three requests a minute) a second
+   * request per turn would halve how fast the assistant can be asked anything. Absent = no
+   * Voyage key: recall embeds for itself as before (it is not wired either) and documents go
+   * without a search.
+   */
+  readonly query?: TurnQuery;
+  /**
    * Stage 3 memory: runs after a turn is in `messages`, OFF the reply's path. It is
    * awaited by nobody here — its promise goes to `waitUntil` — and whatever it does or
    * fails to do cannot change the answer the user gets. Absent = no memory (no Voyage key).
@@ -164,6 +188,43 @@ export interface ChatDeps {
    * promise is left to run, with rejections caught and logged.
    */
   readonly waitUntil?: (work: Promise<void>) => void;
+}
+
+export interface TurnQueryInput {
+  /** The message and the one before, as recall has always embedded them: the fallback. */
+  readonly text: string;
+  /** The person's own words, separately, for the search rewrite (knowledge/query.ts). */
+  readonly message: string;
+  readonly previousUserMessage: string | null;
+  readonly userId: string;
+  readonly conversationId: string | null;
+}
+
+/** The turn's search: the one query vector, and whether the message is about a learned document. */
+export interface TurnSearch {
+  readonly vector: readonly number[];
+  /** The text that was embedded (the rewrite, or the words as typed). Never logged or stored. */
+  readonly text: string;
+  /** From the search rewrite (knowledge/query.ts); null when nothing could say. */
+  readonly aboutDocuments: boolean | null;
+  /** A summary or breakdown of a whole document or part of one is asked for (knowledge/query.ts). */
+  readonly overview: boolean;
+}
+
+export interface TurnQuery {
+  embed(input: TurnQueryInput): Promise<Result<TurnSearch>>;
+}
+
+/** The query embedding for one turn: asked for once, when first needed, by whoever needs it. */
+export function memoisedQuery(
+  query: TurnQuery,
+  input: TurnQueryInput,
+): () => Promise<Result<TurnSearch>> {
+  let pending: Promise<Result<TurnSearch>> | null = null;
+  return () => {
+    pending ??= query.embed(input);
+    return pending;
+  };
 }
 
 export interface TurnMemory {
@@ -203,8 +264,9 @@ export interface ChatReply {
   /** What memory added to this turn — ids, similarities and sizes, never text. Absent when memory is off. */
   readonly memory?: RecallSummary;
   /**
-   * Which attached files the answer was written from, and how much of each — ids, modes and
-   * page counts, never text. Absent when no file was in front of the model.
+   * Which documents the answer was written from — attached here or learned earlier — and how
+   * much of each reached the model: ids, page numbers, counts, names for the note under the
+   * reply; never text. Absent when no document was involved.
    */
   readonly documents?: DocumentTurnSummary;
 }
@@ -389,24 +451,22 @@ export function turnRules(prepared: {
 }
 
 function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
-  const documents = prepared.documents;
   const turn: ChatMessage[] = [...prepared.history, { role: 'user', content: prepared.message }];
+  // The documents lead the conversation as a user message of their own: a file that goes in
+  // whole is then the same bytes at the same place on every turn, which is what lets it be
+  // cached, and it reads the way long context reads best — before the question. The passages
+  // chosen for this question follow it, uncached, because they change with every question.
+  const documents = documentsMessage(
+    prepared.documents?.block ?? null,
+    prepared.documents?.excerpts ?? null,
+  );
   return {
     route: 'default',
     system: (deps.systemBlocks ?? buildSystemBlocks)(
       prepared.recall?.belowBreakpoint ?? undefined,
       turnRules(prepared),
     ),
-    // The documents lead the conversation as a user message of their own: a file that goes
-    // in whole is then the same bytes at the same place on every turn, which is what lets
-    // it be cached, and it reads the way long context reads best — before the question.
-    messages:
-      documents?.block == null
-        ? turn
-        : [
-            { role: 'user', content: [{ type: 'text', text: documents.block, cache: true }] },
-            ...turn,
-          ],
+    messages: documents === null ? turn : [documents, ...turn],
     operation: 'chat.turn',
     userId: prepared.user.userId,
     conversationId: prepared.conversation.id,
@@ -504,15 +564,29 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
     history = boundHistory(recent.value, bounds);
   }
 
+  // The turn's one query embedding (part 5), asked for when the first of memory or documents
+  // needs it and shared by both.
+  const previousUser = [...history].reverse().find((m) => m.role === 'user');
+  const previousUserMessage = previousUser?.content ?? null;
+  const search =
+    deps.query === undefined
+      ? undefined
+      : memoisedQuery(deps.query, {
+          text: queryText(message, previousUserMessage),
+          message,
+          previousUserMessage,
+          userId: user.userId,
+          conversationId: requestedConversationId,
+        });
+
   // 4b. Memory (Stage 3 part 2): facts, relevant earlier notes, and any "remember that…"
   //     in this message. Bounded by its own timeout; whatever it cannot do, the turn
   //     proceeds without. A thrown error here is a bug in the memory layer, not a reason
   //     to refuse the user.
-  let recall: RecallOutcome | null = null;
-  if (deps.memory !== undefined) {
-    const previousUser = [...history].reverse().find((m) => m.role === 'user');
+  const recalling = (async (): Promise<RecallOutcome | null> => {
+    if (deps.memory === undefined) return null;
     try {
-      recall = await deps.memory.recall({
+      return await deps.memory.recall({
         userId: user.userId,
         // The scope a fact captured on THIS turn is written at — not the conversation's
         // (Stage 3 part 5, R27). "Remember that…" said in a private conversation is still
@@ -524,37 +598,53 @@ async function prepareTurn(deps: ChatDeps, input: ChatTurnInput): Promise<Prepar
         conversationId: requestedConversationId,
         historyMessages: history.length,
         message,
-        previousUserMessage: previousUser?.content ?? null,
+        previousUserMessage,
+        // Memory recall needs only the vector.
+        ...(search === undefined
+          ? {}
+          : {
+              queryVector: () =>
+                search().then((found) => (found.ok ? ok(found.value.vector) : found)),
+            }),
       });
     } catch (caught: unknown) {
       log.error('memory recall threw; turn proceeds without memory', {
         conversationId: conversation.id,
         error: ensureError(caught),
       });
+      return null;
     }
-  }
+  })();
 
-  // 4c. The files attached to this conversation (Milestone 5 part 1). Whoever may post here
-  //     may read them (D86) — that was settled in step 3. A brand-new conversation has none.
-  //     If they cannot be loaded the turn is refused: answering "what does the payslip say"
-  //     without the payslip is exactly the guess this feature must never make.
-  let documents: TurnDocumentContext | null = null;
-  if (deps.documents !== undefined && requestedConversationId !== null) {
-    const previousUser = [...history].reverse().find((m) => m.role === 'user');
-    let loaded: Awaited<ReturnType<TurnDocuments['load']>> | null = null;
+  // 4c. Documents (Milestone 5 parts 1 and 5): the files attached to this conversation, and
+  //     what was learned from documents anywhere. Whoever may post here may read its files
+  //     (D86) — settled in step 3. A brand-new conversation has no files but still draws on
+  //     what was learned. If the ATTACHMENTS cannot be loaded the turn is refused: answering
+  //     "what does the payslip say" without the payslip is the guess this must never make. A
+  //     failed search over learned documents never refuses — documents.load says so instead.
+  const loading = (async (): Promise<Awaited<ReturnType<TurnDocuments['load']>> | null> => {
+    if (deps.documents === undefined) return null;
     try {
-      loaded = await deps.documents.load({
-        conversationId: conversation.id,
+      return await deps.documents.load({
+        conversationId: requestedConversationId === null ? null : conversation.id,
+        userId: user.userId,
         message,
-        previousUserMessage: previousUser?.content ?? null,
+        previousUserMessage,
+        ...(search === undefined ? {} : { search }),
       });
     } catch (caught: unknown) {
       // The error's name only: whatever threw may be holding document text.
-      log.error('attached files threw while loading', {
+      log.error('documents threw while loading', {
         conversationId: conversation.id,
         errorName: caught instanceof Error ? caught.name : typeof caught,
       });
+      return null;
     }
+  })();
+
+  const [recall, loaded] = await Promise.all([recalling, loading]);
+  let documents: TurnDocumentContext | null = null;
+  if (deps.documents !== undefined) {
     if (loaded === null) return refuse(DOCUMENTS_UNAVAILABLE);
     if (!loaded.ok) {
       log.error('attached files could not be loaded', {
@@ -622,13 +712,16 @@ async function finishTurn(
     );
   }
 
-  // Null unless a file's text was actually in the request.
-  const documentSummary = prepared.documents?.block == null ? null : prepared.documents.summary;
-  const answeredFromFile = documentSummary !== null;
+  // Null unless a document was involved. D89 still holds: a turn with any document's text in
+  // front of the model — attached here or learned elsewhere — stays out of the summariser, so
+  // removing a document cannot leave its figures behind in a summary.
+  const documentSummary = prepared.documents?.summary ?? null;
+  const answeredFromFile = documentSummary !== null && documentSummary.chars > 0;
   const appended = await deps.conversations.appendTurn({
     conversation,
     userContent: message,
     ...(answeredFromFile ? { documentContext: true } : {}),
+    ...(documentSummary === null ? {} : { documentCoverage: documentSummary.coverage }),
     assistant: {
       content: reply.text,
       model: reply.model,

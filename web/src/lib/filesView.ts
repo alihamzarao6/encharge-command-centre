@@ -58,7 +58,11 @@ export function goneText(
   return page ? REMOVED_PAGE_TEXT : REMOVED_FILE_TEXT;
 }
 
-export const RETENTION_HINT = `Files are read on this device, kept for ${String(FILE_LIMITS.retentionDays)} days, then removed.`;
+/**
+ * Milestone 5 part 5: the text of a file is still purged after 30 days, but what the assistant
+ * learned from it is not — so the hint says both, and how to make it forget.
+ */
+export const RETENTION_HINT = `Files are read on this device and their text is kept for ${String(FILE_LIMITS.retentionDays)} days. What the assistant learns from a file stays after that; removing the file makes it forget.`;
 
 export const ATTACH_LABEL = 'Attach a file';
 

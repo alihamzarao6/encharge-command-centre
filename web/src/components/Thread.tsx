@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 import type { MemoryActor } from '../../../src/lib/memory/access.js';
 import { browserClipboardDeps, copyText } from '../lib/clipboard.js';
+import { coverageLines } from '../lib/coverage.js';
 import type { AttachedFile } from '../lib/filesApi.js';
 import { timeline } from '../lib/filesView.js';
 import { splitNotes } from '../lib/notes.js';
@@ -130,6 +131,18 @@ function AssistantContent({ content }: { readonly content: string }): ReactEleme
 export const TRUNCATED_REPLY_TEXT =
   'This reply was cut off at the length limit. Ask for the rest to see what is missing.';
 
+function CoverageNote({ m }: { readonly m: LocalMessage }): ReactElement | null {
+  const lines = coverageLines(m.coverage, m.names ?? {});
+  if (lines.length === 0) return null;
+  return (
+    <div className="bubble__coverage" role="note" data-testid="coverage">
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({
   m,
   onRetry,
@@ -154,6 +167,9 @@ function MessageBubble({
           {m.status === 'streaming' && <span className="caret" aria-hidden="true" />}
         </div>
       )}
+      {/* Milestone 5 part 5: what the answer actually had of a document, when that was not all of
+          it. Beside the answer it affected; nothing at all when every document went in whole. */}
+      {m.role === 'assistant' && <CoverageNote m={m} />}
       {/* A reply that hit the length limit is not the whole answer, and must not look it. */}
       {m.truncated === true && (
         <p className="bubble__cut" role="note" data-testid="truncated">

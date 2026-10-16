@@ -37,7 +37,9 @@ import {
 } from '../pages/fetch.js';
 import type { FilesConfig } from './config.js';
 import { loadFilesConfig } from './config.js';
-import { createTurnDocuments, type TurnDocuments } from './context.js';
+import { createTurnDocuments, type TurnDocuments, type TurnKnowledge } from './context.js';
+import { learnAttachment } from '../knowledge/ingest.js';
+import { createKnowledgeIngest } from '../knowledge/wiring.js';
 import type { FilesPageDeps } from './page.js';
 import { createFilesServiceClient, supabaseFileStore } from './store.js';
 
@@ -49,6 +51,11 @@ export interface PageRuntime {
   readonly dns?: DnsLike;
   /** The network. Defaults to the global fetch; a test passes its own. */
   readonly fetch?: PageFetchLike;
+  /**
+   * Milestone 5 part 5: keeps learning a new attachment alive after the response —
+   * `EdgeRuntime.waitUntil` on Supabase. Without it the work still runs; nothing waits for it.
+   */
+  readonly waitUntil?: (work: Promise<void>) => void;
 }
 
 /**
@@ -70,6 +77,10 @@ export function createFilesPageDeps(
   if (!llm.ok) return llm;
   const config = loadFilesConfig(env);
   if (!config.ok) return config;
+  // Milestone 5 part 5: with a Voyage key, an attachment is learned as soon as it is ready.
+  const ingest = createKnowledgeIngest(env, log);
+  if (!ingest.ok) return ingest;
+  const knowledge = ingest.value;
 
   const visionModel =
     config.value.visionRoute === 'fast' ? llm.value.models.fast : llm.value.models.default;
@@ -106,17 +117,27 @@ export function createFilesPageDeps(
       userAgent: config.value.pageUserAgent,
       state: PAGE_STATE,
     }),
+    ...(knowledge === null
+      ? {}
+      : { learn: (fileId: string) => learnAttachment(knowledge, fileId) }),
+    ...(runtime.waitUntil === undefined ? {} : { waitUntil: runtime.waitUntil }),
     log,
   });
 }
 
-/** The chat path's half: the attached files of a conversation, as the block a turn reads. */
+/**
+ * The chat path's half: the attached files of a conversation, and — when there is a Voyage
+ * key — what was learned from documents anywhere, as the blocks a turn reads.
+ */
 export function createChatDocuments(
   supabase: SupabaseAuthConfig,
   config: FilesConfig,
+  knowledge?: TurnKnowledge,
 ): TurnDocuments {
   return createTurnDocuments(
     supabaseFileStore(createFilesServiceClient(supabase)),
     config.contextMaxChars,
+    () => new Date(),
+    knowledge,
   );
 }

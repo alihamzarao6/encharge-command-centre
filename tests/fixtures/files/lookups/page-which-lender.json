@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "Should my client go with this lender?",
   "mode": "protected",
-  "recordedAt": "2026-10-14T03:54:40.225Z",
+  "recordedAt": "2026-10-16T21:06:33.673Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-14.1",
-  "requestSha256": "35ccd116062b5f940318aa047883b3c4864323a90ee78d1ea81f0dedc0c5719d",
-  "reply": "That's not something I can call — which lender's right for your client is your judgement as the broker, not mine.\n\nHere's what the page (examplelender.com.au, read 13 Oct 2026) actually shows for variable, owner occupier P&I:\n\nLVR 60% or less: 6.04% p.a., comparison 6.07% p.a., no monthly fee\nLVR 60.01–80%: 6.14% p.a., comparison 6.17% p.a., no monthly fee\nLVR 80.01–90%: 6.44% p.a., comparison 6.47% p.a., monthly fee not shown (blank)\nLVR 90.01–95%: 6.84% p.a., comparison rate not shown (blank), $10 monthly fee\n\nFixed, owner occupier: 1 year 5.89% (comparison 6.52%), 2 years 5.79% (comparison 6.44%), 3+ years 5.99% (comparison 6.49%), with 4 and 5 year terms priced at the 3 year rate plus 0.20%.\n\nWorth flagging: these rates were current when read today but subject to change without notice per the page, and the comparison rate is based on a $150,000 loan over 25 years, so it won't reflect your client's actual loan size or term.",
+  "rulesVersion": "2026-10-17.3",
+  "requestSha256": "edc6aa1bc0f1f3ce4fa740484bf32399c9cb05bff83792077e45c0e4c92e6064",
+  "reply": "That's not something I can call — which lender or loan is right for a client is the broker's call to make, and that's your judgement, not mine.\n\nWhat the page does show (Example Lender, read 13 Oct 2026, 12:00 pm Perth time): for the Basic Home Loan, variable, owner occupier P&I:\n\n- LVR 60% or less: 6.04% p.a., comparison 6.07% p.a., $0 monthly fee\n- LVR 60.01–80%: 6.14% p.a., comparison 6.17% p.a., $0 monthly fee\n- LVR 80.01–90%: 6.44% p.a., comparison 6.47% p.a., monthly fee not shown (blank)\n- LVR 90.01–95%: 6.84% p.a., comparison rate not shown (blank), $10 monthly fee\n\nFixed, owner occupier: 1 year 5.89% (comparison 6.52%), 2 years 5.79% (comparison 6.44%), 3+ years 5.99% (comparison 6.49%), with 4 and 5 year terms priced at the 3 year rate plus 0.20%.\n\nFixed, investor: 1 year 6.09% (comparison 6.81%), 2 years 5.99% (comparison 6.72%), 3+ years 6.19% (comparison 6.77%), same +0.20% rule for 4 and 5 year terms.\n\nNote: the comparison rate is based on a $150,000 loan over 25 years and the page warns it may not include all fees and charges, so it's indicative only. If you want the client's actual LVR or loan amount checked against this, happy to look it up against what's shown.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 13,
-    "outputTokens": 408,
-    "cacheReadTokens": 5875,
+    "outputTokens": 540,
+    "cacheReadTokens": 6731,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.007922
+  "costUsd": 0.010158
 }

@@ -6,6 +6,11 @@
  * library, write its answer back. Every decision — who may call, who may remove, what the
  * extractor is allowed to store, what lands in audit_log — lives in the library.
  *
+ * Milestone 5 part 5: it also answers the database's scheduler. A request carrying the
+ * `x-knowledge-drain-token` header is the `knowledge-drain` action — one run of the learning
+ * queue (src/lib/knowledge/endpoint.ts), checked against KNOWLEDGE_DRAIN_SECRET and answered with
+ * counts. It is not a person and has no session; nothing else about this endpoint changes.
+ *
  * There is no GET. Reading memory is a PostgREST select under RLS as the signed-in user
  * (page.ts's header says why); this endpoint exists only because `authenticated` holds
  * SELECT and nothing else, so a change has to come through a verified server path.
@@ -25,6 +30,9 @@
  */
 /* eslint-disable -- Deno runtime file; type-checked by the Supabase CLI, not by the repo's tsc. */
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
+import { handleDrainRequest } from '../../lib/knowledge/endpoint.js';
+import { DRAIN_TOKEN_HEADER, readDrainSecret } from '../../lib/knowledge/schedule.js';
+import { createKnowledgeIngest } from '../../lib/knowledge/wiring.js';
 import { createMemoryPageDeps } from '../../lib/llm/wiring.js';
 import { logger } from '../../lib/logger.js';
 import { handleMemoryRequest, type MemoryRequestBody } from '../../lib/memory/page.js';
@@ -52,6 +60,29 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(405, {
       error: { code: 'METHOD_NOT_ALLOWED', message: 'POST only.', retryable: false },
     });
+  }
+
+  // Milestone 5 part 5: the database's scheduler, asking for a knowledge drain. It is not a
+  // person and carries no session — only a two-minute token (src/lib/knowledge/schedule.ts).
+  const drainToken = request.headers.get(DRAIN_TOKEN_HEADER);
+  if (drainToken !== null) {
+    const env = Deno.env.toObject();
+    const ingest = createKnowledgeIngest(env, logger);
+    if (!ingest.ok) {
+      logger.error('knowledge drain misconfigured', { error: ingest.error });
+      return json(500, {
+        error: {
+          code: 'CONFIG',
+          message: 'The memory service is misconfigured.',
+          retryable: false,
+        },
+      });
+    }
+    const drained = await handleDrainRequest(
+      { ingest: ingest.value, secret: readDrainSecret(env), log: logger },
+      drainToken,
+    );
+    return json(drained.status, drained.body);
   }
 
   const deps = createMemoryPageDeps(Deno.env.toObject(), logger);

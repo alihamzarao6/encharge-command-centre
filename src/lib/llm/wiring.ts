@@ -39,6 +39,7 @@ import { recallForTurn, supabaseChunkSearch, type RecallDeps } from '../memory/r
 import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
 import { loadFilesConfig } from '../files/config.js';
 import { createChatDocuments } from '../files/wiring.js';
+import { createChatKnowledge } from '../knowledge/wiring.js';
 import type { ChatDeps, TurnMemory } from './chat.js';
 import { createClaudeClient, type ClaudeClient } from './client.js';
 import { loadLlmConfig } from './config.js';
@@ -112,6 +113,10 @@ export function createChatDeps(
   } else {
     log.warn(MEMORY_DISABLED_WARNING);
   }
+  // Milestone 5 part 5: what was learned from documents, searched by meaning on every turn,
+  // with the one query embedding the turn shares with memory recall. Same switch as memory.
+  const knowledge = createChatKnowledge(env, log, claude);
+  if (!knowledge.ok) return knowledge;
 
   return ok({
     verify: supabaseVerifyDeps(service),
@@ -119,7 +124,8 @@ export function createChatDeps(
     conversations: supabaseConversationStore(service),
     log,
     history: llm.value.history,
-    documents: createChatDocuments(supabase.value, files.value),
+    documents: createChatDocuments(supabase.value, files.value, knowledge.value?.knowledge),
+    ...(knowledge.value === null ? {} : { query: knowledge.value.query }),
     ...(afterTurn === undefined ? {} : { afterTurn }),
     ...(memory === undefined ? {} : { memory }),
     ...(waitUntil === undefined ? {} : { waitUntil }),

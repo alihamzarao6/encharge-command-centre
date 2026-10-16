@@ -82,7 +82,7 @@ async function pageFile(
 }
 
 function blockOf(files: readonly TurnFile[]): string {
-  const built = buildDocumentBlock(files, QUERY);
+  const built = buildDocumentBlock(files);
   if (built.block === null) throw new Error('expected a block');
   return built.block;
 }
@@ -471,7 +471,7 @@ describe("the rules — ours, and never the page's", () => {
   it("a conversation with only files gets part 1's rules, byte for byte", () => {
     expect(rulesFor(true, false, NOW)).toBe(DOCUMENT_RULES);
     expect(rulesFor(false, false, NOW)).toBeNull();
-    expect(DOCUMENT_RULES_VERSION).toBe('2026-10-14.1');
+    expect(DOCUMENT_RULES_VERSION).toBe('2026-10-17.3');
   });
 
   it('a conversation that has had a page gets the web rules after them, with the time now', () => {
@@ -494,9 +494,11 @@ describe("the rules — ours, and never the page's", () => {
       `${NOT_LOADED_MARK} marks a place where the site puts a value in only after the page has loaded`,
     );
     expect(rules).toContain('Never guess it, never supply it from memory');
-    // 4. One page, and only while it is kept.
+    // 4. One page — and since part 5 a page is learned, so its absence means it was never read,
+    //    was removed, or did not match: never that it simply aged out.
     expect(rules).toContain('Only that one page was read.');
-    expect(rules).toContain('read more than a day ago and is no longer kept');
+    expect(rules).toContain('or it was removed, or nothing on it matched this question');
+    expect(rules).not.toContain('no longer kept');
   });
 
   it('the link rules forbid the one thing that must not happen: an answer from memory', () => {
@@ -522,16 +524,16 @@ describe("the rules — ours, and never the page's", () => {
         },
         48_000,
         () => NOW,
-      ).load({ conversationId: 'c', ...QUERY });
+      ).load({ conversationId: 'c', userId: 'u', ...QUERY });
 
     const withPage = await loader([page], true, true);
     expect(withPage.ok && withPage.value.rules).toBe(rulesFor(true, true, NOW));
     expect(withPage.ok && withPage.value.block).toContain('type="Web page"');
 
-    // The page was removed, or is more than a day old: no text, but the rules still say why.
+    // The page was removed or has expired: no text here, but the rules still say what that means.
     const gone = await loader([], true, true);
     expect(gone.ok && gone.value.block).toBeNull();
-    expect(gone.ok && gone.value.rules).toContain('no longer kept');
+    expect(gone.ok && gone.value.rules).toContain('nothing on it matched this question');
 
     // A source that says nothing about pages (part 1's shape) means none.
     const legacy = await loader([], true);

@@ -27,6 +27,7 @@ import { buildSystemBlocks } from '../llm/prompt.js';
 import {
   buildDocumentBlock,
   DEFAULT_CONTEXT_MAX_CHARS,
+  documentsMessage,
   rulesFor,
   type TurnFile,
   type TurnPage,
@@ -173,8 +174,10 @@ export function judgeReply(
 
 export interface ProbeRequest {
   readonly request: CompletionRequest;
-  /** The wrapped-document message, or null when the file had no pages. */
+  /** The wrapped whole-document block, or null when the file did not go in whole. */
   readonly block: string | null;
+  /** The excerpts block (a file too long to go in whole), or null. */
+  readonly excerpts: string | null;
 }
 
 /**
@@ -191,24 +194,16 @@ export function probeRequest(
   budgetChars: number = DEFAULT_CONTEXT_MAX_CHARS,
   rules: string = DOCUMENT_RULES,
 ): ProbeRequest {
-  const built = buildDocumentBlock(
-    [file],
-    { message: question, previousUserMessage: null },
-    budgetChars,
-  );
+  const built = buildDocumentBlock([file], budgetChars);
   const turn: ChatMessage[] = [{ role: 'user', content: question }];
+  const documents = documentsMessage(built.block, built.excerpts);
   return {
     block: built.block,
+    excerpts: built.excerpts,
     request: {
       route: 'default',
       system: buildSystemBlocks(undefined, rules),
-      messages:
-        built.block === null
-          ? turn
-          : [
-              { role: 'user', content: [{ type: 'text', text: built.block, cache: true }] },
-              ...turn,
-            ],
+      messages: documents === null ? turn : [documents, ...turn],
       operation: PROBE_OPERATION,
       userId: null,
       conversationId: null,

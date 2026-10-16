@@ -214,6 +214,13 @@ export interface FilesPageDeps {
   readonly config: FilesConfig;
   /** Milestone 5 part 2: the guarded fetch of one page (src/lib/pages/fetch.ts). */
   readonly pages: PageFetcher;
+  /**
+   * Milestone 5 part 5: learn an attachment that just became ready (knowledge/ingest.ts
+   * `learnAttachment`). Never rejects. Absent without a Voyage key.
+   */
+  readonly learn?: (fileId: string) => Promise<void>;
+  /** Keeps `learn` alive after the response: `EdgeRuntime.waitUntil` on Supabase. */
+  readonly waitUntil?: (work: Promise<void>) => void;
   readonly log: Logger;
   readonly now?: () => Date;
   /** For the pause between two reads of one host. */
@@ -862,6 +869,24 @@ async function readPage(ctx: Ctx, request: ActionRequest<'read_page'>): Promise<
   };
 }
 
+/**
+ * Milestone 5 part 5: an attached file starts being learned the moment it is ready — cut into
+ * chunks at once (so a page's one-day text cannot be purged first), then embedded as fast as
+ * Voyage allows. AFTER the answer: `waitUntil` keeps it alive past the response, and nothing it
+ * does or fails to do can change whether the file was attached. Without a Voyage key there is
+ * no `learn` and the schedule has nothing to embed with either.
+ */
+function scheduleLearning(deps: FilesPageDeps, fileId: string): void {
+  if (deps.learn === undefined) return;
+  const work = deps.learn(fileId).catch((caught: unknown) => {
+    deps.log.error('learning a new attachment rejected', {
+      fileId,
+      errorName: caught instanceof Error ? caught.name : typeof caught,
+    });
+  });
+  deps.waitUntil?.(work);
+}
+
 async function finish(ctx: Ctx, request: ActionRequest<'finish'>): Promise<FilesPageResult> {
   const { deps, user, log } = ctx;
   const seen = await visibleFile(ctx, request.fileId);
@@ -919,6 +944,7 @@ async function finish(ctx: Ctx, request: ActionRequest<'finish'>): Promise<Files
     readAsSent: stored.value.readAsSent,
     replaced: done.value.replaced,
   });
+  if (!done.value.duplicate && !done.value.already) scheduleLearning(deps, done.value.id);
   return {
     status: 200,
     body: {

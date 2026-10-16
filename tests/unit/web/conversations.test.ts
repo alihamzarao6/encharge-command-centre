@@ -142,6 +142,13 @@ describe('the delete confirm', () => {
     expect(DELETE_CONVERSATION_CONFIRM).toContain('notes the assistant wrote');
     expect(DELETE_CONVERSATION_CONFIRM).toContain('kept');
     expect(DELETE_CONVERSATION_CONFIRM).toContain('Memory page');
+    // Milestone 5 part 5 (decided 16 Oct): what was learned from its documents outlives it.
+    expect(DELETE_CONVERSATION_CONFIRM).toContain(
+      'What it learned from documents attached here is kept too',
+    );
+    expect(DELETE_CONVERSATION_CONFIRM).toContain(
+      'remove the document before you delete the conversation',
+    );
   });
 
   it('says what the migration does — the promise and the transaction are checked together', async () => {

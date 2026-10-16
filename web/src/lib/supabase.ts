@@ -36,6 +36,14 @@ export type MessageRow = {
   role: string;
   content: string | null;
   created_at: string;
+  /** Milestone 5 part 5: on an assistant row, what reached the model from documents. Parsed, never trusted. */
+  document_coverage: unknown;
+};
+
+/** Milestone 5 part 5: a learned document, as the browser may see it — its name, for the note under a reply. */
+export type KnowledgeSourceRow = {
+  id: string;
+  name: string | null;
 };
 
 /**
@@ -73,6 +81,14 @@ export type WebDatabase = {
         Row: ConversationFileRow;
         Insert: Partial<ConversationFileRow>;
         Update: Partial<ConversationFileRow>;
+        Relationships: [];
+      };
+      // Milestone 5 part 5: learned documents. Readable by active staff for their names (migration
+      // 20261017010000); the text is in knowledge_chunks, which no browser session can read.
+      knowledge_sources: {
+        Row: KnowledgeSourceRow;
+        Insert: Partial<KnowledgeSourceRow>;
+        Update: Partial<KnowledgeSourceRow>;
         Relationships: [];
       };
       memory_facts: {

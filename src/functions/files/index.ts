@@ -53,8 +53,17 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
+  // Milestone 5 part 5: a new attachment is learned after the answer is sent. EdgeRuntime.waitUntil
+  // keeps the isolate alive for it; without it the promise still runs, just without the guarantee
+  // (the schedule picks up anything left).
+  const waitUntil =
+    typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function'
+      ? (work: Promise<void>): void => {
+          EdgeRuntime.waitUntil(work);
+        }
+      : undefined;
   // `Deno` is the DNS resolver the page guard checks every name with.
-  const deps = createFilesPageDeps(Deno.env.toObject(), logger, { dns: Deno });
+  const deps = createFilesPageDeps(Deno.env.toObject(), logger, { dns: Deno, waitUntil });
   if (!deps.ok) {
     // Config errors name the missing VARIABLE, never a value.
     logger.error('files function misconfigured', { error: deps.error });

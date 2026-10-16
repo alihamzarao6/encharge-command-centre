@@ -130,7 +130,7 @@ export function filterConversations(
 
 /** What a person reads before they tap. Every clause is a fact about a different table. */
 export const DELETE_CONVERSATION_CONFIRM =
-  'Delete this conversation? Its messages are removed for good and cannot be brought back, and so are the notes the assistant wrote about it. Standing notes — the things someone asked it to remember — are kept, and you can remove those on the Memory page.';
+  'Delete this conversation? Its messages are removed for good and cannot be brought back, and so are the notes the assistant wrote about it. Standing notes — the things someone asked it to remember — are kept, and you can remove those on the Memory page. What it learned from documents attached here is kept too: to make it forget a document, remove the document before you delete the conversation.';
 
 /**
  * What a person reads before a conversation becomes private. The second sentence is the one

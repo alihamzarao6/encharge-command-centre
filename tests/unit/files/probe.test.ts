@@ -188,7 +188,7 @@ describe('the probe sends what a chat turn sends', () => {
     expect(request.messages).toEqual([{ role: 'user', content: QUESTION }]);
   });
 
-  it('the budget is passed through: a document over it goes as an excerpt', () => {
+  it('the budget is passed through: a document over it goes by its labelled opening pages (a terminal probe has nothing learned to search)', () => {
     const long: TurnFile = {
       ...PAYSLIP,
       pages: Array.from({ length: 30 }, (_, i) => ({
@@ -199,10 +199,15 @@ describe('the probe sends what a chat turn sends', () => {
         legibility: 'full' as const,
       })),
     };
-    const whole = probeRequest(long, 'Where is the zebra clause?', 1_000_000).block ?? '';
-    const excerpt = probeRequest(long, 'Where is the zebra clause?', 4_000).block ?? '';
-    expect(whole.length).toBeGreaterThan(excerpt.length);
-    expect(excerpt).toContain('zebra clause');
+    const whole = probeRequest(long, 'Where is the zebra clause?', 1_000_000);
+    const over = probeRequest(long, 'Where is the zebra clause?', 4_000);
+    expect(whole.block).toContain('zebra clause');
+    expect(whole.excerpts).toBeNull();
+    expect(over.block).toBeNull();
+    // Page 18 is not among the opening pages, and the pages sent are never passed off as a match.
+    expect(over.excerpts).not.toContain('zebra clause');
+    expect(over.excerpts).toContain('NOT chosen for this question');
+    expect((over.excerpts ?? '').length).toBeLessThan((whole.block ?? '').length);
   });
 });
 

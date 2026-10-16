@@ -53,6 +53,14 @@ export interface ScriptedMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  /** Milestone 5 part 5: on an assistant row, what reached the model from documents. */
+  document_coverage?: unknown;
+}
+
+/** Milestone 5 part 5: a learned document as the browser may read it — its name only. */
+export interface ScriptedKnowledgeSource {
+  id: string;
+  name: string | null;
 }
 
 /** A row of `conversation_files`, as PostgREST returns the columns the interface selects. */
@@ -399,6 +407,8 @@ export interface MockOptions {
   chatDelayMs?: number;
   /** Milestone 5 part 3a: the Drive connection and what is in the Drive. */
   drive?: DriveScript;
+  /** Milestone 5 part 5: learned documents, readable by name (migration 20261017010000). */
+  knowledgeSources?: ScriptedKnowledgeSource[];
 }
 
 export interface MockState {
@@ -467,6 +477,15 @@ export interface MockState {
  * the row), a note is appended with the signed-in author, and the reply carries ids and
  * flags only. A missing opportunity answers 410 as the server would.
  */
+/** The ids of a PostgREST `id=in.(a,b)` filter. */
+function idsIn(search: string): string[] {
+  const match = /(?:^|[?&])id=in\.\(([^)]*)\)/.exec(decodeURIComponent(search));
+  return (match?.[1] ?? '')
+    .split(',')
+    .map((id) => id.replace(/"/g, ''))
+    .filter((id) => id !== '');
+}
+
 /** A body field as text; anything that is not a string is an empty string. */
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -949,7 +968,22 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
       await json(
         route,
         200,
-        (messages[id] ?? []).map((m) => ({ ...m, conversation_id: id })),
+        (messages[id] ?? []).map((m) => ({
+          ...m,
+          conversation_id: id,
+          document_coverage: m.document_coverage ?? null,
+        })),
+      );
+      return;
+    }
+
+    // ---- knowledge_sources (Milestone 5 part 5): a name by id, for the note under a reply ----
+    if (path === '/rest/v1/knowledge_sources') {
+      const wanted = idsIn(url.search);
+      await json(
+        route,
+        200,
+        (options.knowledgeSources ?? []).filter((k) => wanted.includes(k.id)),
       );
       return;
     }
@@ -1393,6 +1427,16 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
 
     // ---- the chat Edge Function ----
     // ---- conversation_files (Milestone 5 part 1): name, kind, size — never the text ----
+    if (path === '/rest/v1/conversation_files' && url.search.includes('id=in.')) {
+      // Milestone 5 part 5: names by id, for the note under a reply (the tombstone has none).
+      const wanted = idsIn(url.search);
+      await json(
+        route,
+        200,
+        state.files.filter((f) => wanted.includes(f.id)).map((f) => ({ id: f.id, name: f.name })),
+      );
+      return;
+    }
     if (path === '/rest/v1/conversation_files') {
       const match = /conversation_id=eq\.([^&]+)/.exec(url.search);
       const id = match?.[1] ?? '';

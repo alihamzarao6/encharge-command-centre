@@ -30,6 +30,7 @@
     "memory": "tsx scripts/memory.ts",
     "crm": "tsx scripts/crm.ts",
     "files": "tsx scripts/files.ts",
+    "knowledge": "tsx scripts/knowledge.ts",
     "pages": "tsx scripts/pages.ts",
     "connector": "tsx scripts/connector.ts",
     "drive": "tsx scripts/drive.ts"

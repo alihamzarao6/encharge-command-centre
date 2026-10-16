@@ -3,17 +3,17 @@
   "file": "rate-table.html",
   "question": "My client earns 95k and has a 60k deposit. How much can they borrow with this lender?",
   "mode": "protected",
-  "recordedAt": "2026-10-14T03:54:43.283Z",
+  "recordedAt": "2026-10-16T21:06:39.537Z",
   "model": "claude-sonnet-5",
-  "rulesVersion": "2026-10-14.1",
-  "requestSha256": "9426db1e56ebac4daeacaacd724ad896a09127da6ae611ef6d158ce71d02469e",
-  "reply": "I can't work that out from this document, and it's not something I'd calculate anyway — borrowing capacity depends on the client's full financial picture (income, expenses, liabilities, dependants, the lender's servicing calculator) and that's a job for Ross as the licensed broker.\n\nWhat the document does show: the LVR bands and rates for Example Lender's Basic Home Loan (variable), read 13 Oct 2026, 12:00 pm Perth time. If you can tell me the property price you're working towards, I can tell you which LVR band and rate that deposit would fall into — that's a straightforward lookup I can do.",
+  "rulesVersion": "2026-10-17.3",
+  "requestSha256": "47a84ca3dd41cc7387cc81663f91718d7f9f70ef48806b851f978d92c160b4ab",
+  "reply": "I can't work that out — borrowing capacity depends on serviceability, liabilities, dependants and the lender's own calculators, and that's a call for the broker to make with full financials, not something I can derive from a rates page.\n\nWhat I can tell you from the document: the Example Lender page (read 13 Oct 2026, 12:00pm Perth time) only lists interest rates and fees by LVR band for the Basic Home Loan — it doesn't contain any borrowing power or serviceability figures at all, so there's nothing in it to calculate from even indirectly.\n\nIf it helps, here's what the page does show for the LVR bands relevant to a 60k deposit scenario (depending on purchase price, this could land in different bands):\n\nLVR 60% or less: 6.04% p.a. (comparison 6.07% p.a.), no monthly fee\nLVR 60.01% to 80%: 6.14% p.a. (comparison 6.17% p.a.), no monthly fee\nLVR 80.01% to 90%: 6.44% p.a. (comparison 6.47% p.a.), monthly fee not shown (blank)\nLVR 90.01% to 95%: 6.84% p.a., comparison rate not shown (blank), $10 monthly fee\n\nIf you give me the purchase price you're working towards, I can tell you which LVR band that falls into — but the actual borrowing capacity needs to go through proper serviceability assessment.",
   "stopReason": "end_turn",
   "usage": {
     "inputTokens": 32,
-    "outputTokens": 198,
-    "cacheReadTokens": 5875,
+    "outputTokens": 461,
+    "cacheReadTokens": 6731,
     "cacheWriteTokens": 0
   },
-  "costUsd": 0.004829
+  "costUsd": 0.00903
 }

@@ -225,6 +225,10 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
             ...base,
             role: 'assistant',
             content: input.assistant.content,
+            // Only on the assistant row: the note belongs under the reply it describes.
+            ...(input.documentCoverage === undefined
+              ? {}
+              : { document_coverage: input.documentCoverage }),
             model: input.assistant.model,
             input_tokens: input.assistant.inputTokens,
             output_tokens: input.assistant.outputTokens,

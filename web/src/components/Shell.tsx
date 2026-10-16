@@ -30,6 +30,12 @@ import {
 } from 'react';
 
 import { streamTurn } from '../lib/chatApi.js';
+import {
+  coverageIds,
+  coverageNeedsNote,
+  parseCoverage,
+  type DocumentCoverage,
+} from '../lib/coverage.js';
 import { readDriveFile } from '../lib/driveApi.js';
 import { extractInBrowser, hashInBrowser } from '../lib/files/lazy.js';
 import {
@@ -110,26 +116,66 @@ function currentPath(): string {
   return typeof window === 'undefined' ? '/' : window.location.pathname;
 }
 
+/**
+ * Milestone 5 part 5: the names the notes under these replies need. Looked up now, under RLS,
+ * rather than stored with the replies: a document removed since has no name to find, and the
+ * note then says so. A failed lookup costs only the names, never the thread.
+ */
+async function coverageNames(
+  coverages: readonly (DocumentCoverage | null)[],
+): Promise<Readonly<Record<string, string>>> {
+  const sources = new Set<string>();
+  const files = new Set<string>();
+  for (const coverage of coverages) {
+    const ids = coverageIds(coverage);
+    for (const id of ids.sources) sources.add(id);
+    for (const id of ids.files) files.add(id);
+  }
+  const names: Record<string, string> = {};
+  if (sources.size > 0) {
+    const { data } = await supabase
+      .from('knowledge_sources')
+      .select('id, name')
+      .in('id', [...sources]);
+    for (const row of data ?? []) if (row.name !== null) names[row.id] = row.name;
+  }
+  if (files.size > 0) {
+    const { data } = await supabase
+      .from('conversation_files')
+      .select('id, name')
+      .in('id', [...files]);
+    for (const row of data ?? []) if (row.name !== null) names[row.id] = row.name;
+  }
+  return names;
+}
+
 /** The thread's saved messages, read under RLS as the signed-in person; null = could not. */
 async function loadMessages(conversationId: string): Promise<readonly ThreadMessage[] | null> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, conversation_id, role, content, created_at')
+    .select('id, conversation_id, role, content, created_at, document_coverage')
     .eq('conversation_id', conversationId)
     .in('role', ['user', 'assistant'])
     .order('created_at', { ascending: true })
     .limit(500);
   if (error !== null) return null;
-  return data
-    .filter((row) => row.content !== null)
-    .map((row) => ({
+  const rows = data.filter((row) => row.content !== null);
+  const coverages = rows.map((row) =>
+    row.role === 'assistant' ? parseCoverage(row.document_coverage) : null,
+  );
+  const names = coverages.some(coverageNeedsNote) ? await coverageNames(coverages) : {};
+  return rows.map((row, index) => {
+    const coverage = coverages[index] ?? null;
+    return {
       localId: row.id,
       id: row.id,
       role: row.role === 'assistant' ? 'assistant' : 'user',
       content: row.content ?? '',
       status: 'saved',
       createdAt: row.created_at,
-    }));
+      ...(coverage === null ? {} : { coverage, names }),
+    };
+  });
 }
 
 /**

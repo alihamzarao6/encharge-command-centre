@@ -2976,6 +2976,26 @@ body.is-dragging * {
   color: #9a3412;
 }
 
+/* Milestone 5 part 5: what the answer had of a document, when it was not all of it. Calm, not
+   an alarm: it is information about the answer, under it, in the answer's own bubble. */
+.bubble__coverage {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.bubble__coverage p {
+  margin: 0;
+}
+
+.bubble__coverage p + p {
+  margin-top: 6px;
+}
+
 /* A file is being dragged over the conversation. */
 .thread-pane.is-dropping,
 .panel.is-dropping {

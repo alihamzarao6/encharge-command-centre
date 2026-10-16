@@ -549,7 +549,7 @@ describe('a link that was never read', () => {
       turnRules({
         message: 'hello',
         history: [],
-        documents: { rules: DOCUMENT_RULES, block: null, summary: { files: [], chars: 0 } },
+        documents: { rules: DOCUMENT_RULES, block: null, excerpts: null, summary: null },
       }),
     ).toBe(DOCUMENT_RULES);
   });

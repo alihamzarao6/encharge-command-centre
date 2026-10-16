@@ -88,6 +88,9 @@ type MessagesRow = {
   // Milestone 5 part 1 (migration 20261012010000): the turn was answered from an attached
   // file, and the memory summariser leaves it out.
   document_context: boolean;
+  // Milestone 5 part 5 (migration 20261017010000): on an assistant row, what reached the model
+  // from documents (knowledge/coverage.ts). Ids and numbers only.
+  document_coverage: unknown;
 };
 
 // Stage 3 part 1: memory_chunks (src/lib/memory/chunks.ts). The vector travels as its
