@@ -116,7 +116,12 @@ describe.skipIf(env === null)(
           [id, email],
         );
       }
-      const signIn = await anon.auth.signInWithPassword({ email, password });
+      // A client of its own: signing in through `anon` left `anon` holding the session, so test 1
+      // checked a signed-in user where it meant a signed-out browser (found 17 Oct; CI red since).
+      const signer = createClient(cfg.url, cfg.anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const signIn = await signer.auth.signInWithPassword({ email, password });
       if (signIn.error !== null) throw new Error(`signIn ${label}: ${signIn.error.message}`);
       const token = signIn.data.session.access_token;
       const client = createClient(cfg.url, cfg.anonKey, {
