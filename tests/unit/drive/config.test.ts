@@ -65,6 +65,15 @@ describe('loadDriveConfig', () => {
     },
   );
 
+  it('a list of app origins: a person lands back on the FIRST one, the primary domain', async () => {
+    const config = await loadDriveConfig({
+      ...BASE,
+      CHAT_ALLOWED_ORIGIN:
+        'https://command.enchargecapital.com.au/, https://fundd-command-centre.vercel.app',
+    });
+    expect(config.ok && config.value?.appOrigin).toBe('https://command.enchargecapital.com.au');
+  });
+
   it.each([
     ['a client id that is not one', { GOOGLE_DRIVE_CLIENT_ID: 'my-app' }, 'GOOGLE_DRIVE_CLIENT_ID'],
     [
@@ -80,6 +89,11 @@ describe('loadDriveConfig', () => {
       'CHAT_ALLOWED_ORIGIN',
     ],
     ['no app origin', { CHAT_ALLOWED_ORIGIN: '' }, 'CHAT_ALLOWED_ORIGIN'],
+    [
+      'a list whose FIRST entry is not an origin',
+      { CHAT_ALLOWED_ORIGIN: 'fundd.example, https://fundd-command-centre.vercel.app' },
+      'CHAT_ALLOWED_ORIGIN',
+    ],
     [
       'a callback that is not the callback',
       { DRIVE_REDIRECT_URI: 'https://x.supabase.co/functions/v1/drive' },

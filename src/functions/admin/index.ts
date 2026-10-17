@@ -23,18 +23,18 @@
  * (this file logs nothing but a config failure), not stored, and not recoverable.
  *
  * CORS: the browser app is served from Vercel, a different origin, so the function answers
- * the preflight and echoes exactly one allowed origin — CHAT_ALLOWED_ORIGIN, the same
- * variable the chat and memory functions use, because it names the one app all three serve.
+ * the preflight and echoes the caller's origin when it is on CHAT_ALLOWED_ORIGIN — the same
+ * list the chat and memory functions use, because it names the app's domains all three serve.
  * Unset means no browser origin is allowed.
  */
 /* eslint-disable -- Deno runtime file; type-checked by the Supabase CLI, not by the repo's tsc. */
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
+import { withAllowedOrigin } from '../../lib/cors.js';
 import { handleUsersRequest, type UsersRequestBody } from '../../lib/auth/page.js';
 import { createUsersPageDeps } from '../../lib/llm/wiring.js';
 import { logger } from '../../lib/logger.js';
 
 const CORS_HEADERS = {
-  'access-control-allow-origin': Deno.env.get('CHAT_ALLOWED_ORIGIN') ?? '',
   'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info, accept',
   'access-control-allow-methods': 'POST, OPTIONS',
   'access-control-max-age': '86400',
@@ -53,7 +53,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-Deno.serve(async (request: Request): Promise<Response> => {
+const handler = async (request: Request): Promise<Response> => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -88,4 +88,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const result = await handleUsersRequest(deps.value, { token, body });
   return json(result.status, result.body);
-});
+};
+
+Deno.serve(withAllowedOrigin(() => Deno.env.get('CHAT_ALLOWED_ORIGIN'), handler));

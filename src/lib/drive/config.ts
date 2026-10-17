@@ -9,6 +9,7 @@
  *   - anything in between, or a malformed value → a CONFIG error that names the VARIABLE,
  *     never its value: somebody set it, and got it wrong.
  */
+import { primaryOrigin } from '../cors.js';
 import { ConfigError, err, ok, type Result } from '../errors.js';
 import { importSealKey } from './crypto.js';
 
@@ -20,7 +21,7 @@ export interface DriveConfig {
   /** The `drive` function's `/callback`, exactly as registered on the OAuth client. */
   readonly redirectUri: string;
   readonly responseMode: 'form_post' | 'query';
-  /** The app, where a person lands back after Google. */
+  /** The app, where a person lands back after Google: the FIRST entry of CHAT_ALLOWED_ORIGIN. */
   readonly appOrigin: string;
 }
 
@@ -34,23 +35,7 @@ function present(env: Env, name: string): string | null {
   return value === undefined || value === '' ? null : value;
 }
 
-/** An https origin, or http on this machine for a developer's stack. No path, no query. */
-export function parseOrigin(raw: string | null): string | null {
-  if (raw === null) return null;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) return null;
-  if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
-    return null;
-  }
-  if (url.pathname !== '/' && url.pathname !== '') return null;
-  return url.origin;
-}
+export { parseOrigin } from '../cors.js';
 
 export async function loadDriveConfig(env: Env): Promise<Result<DriveConfig | null, ConfigError>> {
   const clientId = present(env, 'GOOGLE_DRIVE_CLIENT_ID');
@@ -78,9 +63,9 @@ export async function loadDriveConfig(env: Env): Promise<Result<DriveConfig | nu
   const sealKey = await importSealKey(key);
   if (!sealKey.ok) return sealKey;
 
-  const appOrigin = parseOrigin(present(env, 'CHAT_ALLOWED_ORIGIN'));
+  const appOrigin = primaryOrigin(present(env, 'CHAT_ALLOWED_ORIGIN'));
   if (appOrigin === null) {
-    return err(new ConfigError('CHAT_ALLOWED_ORIGIN must be the app origin (https://…)'));
+    return err(new ConfigError('CHAT_ALLOWED_ORIGIN must start with the app origin (https://…)'));
   }
 
   const supabaseUrl = present(env, 'SUPABASE_URL');

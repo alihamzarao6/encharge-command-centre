@@ -4,8 +4,8 @@
  * Thin Deno adapter over src/lib/drive/page.ts. Two kinds of request arrive:
  *
  *   POST (JSON, with the person's session)  status · connect_start · connect_finish ·
- *        disconnect · read_file · picked. Same CORS rule as the other functions: one allowed
- *        origin, CHAT_ALLOWED_ORIGIN. `read_file` answers with the file's BYTES as an opaque
+ *        disconnect · read_file · picked. Same CORS rule as the other functions: the caller's
+ *        origin, when it is on CHAT_ALLOWED_ORIGIN. `read_file` answers with the file's BYTES as an opaque
  *        download, with what was measured about them in `x-drive-meta` — the files
  *        function's `fetch_page` pattern.
  *   GET or POST …/callback  Google, coming back from its consent screen as a top-level
@@ -19,13 +19,13 @@
  */
 /* eslint-disable -- Deno runtime file; type-checked by the Supabase CLI, not by the repo's tsc. */
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
+import { withAllowedOrigin } from '../../lib/cors.js';
 import { DRIVE_META_HEADER, encodeDriveMeta } from '../../lib/drive/meta.js';
 import { handleDriveCallback, handleDriveRequest } from '../../lib/drive/page.js';
 import { createDrivePageDeps } from '../../lib/drive/wiring.js';
 import { logger } from '../../lib/logger.js';
 
 const CORS_HEADERS = {
-  'access-control-allow-origin': Deno.env.get('CHAT_ALLOWED_ORIGIN') ?? '',
   'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info, accept',
   'access-control-allow-methods': 'POST, OPTIONS',
   'access-control-max-age': '86400',
@@ -56,7 +56,7 @@ async function callbackParams(request: Request, url: URL): Promise<Record<string
   return params;
 }
 
-Deno.serve(async (request: Request): Promise<Response> => {
+const handler = async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
   const isCallback = url.pathname.endsWith('/callback');
 
@@ -130,4 +130,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
   return json(result.status, result.body);
-});
+};
+
+Deno.serve(withAllowedOrigin(() => Deno.env.get('CHAT_ALLOWED_ORIGIN'), handler));

@@ -28,18 +28,19 @@
  * browser as source: the client bundle (part 6) calls this URL and holds only the anon key.
  *
  * CORS: the browser app is served from a different origin (Vercel), so the function
- * answers the preflight and echoes exactly one allowed origin, CHAT_ALLOWED_ORIGIN.
- * Unset means no browser origin is allowed — the CLI runner still works, a page does not.
+ * answers the preflight and echoes the caller's origin when it is on CHAT_ALLOWED_ORIGIN, a
+ * comma-separated list (src/lib/cors.ts). Unset means no browser origin is allowed — the CLI
+ * runner still works, a page does not.
  */
 /* eslint-disable -- Deno runtime file; type-checked by the Supabase CLI, not by the repo's tsc. */
 // @ts-nocheck -- Deno globals (Deno.env, Deno.serve) are not in the Node tsconfig; see header.
+import { withAllowedOrigin } from '../../lib/cors.js';
 import { handleChatTurn, handleChatTurnStream, type ChatStreamEvent } from '../../lib/llm/chat.js';
 import { createChatDeps } from '../../lib/llm/wiring.js';
 import { logger } from '../../lib/logger.js';
 import { formatSseEvent } from '../../lib/sse.js';
 
 const CORS_HEADERS = {
-  'access-control-allow-origin': Deno.env.get('CHAT_ALLOWED_ORIGIN') ?? '',
   'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info, accept',
   'access-control-allow-methods': 'POST, OPTIONS',
   'access-control-max-age': '86400',
@@ -57,7 +58,7 @@ function wantsStream(request: Request): boolean {
   return (request.headers.get('accept') ?? '').toLowerCase().includes('text/event-stream');
 }
 
-Deno.serve(async (request: Request): Promise<Response> => {
+const handler = async (request: Request): Promise<Response> => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -170,4 +171,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
       ...CORS_HEADERS,
     },
   });
-});
+};
+
+Deno.serve(withAllowedOrigin(() => Deno.env.get('CHAT_ALLOWED_ORIGIN'), handler));

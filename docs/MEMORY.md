@@ -188,6 +188,27 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-10-18 — [ops · domains] The app on command.enchargecapital.com.au; CORS takes a list of origins
+
+**Did:** the client repo's Vercel project now serves `https://command.enchargecapital.com.au`
+(CNAME `command` in Hostinger DNS → Vercel; nameservers are Hostinger's dns-parking). The Edge
+Functions echoed `CHAT_ALLOWED_ORIGIN` verbatim — one origin — so on any second domain the chat,
+files, memory, team, refresh, Drive and settings calls were CORS-refused. New `src/lib/cors.ts`:
+`CHAT_ALLOWED_ORIGIN` is a comma-separated list, each response carries the caller's origin when it
+is listed and none otherwise (`vary: origin`), read per request. The seven functions wrap their
+handler in `withAllowedOrigin` — nothing else in them changed. Drive's `parseOrigin` moved there;
+Drive sends a person back to the FIRST entry (`primaryOrigin`) — a person who connects from a
+testing domain lands on the primary one (carrying the origin through OAuth would need a column).
+Tests: `tests/unit/cors.test.ts` 26, drive config +2; proven to fail with the check removed
+(3 failures). Local regression green: unit 3,897, web build + check 0 hits, functions bundle.
+**Values:** `CHAT_ALLOWED_ORIGIN=https://command.enchargecapital.com.au,https://fundd-command-centre.vercel.app,https://ross-command-center-eta.vercel.app`
+(primary first; the fundd one is for testing and will be removed later), `CONNECTOR_PUBLIC_URL=
+https://command.enchargecapital.com.au/mcp`. `/mcp` already worked on every domain (vercel.json
+rewrite); the Grok key is domain-independent. **Order:** functions deployed BEFORE the list
+secret — an older function would echo the list verbatim and break every domain.
+
+---
+
 ### 2026-10-18 — [tooling · client repo] A cleaned copy for Ross's own repository — exported and verified, NOT committed or pushed there
 
 **Did:** the user asked for the code to also live in the client's repo

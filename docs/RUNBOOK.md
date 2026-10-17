@@ -73,8 +73,12 @@ supabase functions deploy chat --no-verify-jwt
 ```
 
 `--no-verify-jwt` matches `config.toml`: the library verifies the bearer token itself and
-answers 401/403 with a body the interface can show. `CHAT_ALLOWED_ORIGIN` is the exact
-origin of the web app (scheme + host, no path); unset, no browser can call the function.
+answers 401/403 with a body the interface can show. `CHAT_ALLOWED_ORIGIN` is the web app's
+origin (scheme + host, no path) — since 18 Oct 2026 a comma-separated LIST, one per domain the
+app is served from (`src/lib/cors.ts`): each response echoes the caller's origin when it is on
+the list and none otherwise. The FIRST entry is the primary domain — where Google Drive sends a
+person back. Unset, no browser can call the function. Deploy a function before setting a list:
+a function older than 18 Oct echoes the variable verbatim, and a list there breaks every domain.
 
 **The web app** (Vercel — Hobby plan is free but its terms exclude commercial use; the
 client's own Vercel account on a paid plan, or a transfer of the project at handover, is
@@ -634,7 +638,7 @@ way an upload does. Why it works this way: `docs/MEMORY.md` D119–D127; tables 
    then `npx supabase secrets set DRIVE_TOKEN_KEY="$(cat "$TEMP/drive-key")" GOOGLE_DRIVE_CLIENT_ID=<id> GOOGLE_DRIVE_CLIENT_SECRET="$(cat "$TEMP/drive-secret")"`.
    **Keep `DRIVE_TOKEN_KEY` somewhere safe (the client's password manager):** without it every
    stored connection is unreadable and every person must connect again. Delete the files.
-   `CHAT_ALLOWED_ORIGIN` (already set) is where Google sends him back.
+   `CHAT_ALLOWED_ORIGIN` (already set) is where Google sends him back — its FIRST entry.
 4. `npm run functions:bundle`, then `supabase functions deploy drive --no-verify-jwt` and
    `supabase functions deploy files --no-verify-jwt` (`begin` learned the Drive receipt).
    Check: an unauthenticated `curl -s -X POST <project>/functions/v1/drive -d '{"action":"status"}'`
