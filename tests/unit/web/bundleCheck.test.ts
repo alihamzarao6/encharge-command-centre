@@ -128,3 +128,39 @@ describe('scan — Google Drive', () => {
     expect(scan([file], {})).toEqual([]);
   });
 });
+
+/**
+ * Milestone 5 part 4 (Part D item 13): a connector key never reaches the browser bundle. The page
+ * receives one key in one reply at run time and shows it once; nothing may compile one in — a
+ * fixture imported by web code, a key pasted into a constant. The guard finds the exact shape
+ * keys.ts mints, wherever it sits in a file, and reports only the prefix (not even the public id).
+ * Built by concatenation so no key-shaped literal sits in this file.
+ */
+describe('scan — a connector key', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bundle-check-connector-'));
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const key = ['fcc', 'abcdefghjkmn', 'Z'.repeat(20) + '-_' + 'q'.repeat(21)].join('_');
+
+  it('flags a connector key compiled into the bundle, and prints none of it', () => {
+    const file = join(dir, 'leaky.js');
+    writeFileSync(file, `const fixture={k:"${key}"};const two="${key}";`);
+    const findings = scan([file], {});
+    expect(findings.map((f) => f.check)).toEqual(['connector-key-shape', 'connector-key-shape']);
+    for (const finding of findings) {
+      expect(finding.snippet).toBe('fcc_…');
+      expect(finding.snippet).not.toContain('abcdefghjkmn');
+    }
+  });
+
+  it('the public id alone, the words "fcc_" and a key one character short are not findings', () => {
+    const file = join(dir, 'public.js');
+    writeFileSync(
+      file,
+      `const id="abcdefghjkmn";const p="fcc_";const short="${key.slice(0, -1)}";const look="fcc_abcdefghjkmn_";`,
+    );
+    expect(scan([file], {})).toEqual([]);
+  });
+});

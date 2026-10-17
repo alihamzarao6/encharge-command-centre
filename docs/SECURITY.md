@@ -1297,6 +1297,53 @@ revoking it on deactivation would be a change to the Team page, not made here.
 client owns before handover (TASKS, Milestone 8). Until then the client's Drive grants are to a
 project he does not own.
 
+## 12c. The settings page — forgetting, keys, spend, activity (Milestone 5 part 4, 17 Oct 2026)
+
+**No policy was widened.** Everything the page lists is a PostgREST select as the signed-in
+person under the policies that already existed: `knowledge_sources` (every active member of staff
+— knowledge is the account's), `connector_keys` (the person's OWN rows — an administrator too),
+`audit_log` and `app_users` (staff). Every change goes through the `settings` Edge Function
+(`src/lib/settings/page.ts`): staff verified first (401 / 403), then the input, then the action.
+The browser holds SELECT and nothing else, as everywhere.
+
+**Forgetting is a removal**, so it follows D52: the person who added it, or an administrator. A
+learned document has copies (the same file attached elsewhere, possibly in someone's private
+conversation), and forgetting must take them all or the text keeps answering in that
+conversation — so a non-administrator must have added EVERY copy. The rule is enforced by
+`forget_document` under its locks (the authority) and mirrored by `canForgetDocument`, which the
+page uses only to decide whether to offer the button. Proved by `tests/security/settings.test.ts`,
+and shown on 17 Oct to fail without the check (the same assertions against the function with the
+check removed: a non-administrator then forgets a colleague's private copy). An administrator
+forgetting removes the attachment text from a private conversation they cannot read: nothing is
+revealed to them, and leaving it would leave the document answering there.
+
+**What forgetting does not remove**, said on the confirmation itself: what was already said in a
+conversation. An assistant reply written from the document stays in that conversation's history,
+and a later turn in THAT conversation is given its history. A new conversation is not. Memory
+summaries hold no document text (D89: a turn with a document in front of the model is never
+summarised). See the part 4 report for the decision this leaves open.
+
+**A connector key is shown once.** Minted in the function from the platform's random source; only
+its SHA-256 is stored (`connector_key_secrets`, policy `false`); the key is in the one
+`create_key` response (`cache-control: no-store`), in the component's state until "Done", and
+nowhere else — not a log line (the logger also redacts the shape), not storage, not the address,
+not the list. `scripts/check-bundle.ts` fails a build that contains anything of a key's shape
+(`connector-key-shape`, reporting only `fcc_…`). Switching a key off is the person's own key only
+(`revoke_connector_key` with their id; another person's key id answers "not found"), and takes
+effect on the connector's next request — `connector_call` reads the row every time and nothing
+caches it; a request already past the check finishes first, because the switch-off waits for its
+row lock.
+
+**The activity record reads only named keys.** `audit_log`'s row-level trigger images
+(`memory_facts`, `app_users`) carry a note's words and addresses. The page selects by action name
+(never `INSERT`/`UPDATE`/`DELETE`) and takes only ids, kinds and stage ids out of before/after
+(`after->>…`); the whole images are never requested. (Any member of staff can still select them
+directly — the policy is Stage 2's and was not changed here.)
+
+**Logging** (rule 20): who (user id), what (action, document id, the key's public id as
+`connector`), the outcome and counts. Never a key, a digest, a key's label, a document's name or
+a word of it — asserted against a capturing sink in `tests/unit/settings/page.test.ts`.
+
 ## 13. Pre-handover security checklist
 
 - [ ] All keys rotated; developer copies invalidated

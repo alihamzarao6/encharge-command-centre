@@ -37,6 +37,8 @@ export const FUNCTIONS: readonly { readonly name: string; readonly entry: string
   { name: 'connector', entry: 'src/functions/connector/index.ts' },
   // Milestone 5 part 3a: connecting Google Drive and reading a file he picked from it.
   { name: 'drive', entry: 'src/functions/drive/index.ts' },
+  // Milestone 5 part 4: the settings page — forgetting a document, connector keys, the spend.
+  { name: 'settings', entry: 'src/functions/settings/index.ts' },
 ];
 
 const BANNER = [

@@ -27,6 +27,12 @@ import type { Page, Route } from '@playwright/test';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { E2E_SUPABASE_URL } from './playwright.config.js';
+import {
+  createSettingsState,
+  routeSettings,
+  type SettingsMockState,
+  type SettingsScript,
+} from './settingsMock.js';
 
 export const USER_ID = '11111111-1111-4111-8111-111111111111';
 export const EMAIL = 'ross.test@example.com';
@@ -352,6 +358,8 @@ export interface CrmScript {
 }
 
 export interface MockOptions {
+  /** Milestone 5 part 4: the settings page's reads and endpoint (settingsMock.ts). Absent = empty. */
+  settings?: SettingsScript;
   /** 'active' → app_users row readable; 'deactivated' → zero rows (RLS); 'banned' → GoTrue refuses. */
   account?: 'active' | 'deactivated' | 'banned' | 'wrong-password';
   /** The mirror tables. Absent = empty tables, which the overview reads as "not set up". */
@@ -412,6 +420,8 @@ export interface MockOptions {
 }
 
 export interface MockState {
+  /** Milestone 5 part 4: what the settings page read and asked (settingsMock.ts). */
+  readonly settings: SettingsMockState;
   readonly chatCalls: { message: string; conversationId?: string; authorization: string | null }[];
   readonly anthropicCalls: number;
   signOuts: number;
@@ -638,6 +648,7 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
     created_at: '2026-08-01T02:00:00Z',
   };
   const state: MockState = {
+    settings: createSettingsState(options.settings),
     chatCalls: [],
     anthropicCalls: 0,
     signOuts: 0,
@@ -2090,6 +2101,14 @@ export async function installMock(page: Page, options: MockOptions = {}): Promis
 
     await json(route, 404, { message: `unmocked ${method} ${path}` });
   });
+
+  // After the catch-all, so it answers first (Playwright runs the latest-registered route first).
+  await routeSettings(
+    page,
+    state.settings,
+    { userId: USER_ID, isAdmin: me.is_admin },
+    options.settings,
+  );
 
   return state;
 }

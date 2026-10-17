@@ -307,6 +307,31 @@ development machine:
 - `tests/e2e/knowledge.spec.ts` — the note under an answer at 375 / 768 / 1280, including after
   a reload with the name looked up and a removed document naming nothing.
 
+**The settings page (Milestone 5 part 4, 17 Oct 2026):**
+
+- `tests/unit/settings/*` — the endpoint's four actions over a plain-object store with a capturing
+  log sink (no key, digest, label or name in any line); the store against supabase-js over a
+  recorded fetch (which function, which arguments, every refusal code); the forget rule shared
+  with the page; the wiring (forgetting works with no model configuration).
+- `tests/unit/web/settings.test.ts`, `settingsData.test.ts` — every sentence the page says, the
+  endpoint client, and the exact PostgREST requests (order, range, filters; the activity read
+  never asks for a whole before/after image). `bundleCheck.test.ts` — a connector key's shape in
+  the bundle is a finding, reported as `fcc_…` only.
+- `tests/integration/settings.test.ts` — against the stack: a question finds the document before
+  and not straight after, in a new conversation and in its own; a question in flight; still being
+  learned (the late embedding batch takes nothing); never learned; purged past 30 days; two tabs
+  at once (one `forgotten`, one `already`); a key made on the page works at the connector, is
+  refused on the very next request after switching off, and a switch-off issued while a call holds
+  the key's row waits for it (the test waits until it SEES the wait, then releases); the spend
+  moves by exactly a recorded call's cost. CI only (PostgREST and GoTrue).
+- `tests/security/settings.test.ts` — Part D item 12: outside the staff list or switched off sees
+  and forgets nothing; a colleague sees but cannot forget another's document, nor their own while
+  a copy sits in someone's private conversation; `forget_document` callable by no session; keys
+  never listed or switched off across people, and in no table. CI only.
+- `tests/e2e/settings.spec.ts` — 15 cases at 375 / 768 / 1280 over `tests/e2e/settingsMock.ts`
+  (installed by `installMock`, so every suite that visits /settings gets empty states, not
+  errors). Screenshots `settings-*` under `docs/assets/milestone-5/`.
+
 Live (not CI): `npm run knowledge -- ask <file> "<q>" [--fresh]` learns a real file with real
 Voyage at the configured pace and answers through the real chat handler; `-- why <file>`
 re-measures decision 8 into `tests/fixtures/knowledge/why-after.json`; `-- record` re-records the

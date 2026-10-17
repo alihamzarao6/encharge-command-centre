@@ -3287,3 +3287,310 @@ body.is-dragging * {
   color: var(--navy-700);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------------------
+   The settings page (Milestone 5 part 4): what it has learned, the connections slot, connector
+   keys, spending, activity. One column at every width — the lists are read top to bottom and
+   a name or an address wraps rather than pushing the page sideways.
+   --------------------------------------------------------------------------------------- */
+
+.settings__intro,
+.settings__hint {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* The jump list: a row of links that wraps; every one a full tap target. */
+.settings__jump ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.settings__jump a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 4px;
+  color: var(--navy-700);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* The connections slot: a heading over part 3a's cards, not a card of its own. */
+.settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+  scroll-margin-top: 8px;
+}
+
+.settings__group-heading {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.settings__section {
+  scroll-margin-top: 8px;
+  min-width: 0;
+}
+
+.settings__live:focus {
+  outline: none;
+}
+
+.settings__live:empty {
+  display: none;
+}
+
+.settings__notice {
+  font-size: 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings__notice--ok {
+  background: #ecfdf3;
+  color: var(--ok);
+}
+
+.settings__notice--problem,
+.settings__problem {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.settings__problem {
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.settings__empty {
+  font-size: 14px;
+  color: var(--ink-2);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.settings__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  border-left: 4px solid var(--danger);
+  padding-left: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings__actions .button--small {
+  min-height: var(--tap);
+}
+
+.learned__list,
+.keys__list,
+.activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.learned__item,
+.keys__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* A name can be one unbroken string of 200 characters, in any script. */
+.learned__name,
+.keys__label {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.learned__meta {
+  font-size: 14px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.learned__state {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.learned__state--learned {
+  color: var(--ok);
+}
+
+.learned__state--learning {
+  color: var(--navy-700);
+}
+
+.learned__state--failed {
+  color: var(--danger);
+}
+
+.learned__denied {
+  font-size: 14px;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.keys__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keys__form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.keys__input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.keys__state {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.keys__item--off .keys__label {
+  color: var(--ink-2);
+}
+
+.keys__reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+}
+
+.keys__reveal-heading {
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.keys__reveal-heading:focus {
+  outline: none;
+}
+
+/* The key: selectable as one piece, and wrapped — 60 characters must not widen a phone. */
+.keys__value {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: all;
+}
+
+.keys__copied:empty {
+  display: none;
+}
+
+.spend__line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 4px solid var(--ok);
+  padding-left: 12px;
+}
+
+.spend__line--warn {
+  border-left-color: var(--accent);
+}
+
+.spend__line--over {
+  border-left-color: var(--danger);
+}
+
+.spend__label {
+  font-weight: 700;
+}
+
+.spend__meter {
+  width: 100%;
+  height: 12px;
+}
+
+.spend__sentence {
+  font-size: 14px;
+}
+
+.activity__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.activity__what {
+  overflow-wrap: anywhere;
+}
+
+.activity__who {
+  font-weight: 700;
+}
+
+.activity__when {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.pager .button--small {
+  min-height: var(--tap);
+}
+
+.pager__where {
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: center;
+  flex: 1 1 120px;
+}

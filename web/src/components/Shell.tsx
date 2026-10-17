@@ -479,7 +479,11 @@ export function Shell({ session, staff, onSignOut, onSessionExpired }: Props): R
               />
             )}
             {section === 'settings' && (
-              <Settings session={session} onSessionExpired={() => onSessionExpired(null)} />
+              <Settings
+                session={session}
+                staff={staff}
+                onSessionExpired={() => onSessionExpired(null)}
+              />
             )}
           </main>
 

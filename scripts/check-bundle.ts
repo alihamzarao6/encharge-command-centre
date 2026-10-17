@@ -69,7 +69,16 @@ const SHAPES: readonly { readonly name: string; readonly pattern: RegExp }[] = [
   { name: 'google-refresh-token-shape', pattern: /1\/\/0[A-Za-z0-9_-]{20,}/ },
   { name: 'google-client-secret-shape', pattern: /GOCSPX-[A-Za-z0-9_-]{10,}/ },
   { name: 'google-api-key-shape', pattern: /AIza[0-9A-Za-z_-]{35}/ },
+  // Milestone 5 part 4: a connector key. The settings page receives one in a single reply and
+  // shows it once; nothing may compile one in — a test fixture imported by web code, a key
+  // pasted into a constant while debugging. The shape is keys.ts's, exactly.
+  { name: 'connector-key-shape', pattern: /fcc_[a-hjkmnp-z2-9]{12}_[A-Za-z0-9_-]{43}/g },
 ];
+
+/** How much of a hit the report may print: for a connector key, only its prefix. */
+function snippetOf(shape: string, match: string): string {
+  return shape === 'connector-key-shape' ? 'fcc_…' : `${match.slice(0, 12)}…`;
+}
 
 /**
  * Strings React only ships in its development build. Measured on this project's React 19 on
@@ -146,7 +155,7 @@ export function scan(
           // The anon key is a JWT and is allowed; only a service_role claim is a leak.
           if (role !== 'service_role') continue;
         }
-        findings.push({ file: rel, check: shape.name, snippet: `${match.slice(0, 12)}…` });
+        findings.push({ file: rel, check: shape.name, snippet: snippetOf(shape.name, match) });
       }
     }
     for (const [name, value] of values) {
@@ -200,7 +209,7 @@ function main(): void {
   process.stdout.write(`${lines.join('\n')}\n`);
   if (findings.length === 0) {
     process.stdout.write(
-      'check-bundle: 0 hits — no service role key, no Anthropic key, no Voyage key, no GoHighLevel token, no Google token or Drive secret, no voice prompt, not a dev build\n',
+      'check-bundle: 0 hits — no service role key, no Anthropic key, no Voyage key, no GoHighLevel token, no Google token or Drive secret, no connector key, no voice prompt, not a dev build\n',
     );
     return;
   }

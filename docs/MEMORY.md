@@ -254,6 +254,39 @@ document from the interface after expiry).
 
 ---
 
+### 2026-10-17 — [M5 part 3a · Google Drive · state check] On `6ec5fdf`; the migration is live, the function is not, and the live Settings page says so wrongly
+
+**Did:** checked rather than assumed. The working tree is clean on `6ec5fdf` = `origin/main` —
+the shared build reached `main` as `ab5b7ae` (a snapshot of this working tree, pushed 16 Oct
+00:30 UTC) and every later edit of mine is in it, so there was nothing to rebase. `main` CI
+green at `6ec5fdf` (run 39001495662); the red run on `ab5b7ae` (38829997195) was my security
+test's harness signing users in on its `anon` client, so the signed-out check ran signed in —
+fixed in `55f224f`. `supabase migration list`: all 25 local migrations are on the live project,
+`20261016010000_drive.sql` whole (the tables and functions, not just the column). `supabase
+functions list`: six functions, **no `drive`**. No `GOOGLE_DRIVE_*` or `DRIVE_TOKEN_KEY` in
+Supabase secrets or `.env`.
+**Surprised by:** the web deploy of `ab5b7ae` put Settings and its Drive section live while the
+`drive` function answers 404 — so the client's Settings page shows "Couldn't check the Google
+Drive connection just now. Try again", a retry that can never work (RUNBOOK §1i put the
+function first; the snapshot skipped that order). Deploying the function with no Google secrets
+would make it say "not set up on this Command Centre yet" — proposed, not done.
+**Voyage, live, 07:47 UTC:** one embedding call with the production key (SHA-256 digest matches
+the Supabase secret) still answers `x-api-warning: You have not yet added your payment method …
+reduced rate limits of 3 RPM and 10K TPM`. The card has not taken effect on the organisation
+that owns this key.
+**Next:** the reviewer's answers (client id; the localhost redirect; when the secret goes in;
+the `drive` deploy now or with the picking step), then the OnePick probe.
+**Later, 17–18 Oct:** the client's OAuth web client arrived (project `project-241f85ee-…`, both
+redirect addresses registered). `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET` (both
+checked by digest against the downloaded JSON) and a new `DRIVE_TOKEN_KEY` are in Supabase
+secrets, set from a temporary file deleted at once; the key's only copy is with the developer to
+put in a password manager. The secret was also pasted into chat — rotate it before handover.
+The `drive` function is still undeployed, so none of it is live. **The OnePick probe was
+refused before any picker: `Error 403: org_internal` — the consent screen's audience is
+Internal (only accounts in the project's Google Workspace organisation), not External as the
+brief's decision 4 assumed.** Signed in as a personal gmail account. Nothing came back to the
+callback; nothing about OnePick is learned yet. Stopped for a decision.
+
 ### 2026-10-16 — [M5 part 3a · Google Drive · build] The shared build is done and tested; the picking step waits on the OnePick probe — NOT committed, NOT deployed
 
 **Did:** everything in the brief that does not depend on which Picker wins (reviewer, 16 Oct:

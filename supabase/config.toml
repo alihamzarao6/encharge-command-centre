@@ -506,3 +506,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/drive/index.ts"
 import_map = "./functions/drive/deno.json"
+
+# Milestone 5 part 4: the settings page — forgetting a learned document, creating and switching
+# off connector keys, reading the spend against the cap. What it lists is read under RLS; this
+# is the only way any of it changes. verify_jwt is off for the same reason as the others: the
+# library verifies the caller against the allowlist itself and answers 401 / 403 in its own words.
+[functions.settings]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/settings/index.ts"
+import_map = "./functions/settings/deno.json"

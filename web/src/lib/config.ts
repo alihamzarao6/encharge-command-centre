@@ -22,6 +22,11 @@ export interface WebConfig {
    * Google credential stays behind this address; the browser holds none.
    */
   readonly driveUrl: string;
+  /**
+   * Milestone 5 part 4: the settings page — forget a learned document, make or switch off a
+   * connector key, read the spend. What the page lists is read under RLS.
+   */
+  readonly settingsUrl: string;
 }
 
 export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebConfig {
@@ -41,5 +46,6 @@ export function resolveWebConfig(env: Readonly<Record<string, unknown>>): WebCon
     crmUrl: `${supabaseUrl}/functions/v1/crm`,
     filesUrl: `${supabaseUrl}/functions/v1/files`,
     driveUrl: `${supabaseUrl}/functions/v1/drive`,
+    settingsUrl: `${supabaseUrl}/functions/v1/settings`,
   };
 }

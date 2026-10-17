@@ -749,12 +749,11 @@ A 33-page document is then learned in one or two requests, seconds after it is a
   dispatcher means step 3 or 4 is missing: until then learning happens only right after an attach.
 - *A document is `failed`.* `text_gone`: its text was purged before it could be learned (a page
   is kept one day) — read the page again. `no_text`: nothing readable in it.
-- *He wants the assistant to forget a document.* Remove the file in its conversation: that
-  forgets every copy. If the attachment has expired or its conversation was deleted (so there is
-  no Remove), an operator does it: find it with `select id, name, learned_at from
-  knowledge_sources where name ilike '%…%' and status = 'ready';` then
-  `select public.forget_knowledge('<id>', null, null, 'operator');` — every copy of those bytes
-  is forgotten and audited by id. Tell him it is done.
+- *He wants the assistant to forget a document.* Since Milestone 5 part 4 he does it himself:
+  **Settings → What the assistant has learned → Forget** (§1k). That removes every learned copy
+  AND the text of every attachment still holding the same file, in one transaction. (Removing the
+  file in one conversation forgets the learned copies but leaves any OTHER conversation's
+  attachment of the same file holding its text for up to 30 days — found 17 Oct, part 4.)
 - *He asks about "week three" and the note lists pages outside it.* A question that names a
   section (week, module, lesson, chapter, session, unit, part, step, day…, with a number in
   digits, words or roman) takes only the chunks labelled with it, plus one either side. The
@@ -764,6 +763,50 @@ A 33-page document is then learned in one or two requests, seconds after it is a
   meaning alone, as any other. To see what a document's chunks are labelled, run
   `npm run knowledge -- chunk <file>` on a copy and `-- scores <file> "<question>" --rewrite` for
   what a question finds (both on this machine, nothing stored).
+
+### 1k. The settings page — deploying and running (Milestone 5 part 4, 17 Oct 2026)
+
+One page at `/settings`: what the assistant has learned (and Forget), the Connections slot
+(part 3a's Google Drive card), connector keys (make, list, switch off), spending (read-only) and
+the activity record (read-only, paged). Lists are read in the browser under RLS; every change goes
+through the `settings` Edge Function. The security case: SECURITY.md §12c; the function:
+SCHEMA.md ("forget_document").
+
+**Deploy, in this order** (§1f — backend first; pushing `main` deploys the web):
+
+1. CI green with zero skipped on the branch.
+2. `npx supabase migration list --linked` — only `20261017020000_forget_document.sql` should be
+   pending; `db push` applies every pending migration, another lane's too.
+3. `npx supabase db push` — one function (`forget_document`), service_role only. Nothing deployed
+   calls it until step 4.
+4. `npm run functions:bundle`, then `npx supabase functions deploy settings --no-verify-jwt`. No new
+   secret: it reads `SUPABASE_*`, `CHAT_ALLOWED_ORIGIN` and the `ANTHROPIC_*_SPEND_CAP_USD` caps
+   every function already has. A cap that is not set makes only the spending section say so.
+5. Push `main` (the page).
+
+**Check it is running.** An unauthenticated `POST /functions/v1/settings` with `{"action":"spend"}`
+answers 401 `UNAUTHENTICATED` (it booted). Signed in, the page's four sections load; each fails and
+recovers on its own (a read that cannot be done says so after supabase-js's own three retries,
+about seven seconds).
+
+**Common situations**
+
+- *Forget is not offered on a document.* The row says why: only the person who added it — every
+  copy of it — or an administrator may forget it (the rule every removal follows, D52). A copy in
+  a colleague's private conversation counts as a copy. An administrator can always forget it.
+- *An operator must forget a document without the page* (the function is down, or a script):
+  find it with `select id, name, learned_at from knowledge_sources where name ilike '%…%' and
+  status <> 'forgotten';` then `select * from public.forget_document('<id>', '<an active
+  administrator''s user id>');` — the same transaction the page runs, audited under that person.
+  `forget_knowledge` alone forgets the learned copies but NOT the attachments' text.
+- *He lost a connector key.* It cannot be shown again (only its digest is stored). Switch it off
+  on the page and make another. `npm run connector -- revoke <key id>` still works from the
+  terminal for any key.
+- *How fast does switching a key off take effect?* On the connector's next request: every request
+  reads the key's row inside `connector_call`; nothing caches it. A request already past that
+  check finishes, and the switch-off waits for it (measured: the part 4 report).
+- *The spend shown differs from Anthropic's console.* It is `api_usage` — what this app recorded
+  for each call, at its own pricing table — in UTC days and months, exactly what the cap acts on.
 
 ### Adding a person — what the admin actually does
 

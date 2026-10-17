@@ -956,6 +956,19 @@ chunks. Policy `false`: no browser reads a word.
 **knowledge_drain_state** — one row: `lease_holder · lease_until · cooldown_until · last_run_at ·
 last_outcome`. Policy `false`.
 
+**forget_document(source_id, actor)** (Milestone 5 part 4, migration
+`20261017020000_forget_document.sql`, no table, no policy change) — what the settings page's
+Forget runs, in ONE transaction: every `ready` attachment holding the same bytes is removed
+through `remove_conversation_file` (its pages deleted, name, hash, address and Drive file cleared,
+`FILE_REMOVED` audited), every learned copy is forgotten through `forget_knowledge` (passages and
+summary deleted, tombstone, `KNOWLEDGE_FORGOTTEN` audited), a source whose attachment was already
+purged included. Locks the attachments, then the sources, in id order (the removal path's order).
+Allowed for an active administrator, or for the person who added EVERY copy — checked under the
+locks; otherwise `not_allowed` and nothing changes. Returns `outcome` (`forgotten` | `already` |
+`not_found` | `not_allowed`) and the counts of sources, attachments and chunks. Raises `KF001`
+(caller not active staff) and `KF002` (something survived — undone, never expected).
+service_role only. It does not touch `messages`: what was already said in a conversation stays.
+
 **messages.document_coverage jsonb** — on an assistant row: which documents the answer drew on
 and how much of each (`knowledge/coverage.ts`): ids, page numbers, counts, learning progress,
 dates. Never a name or text; ≤ 16 KB; must be an object.
