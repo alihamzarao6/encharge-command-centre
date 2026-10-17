@@ -204,8 +204,12 @@ requests, 58,259 tokens, $0.0035; 8 summary calls, $0.093. No refusal, no rest.
 function and its secrets were NOT deployed: still Drive's own deploy.
 **Surprised by:** the live web app had been built from the Drive commit (`ab5b7ae`, pushed to
 `main` 16 Oct 00:31 UTC) without its migration, so its file list asked production for
-`drive_file_id`, a column that did not exist — attachments were very likely failing to load for
-a day; the migration fixed it. CI on `main` had been red since the same commit: the Drive
+`drive_file_id`, a column that did not exist; the migration fixed it. **Checked in the logs 17 Oct
+(the reviewer asked): nobody hit it.** Between 00:31 and 22:09 UTC 16 Oct the API gateway logged no
+browser request at all (no sign-in, no session read of any table); the only functions called were
+`crm` (123 scheduled runs, all 200) and `connector` (23, all 200); Postgres logged no ERROR line,
+and the only mentions of `drive_file_id` are the migration adding it at 22:08:59. The last file was
+attached 15 Oct 05:42. Broken for 21.6 hours, seen by no one. CI on `main` had been red since the same commit: the Drive
 security test signed users in through its `anon` client, so "anon is refused" ran signed in
 (fixed in `55f224f`, test only; this part's own security test had the same flaw, fixed too).
 **Next:** the reviewer asks "break down weak one for me" in the deployed app; `CLAUDE_MAX_TOKENS`.
