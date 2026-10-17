@@ -21,14 +21,24 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  assess,
+  parseState,
+  remember,
+  type ClientCommit,
+  type ClientSide,
+  type GuardState,
+} from './guard.js';
 import { dropTest, scrubFixtureDescription, scrubReferences } from './scrub.js';
 import { stripForPath } from './strip.js';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const HERE = 'scripts/client-export/';
+/** Which client trees this tool wrote or a person accepted. Gitignored; never exported. */
+const STATE_FILE = join(REPO_ROOT, HERE, '.state.json');
 const TARGET_REMOTE = /github\.com[/:]rossb96\/ross-command-center(?:\.git)?$/;
 
 /** Internal material: never leaves this repository. */
@@ -301,12 +311,127 @@ function report(title: string, findings: readonly Finding[], limit = 200): void 
   }
 }
 
+function loadState(): GuardState {
+  return parseState(existsSync(STATE_FILE) ? readFileSync(STATE_FILE, 'utf8') : null);
+}
+
+function saveState(state: GuardState): void {
+  writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/** The tree `git add -A` would commit in the clone, through a throwaway index. */
+function treeOfFiles(target: string): string {
+  const index = join(mkdtempSync(join(tmpdir(), 'client-guard-')), 'index');
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  try {
+    run('git', ['add', '-A'], { cwd: target, env });
+    return run('git', ['write-tree'], { cwd: target, env });
+  } finally {
+    rmSync(dirname(index), { recursive: true, force: true });
+  }
+}
+
+function clientSide(target: string): ClientSide {
+  run('git', ['fetch', '--quiet', 'origin'], { cwd: target });
+  const log = run('git', ['log', '-n', '200', '--format=%H %T %an%x09%s', 'origin/main', 'HEAD'], {
+    cwd: target,
+  });
+  const commits: ClientCommit[] = log
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [ids = '', subject = ''] = line.split('\t');
+      const [sha = '', tree = '', ...author] = ids.split(' ');
+      return { sha, tree, author: author.join(' '), subject };
+    });
+  return {
+    remoteTree: run('git', ['rev-parse', 'origin/main^{tree}'], { cwd: target }),
+    headTree: run('git', ['rev-parse', 'HEAD^{tree}'], { cwd: target }),
+    workTree: treeOfFiles(target),
+    commits,
+  };
+}
+
+/** Files the foreign commits touched, for the post-sync check that the fix survived. */
+function foreignFiles(target: string, base: string | null): string[] {
+  if (base === null) return [];
+  const names = run('git', ['diff', '--name-only', base, 'origin/main'], { cwd: target });
+  return names.split('\n').filter((n) => n !== '');
+}
+
+/**
+ * Refuse to overwrite work that only exists on the client side. Returns the files a person
+ * accepted (to re-check after the sync), or null when the export must stop.
+ */
+function guard(
+  target: string,
+  head: string,
+  accept: boolean,
+  dryRun: boolean,
+): { state: GuardState; accepted: string[] } | null {
+  let state = loadState();
+  const side = clientSide(target);
+  const verdict = assess(state, side);
+  if (verdict.kind === 'clean') return { state, accepted: [] };
+  if (verdict.kind === 'bootstrap') {
+    out(
+      `guard: first run — taking GitHub's current tree ${verdict.tree.slice(0, 12)} as the baseline`,
+    );
+    state = remember(state, [verdict.tree], 'bootstrap', head, new Date());
+    if (!dryRun) saveState(state);
+    return { state, accepted: [] };
+  }
+
+  out(`\nGUARD: the client side holds work this tool did not write (${verdict.where.join(', ')}).`);
+  for (const c of verdict.foreign) {
+    out(`  ${c.sha.slice(0, 8)}  ${c.author}  ${c.subject}`);
+  }
+  if (verdict.where.includes('github') && verdict.base !== null) {
+    out(`  on GitHub, changed since ${verdict.base.slice(0, 8)}:`);
+    const stat = run('git', ['diff', '--stat', verdict.base, 'origin/main'], { cwd: target });
+    for (const line of stat.split('\n')) out(`    ${line}`);
+  } else if (verdict.where.includes('github')) {
+    out('  no commit on that history matches an export — was it rewritten?');
+  }
+  if (verdict.where.includes('clone HEAD')) {
+    const ahead = run('git', ['log', '--oneline', 'origin/main..HEAD'], { cwd: target });
+    out('  committed in the clone, not on GitHub:');
+    for (const line of ahead.split('\n').filter((l) => l !== '')) out(`    ${line}`);
+  }
+  if (verdict.where.includes('clone files')) {
+    const status = run('git', ['status', '--short'], { cwd: target });
+    out('  edited in the clone, not committed:');
+    for (const line of status.split('\n').slice(0, 30)) out(`    ${line}`);
+  }
+  if (!accept) {
+    out('\nExport refused: it would overwrite that work. Port the change into THIS repository');
+    out('(with its test), commit it, then run again with --accept-remote.');
+    return null;
+  }
+  const files = foreignFiles(target, verdict.base);
+  out(
+    `\nguard: accepted by --accept-remote; ${String(files.length)} file(s) re-checked after the sync`,
+  );
+  state = remember(
+    state,
+    [side.remoteTree, side.headTree, side.workTree],
+    'accepted',
+    head,
+    new Date(),
+  );
+  if (!dryRun) saveState(state);
+  return { state, accepted: files };
+}
+
 function main(): number {
   const args = process.argv.slice(2);
   const toIndex = args.indexOf('--to');
   const toArg = toIndex === -1 ? undefined : args[toIndex + 1];
   if (toArg === undefined) {
-    out('usage: tsx scripts/client-export/export.ts --to <client clone> [--verify] [--dry-run]');
+    out(
+      'usage: tsx scripts/client-export/export.ts --to <client clone> ' +
+        '[--verify] [--dry-run] [--accept-remote]',
+    );
     return 2;
   }
   const target = resolve(toArg);
@@ -323,6 +448,9 @@ function main(): number {
   if (run('git', ['status', '--porcelain'], { cwd: REPO_ROOT }) !== '') {
     out('note: this repository has uncommitted changes — they are NOT exported (HEAD only)');
   }
+  const head = run('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT });
+  const guarded = guard(target, head, args.includes('--accept-remote'), dryRun);
+  if (guarded === null) return 1;
 
   const staging = join(mkdtempSync(join(tmpdir(), 'client-export-')), 'tree');
   const sha = checkoutHead(staging);
@@ -348,6 +476,17 @@ function main(): number {
 
   sync(staging, target);
   rmSync(join(staging, '..'), { recursive: true, force: true });
+  saveState(remember(guarded.state, [treeOfFiles(target)], 'export', head, new Date()));
+  if (guarded.accepted.length > 0) {
+    const changed = run('git', ['diff', '--name-only', 'origin/main', '--', ...guarded.accepted], {
+      cwd: target,
+    });
+    if (changed !== '') {
+      out('\nCHECK: these files of the accepted change differ after the export — confirm the');
+      out(`fix is in this repository (git -C ${target} diff origin/main -- <file>):`);
+      for (const f of changed.split('\n')) out(`  ${f}`);
+    }
+  }
   out(
     `\nsynced into ${target} — review with \`git -C ${target} status\`; nothing committed or pushed`,
   );

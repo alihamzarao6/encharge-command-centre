@@ -31,3 +31,6 @@ tests/fixtures/**/*.local.json
 
 .vercel
 .env*
+
+# drift guard of scripts/client-export: which client trees were exported
+scripts/client-export/.state.json
