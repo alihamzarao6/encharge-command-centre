@@ -49,7 +49,10 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
 export const CONFIG_DEFAULTS = {
   modelDefault: 'claude-sonnet-5',
   modelFast: 'claude-haiku-4-5-20251001',
-  maxTokens: 1024,
+  // 1,024 cut every full breakdown of a document off mid-sentence (17 Oct, the client's own
+  // transcript: complete at 1,583 tokens). The cap checks each call's worst case before it is
+  // sent, so this raises that worst case by 1,024 output tokens — $0.015 on Sonnet 5.
+  maxTokens: 2048,
   timeoutMs: 60_000,
   retries: 2,
   warnFraction: 0.8,

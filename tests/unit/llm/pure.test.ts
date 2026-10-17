@@ -44,12 +44,17 @@ describe('loadLlmConfig', () => {
     expect(result.value.pricing).toBe(DEFAULT_PRICING);
   });
 
+  it('the output ceiling is 2,048: at 1,024 every full breakdown of a document was cut off mid-sentence (17 Oct)', () => {
+    // Measured on the client's 33-page transcript: complete at 1,583 tokens, $0.051.
+    expect(CONFIG_DEFAULTS.maxTokens).toBe(2048);
+  });
+
   it('models, caps, max tokens, timeout and retries all come from the environment', () => {
     const result = loadLlmConfig({
       ...BASE_ENV,
       CLAUDE_MODEL_DEFAULT: 'claude-sonnet-5',
       CLAUDE_MODEL_FAST: 'claude-haiku-4-5',
-      CLAUDE_MAX_TOKENS: '2048',
+      CLAUDE_MAX_TOKENS: '4096',
       CLAUDE_TIMEOUT_MS: '30000',
       CLAUDE_RETRIES: '0',
       CLAUDE_THINKING: 'adaptive',
@@ -61,7 +66,7 @@ describe('loadLlmConfig', () => {
     if (!result.ok) return;
     expect(result.value).toMatchObject({
       models: { default: 'claude-sonnet-5', fast: 'claude-haiku-4-5' },
-      maxTokens: 2048,
+      maxTokens: 4096,
       timeoutMs: 30_000,
       retries: 0,
       thinking: 'adaptive',
