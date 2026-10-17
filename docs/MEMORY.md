@@ -188,6 +188,30 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-10-18 — [tooling · client repo] A cleaned copy for Ross's own repository — exported and verified, NOT committed or pushed there
+
+**Did:** the user asked for the code to also live in the client's repo
+`rossb96/ross-command-center` (private; cloned at `C:\Users\aliha\Documents\Github\ross-command-center`)
+without the internal docs, agent files or comments that show how it was built — this repo keeps
+everything unchanged. Built `scripts/client-export/` (`export.ts`, `strip.ts`, `scrub.ts`,
+`README.client.md`; tests in `tests/unit/scripts/clientExport.test.ts`, 36). One command:
+`npx tsx scripts/client-export/export.ts --to ../ross-command-center --verify` — HEAD only through a
+throwaway index (never the working tree, so no `.env`, no `node_modules`, nothing unfinished); leaves
+out `docs/`, `tasks/`, `CLAUDE.md`, `.agents/`, `skills-lock.json`, the tool itself and the Python
+fixture generator; removes every comment with the TypeScript parser / a SQL lexer (directives kept,
+reasons dropped; an empty block keeps a neutral `// ignore`); rewrites planning references left in
+strings (test titles, log messages, `comment on` text, the voice rules' `source` labels — metadata,
+not in the prompt); blanks ids/keys/URLs in `.env.example`; refuses on any leak or secret shape.
+Three tests that read internal docs or the removed comments are dropped from the copy only.
+**Verified on `e8d03b4`:** in the clone `npm ci`, typecheck, lint, unit 3,830/3,830 with the
+coverage gate, security + integration text suites 0 failures (stack suites skip — no Docker),
+`web:build`, `web:check`, `functions:bundle`, browser 741/741. All 26 migrations and the seed parse
+to the same AST as the originals under libpg-query (only 57 `COMMENT ON` texts differ).
+**Rule from the user:** push to the client repo only when the user says so, verified code only, no
+Claude attribution lines there; the user deploys the client's Vercel.
+
+---
+
 ### 2026-10-17 — [M5 part 5 · shipped] Live: the five files in production learned in 13 minutes, the transcript summarised
 
 **Did:** RUNBOOK §1j in order. CI run 38972211765 green with zero skipped (unit 3,729, integration
