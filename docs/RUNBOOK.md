@@ -16,6 +16,8 @@ kept in full.
 
 ## 1. System map
 
+**Rule (17 Oct 2026): a part is not pushed to `main` until its migration is applied to production, and red CI on `main` stops all other work until it is green.** *(Parallel work reached `main` twice in a state `main` could not run; the second time the client's app was broken for 21.6 hours without either of us knowing — `docs/MEMORY.md` 17 Oct "shipped".)*
+
 | Component | Where | Owner account | Purpose |
 |---|---|---|---|
 | n8n | Railway | client | Orchestration (from Stage 3) |
