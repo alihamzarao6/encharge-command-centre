@@ -188,6 +188,28 @@ Settled. Do not relitigate without a new dated entry explaining what changed.
 
 ---
 
+### 2026-10-18 — [M5 part 3a · Google branding] /about, /privacy, /terms on command.enchargecapital.com.au — built, NOT committed
+
+**Did:** three static pages in `web/public/` (`about.html`, `privacy.html`, `terms.html`, one
+`legal.css`), no script, readable signed out; `vercel.json` rewrites `/about`, `/privacy`,
+`/terms` to them ahead of the catch-all. Operator **Encharge Capital** (reviewer, 18 Oct: Fundd /
+Control Finance Australia is the broker network he works for, ACL 389328 is theirs, not his; no
+ABN, Encharge publishes none — the client is confirming the operator). Contact
+**rossb@fundd.com.au** (the user's choice, 18 Oct; the reviewer had named ross@enchargecapital.com).
+Every promise pinned to the code that keeps it: `tests/unit/web/legal-pages.test.ts` (30 —
+`drive.file` only, 30 days from `FILE_LIMITS`, 24 h from `PAGE_LIMITS` and the drive_reads purge,
+learned passages until removed, revoke on disconnect, Sydney); `tests/e2e/legal.spec.ts` (9: 375 /
+768 / 1280, JavaScript off, nothing fetched elsewhere, no sideways scroll, 44 px links — which
+caught 42.75 px nav links, fixed). `web:check` 0 hits, lint clean. Screenshots `legal-*`.
+**Surprised by — Voyage may train on what we send it.** MongoDB's Voyage docs: data sent to the
+API may be used "to improve Voyage AI models" by default; "Free users aren't eligible to opt out"
+— a payment method is required. The live account still reported no payment method on 17 Oct. So
+since Part 5, learned chunks of client documents (and memory text) may be eligible for training,
+and the privacy page's Google "Limited Use" sentence is only true once the organisation that owns
+the production key has opted out. **Do not give Google the privacy URL until that is confirmed.**
+**Next:** the client confirms the operator; Voyage opt-out confirmed; then commit, push, export to
+the client repo (the domain is served from there); then the three URLs go into Branding.
+
 ### 2026-10-18 — [ops · domains] The app on command.enchargecapital.com.au; CORS takes a list of origins
 
 **Did:** the client repo's Vercel project now serves `https://command.enchargecapital.com.au`
@@ -331,6 +353,14 @@ refused before any picker: `Error 403: org_internal` — the consent screen's au
 Internal (only accounts in the project's Google Workspace organisation), not External as the
 brief's decision 4 assumed.** Signed in as a personal gmail account. Nothing came back to the
 callback; nothing about OnePick is learned yet. Stopped for a decision.
+**Ruled 18 Oct (reviewer):** External, published to Production — decision 4 stands; the Internal
+setting was a workaround for yesterday's branding blocker. Testability decided it. Client id
+and secret unchanged. Branding, from Google's docs: home page, privacy policy and terms links
+are "required for all external production apps"; a logo or displayed name needs brand
+verification, which needs every authorised domain proven in Search Console — and
+`supabase.co` is on the Public Suffix List, so the callback's domain is our project's own
+`mxdfptqdshdgdszizlbo.supabase.co`, which nobody can prove (no DNS, no file at its root).
+Publish with no logo; the likely cause of yesterday's block.
 
 ### 2026-10-16 — [M5 part 3a · Google Drive · build] The shared build is done and tested; the picking step waits on the OnePick probe — NOT committed, NOT deployed
 

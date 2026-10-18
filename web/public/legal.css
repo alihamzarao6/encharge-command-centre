@@ -1,0 +1,86 @@
+/* The three public pages Google's consent screen links to: /about, /privacy, /terms. */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1d1d1b;
+  --muted: #5c5c57;
+  --rule: #e2e2dc;
+  --link: #1f5fbf;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413;
+    --surface: #1d1d1b;
+    --text: #ecece8;
+    --muted: #a9a9a2;
+    --rule: #33332f;
+    --link: #8ab4f8;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    16px/1.55 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.25rem 16px 3rem;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+nav a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+article {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin: 0 0 0.25rem;
+}
+h2 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.25rem;
+}
+p,
+ul {
+  margin: 0.25rem 0 0.5rem;
+}
+ul {
+  padding-left: 1.25rem;
+}
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+a {
+  color: var(--link);
+  overflow-wrap: anywhere;
+}
