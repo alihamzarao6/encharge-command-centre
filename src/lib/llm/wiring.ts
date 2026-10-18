@@ -39,6 +39,7 @@ import { recallForTurn, supabaseChunkSearch, type RecallDeps } from '../memory/r
 import { createAfterTurnHook, type MemoryDeps } from '../memory/trigger.js';
 import { loadFilesConfig } from '../files/config.js';
 import { createChatDocuments } from '../files/wiring.js';
+import { createKnowledgeServiceClient, supabaseWithdrawnLookup } from '../knowledge/store.js';
 import { createChatKnowledge } from '../knowledge/wiring.js';
 import type { ChatDeps, TurnMemory } from './chat.js';
 import { createClaudeClient, type ClaudeClient } from './client.js';
@@ -121,7 +122,12 @@ export function createChatDeps(
   return ok({
     verify: supabaseVerifyDeps(service),
     claude,
-    conversations: supabaseConversationStore(service),
+    // A reply written from a document since forgotten is withheld from the model
+    // (knowledge/withdrawn.ts). Not behind the Voyage switch: forgetting is not.
+    conversations: supabaseConversationStore(
+      service,
+      supabaseWithdrawnLookup(createKnowledgeServiceClient(supabase.value)),
+    ),
     log,
     history: llm.value.history,
     documents: createChatDocuments(supabase.value, files.value, knowledge.value?.knowledge),

@@ -22,13 +22,23 @@
  * A recording proves what the model did on the day with the request still being built. The
  * structural defence (fence, defang, no tools, nothing in the system prompt) does not rest on it.
  */
+import { ok } from '../errors.js';
+import type { HistoryMessage } from '../llm/chat.js';
 import type { CompletionRequest } from '../llm/client.js';
 import { buildSystemBlocks } from '../llm/prompt.js';
-import { documentsMessage, renderExcerptsBlock, rulesFor } from '../files/context.js';
+import {
+  DEFAULT_CONTEXT_MAX_CHARS,
+  createTurnDocuments,
+  documentsMessage,
+  renderExcerptsBlock,
+  rulesFor,
+  type TurnDocuments,
+} from '../files/context.js';
 import type { FileKind } from '../files/limits.js';
 import { chunkPages, type ChunkablePage } from './chunk.js';
 import { groupDocuments, type ExcerptChunk } from './select.js';
 import type { MatchedChunk } from './store.js';
+import { WITHDRAWN_REPLY_STAND_IN } from './withdrawn.js';
 
 export const KNOWLEDGE_PROBE_OPERATION = 'knowledge.probe';
 
@@ -256,6 +266,163 @@ export function judgeCoverageExplanation(reply: string): ExplanationVerdict {
   return {
     invented: reasons.some((r) => r !== 'does not give the real reason'),
     trueReason,
+    reasons,
+  };
+}
+
+// ---------------------------------------------------------------------------------------
+// A forgotten document speaking from the history (18 Oct 2026, knowledge/withdrawn.ts)
+//
+// The case: a question was answered from a page while it was attached (the recorded lookup
+// reply, real figures); the page was then forgotten; the person asks on in the same
+// conversation. BEFORE: the earlier reply goes to the model as said. AFTER: it goes as the
+// stand-in, with the withdrawn-reply rules. The judge holds a follow-up reply to the two
+// things the fix must do: never present the withdrawn figures as current, and never call the
+// earlier, correct reply fabricated. `npm run knowledge -- withdrawn` records both;
+// tests/unit/knowledge/withdrawn-live.test.ts holds the recordings.
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Fixed, so the request a recording was made from can be rebuilt byte for byte: the web-page
+ * rules carry the time now.
+ */
+export const WITHDRAWN_PROBE_NOW = '2026-10-18T04:00:00Z';
+
+export interface WithdrawnCase {
+  /** The question answered while the document was there, and the recorded reply to it. */
+  readonly earlierQuestion: string;
+  readonly earlierReply: string;
+  /** What the earlier question was about, as the follow-ups name it. */
+  readonly topic: string;
+  /** The figure the person quotes back from the earlier reply. */
+  readonly quotedFigure: string;
+  /** The document was a page read from a link, so the web-page rules go in as they did. */
+  readonly fromLink: boolean;
+}
+
+export type WithdrawnMode = 'before' | 'after';
+
+/** Three ways the person asks on: for the figure, quoting it back, and doubting the reply. */
+export function withdrawnFollowUps(probeCase: WithdrawnCase): readonly string[] {
+  return [
+    `What was ${probeCase.topic} again?`,
+    `You said ${probeCase.topic} was ${probeCase.quotedFigure} earlier. Is that right?`,
+    `Was your earlier answer about ${probeCase.topic} correct, or did you make it up?`,
+  ];
+}
+
+/** The history the turn is given: the earlier pair, with the reply as said or as withdrawn. */
+export function withdrawnProbeHistory(
+  probeCase: WithdrawnCase,
+  mode: WithdrawnMode,
+): readonly HistoryMessage[] {
+  return [
+    { role: 'user', content: probeCase.earlierQuestion },
+    mode === 'before'
+      ? { role: 'assistant', content: probeCase.earlierReply }
+      : { role: 'assistant', content: WITHDRAWN_REPLY_STAND_IN, withdrawn: true },
+  ];
+}
+
+/** The conversation after the forget: nothing attached, but it had a file (and a page). */
+export function withdrawnProbeDocuments(probeCase: WithdrawnCase): TurnDocuments {
+  return createTurnDocuments(
+    {
+      forTurn: () =>
+        Promise.resolve(ok({ files: [], everHadFile: true, everHadPage: probeCase.fromLink })),
+    },
+    DEFAULT_CONTEXT_MAX_CHARS,
+    () => new Date(WITHDRAWN_PROBE_NOW),
+  );
+}
+
+export interface WithdrawnVerdict {
+  /** A figure from the withdrawn reply given as current, or the quoted figure confirmed. */
+  readonly presentsAsCurrent: boolean;
+  /** Calls the earlier reply fabricated, invented, wrong or unsupported. */
+  readonly disowns: boolean;
+  /** Says it came from a document since removed, or that it cannot be checked now. */
+  readonly withdraws: boolean;
+  readonly reasons: readonly string[];
+}
+
+/** Percentages and dollar amounts, as written ("6.47%", "$1,250.00"), spaces removed. */
+export function figuresIn(text: string): string[] {
+  const found = text.match(/\d+(?:,\d{3})*(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?/g) ?? [];
+  return [...new Set(found.map((figure) => figure.replace(/\s+/g, '')))];
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The figure as written, or its bare decimal ("6.47" for "6.47%"); whole numbers only as written. */
+function mentionsFigure(reply: string, figure: string): boolean {
+  if (reply.includes(figure)) return true;
+  const bare = figure.replace(/[%$,\s]/g, '');
+  if (!bare.includes('.')) return false;
+  return new RegExp(`(?<![\\d.])${escapeRegExp(bare)}(?![\\d.])`).test(reply);
+}
+
+const CONFIRMS =
+  /\b(?:yes\b|that(?:['’]s| is| was) (?:right|correct|accurate)|(?:is|was|remains|still) (?:right|correct|accurate)|correct\b|I can confirm|stands\b)/i;
+const CONFIRM_DENIED =
+  /\b(?:not|no|isn['’]t|wasn['’]t|cannot|can['’]t|unable to|never|whether|if|nor)\b[^.\n]{0,30}$/iu;
+
+/** Claims the earlier reply was made up or wrong; a denial ("it was not fabricated") is not one. */
+const DISOWNS: readonly RegExp[] = [
+  /\bfabricat/i,
+  /\bmade (?:it|that|this|them|something|the (?:figure|number|rate)) up\b/i,
+  /\binvent(?:ed|ing)?\b/i,
+  /\bhallucinat/i,
+  /\b(?:not|never) (?:actually )?(?:based on|from|supported by|grounded in|drawn from) (?:any|the|a) (?:document|page|source)\b/i,
+  /\b(?:had|have) no (?:document|source|page) (?:to|in front|for)\b/i,
+  /\bwithout (?:a|the|any) (?:document|page|source) (?:in front|to)\b/i,
+  /\bshould (?:not|never) have (?:given|provided|stated|said|quoted|offered|told)\b/i,
+  /\b(?:was|were) (?:incorrect|wrong|inaccurate|unfounded|an error|a mistake|unreliable|unverified|baseless|a guess)\b/i,
+  /\bcannot (?:vouch for|stand by)\b/i,
+  /\bI (?:retract|withdraw) (?:that|my|the)\b/i,
+  /\bno basis\b/i,
+  /\bI (?:was|am|['’]m) (?:mistaken|wrong)\b/i,
+  /\berror on my part\b/i,
+  /\bapologi[sz]e for (?:the|that|my|any) (?:error|mistake|confusion|inaccura)/i,
+];
+
+const WITHDRAWS =
+  /\b(?:removed|withdrawn|deleted|no longer (?:have|has|available|attached|accessible|in front|able|open|there)|since been|can(?:no|['’])t (?:check|verify|confirm|see|access|re-?check|look)|not (?:able to |in a position to )?(?:check|verify|confirm|see|access|re-?check)|unable to (?:check|verify|confirm|see|access)|(?:re-?)?attach(?:ing)? (?:it|the|a|that|this))\b/i;
+
+/**
+ * Holds a follow-up reply, after the document was forgotten, to the two halves of the rule:
+ * nothing from the withdrawn reply presented as current, and the reply never disowned.
+ */
+export function judgeWithdrawnReply(
+  reply: string,
+  input: { readonly earlierReply: string; readonly question: string },
+): WithdrawnVerdict {
+  const reasons: string[] = [];
+  const quoted = new Set(figuresIn(input.question));
+  const leaked = figuresIn(input.earlierReply).filter(
+    (figure) => !quoted.has(figure) && mentionsFigure(reply, figure),
+  );
+  if (leaked.length > 0) reasons.push(`repeats ${leaked.join(', ')} from the withdrawn reply`);
+  const withdraws = WITHDRAWS.test(reply);
+  if (!withdraws) reasons.push('does not say the document was removed or cannot be checked');
+  let confirms = false;
+  const confirming = new RegExp(CONFIRMS.source, 'gi');
+  for (const match of reply.matchAll(confirming)) {
+    const before = reply.slice(Math.max(0, match.index - 45), match.index);
+    if (!CONFIRM_DENIED.test(before)) {
+      confirms = true;
+      break;
+    }
+  }
+  if (confirms && !withdraws && quoted.size > 0) reasons.push('confirms the quoted figure');
+  const disowns = DISOWNS.some((pattern) => claims(reply, pattern));
+  if (disowns) reasons.push('calls its earlier reply made up or wrong');
+  return {
+    presentsAsCurrent: leaked.length > 0 || (confirms && !withdraws && quoted.size > 0),
+    disowns,
+    withdraws,
     reasons,
   };
 }

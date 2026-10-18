@@ -300,7 +300,7 @@ export function forgetConfirmText(doc: DocumentView): readonly string[] {
     );
   }
   lines.push(
-    "This can't be undone. Answers it has already given in existing conversations will still show what it said, and the assistant can read them there. Deleting those conversations is the only way to clear them.",
+    "This can't be undone. Answers it has already given in existing conversations stay on screen there, but the assistant will not use them again: asked, it says they came from a document since removed. Deleting those conversations is the only way to clear them from view.",
   );
   return lines;
 }
@@ -319,20 +319,20 @@ export type ForgetReply =
   | { readonly outcome: 'already' };
 
 /**
- * What the assistant already said is not taken back by forgetting (the chat engine labelling
- * those turns is its own, later item). So the result says how many conversations still hold an
- * answer from it, and what clears them.
+ * What the assistant already said stays on screen after forgetting; since 18 Oct 2026 the chat
+ * withholds those replies from the model (src/lib/knowledge/withdrawn.ts), so they are seen and
+ * not used. The result says how many conversations still show one, and what clears them.
  */
 export function answersHeldText(held: number | null | undefined): string {
   if (held === undefined) return '';
   if (held === null) {
-    return " Couldn't count the conversations that still hold earlier answers from it: answers already given stay in their conversations until those are deleted.";
+    return " Couldn't count the conversations that still show earlier answers from it: those answers stay on screen until their conversations are deleted, and the assistant will not use them again.";
   }
   if (held === 0) return ' No conversation holds an earlier answer from it.';
   if (held === 1) {
-    return ' 1 conversation still holds an earlier answer from it. Deleting that conversation is the only way to clear it.';
+    return ' 1 conversation still shows an earlier answer from it; the assistant will not use it again. Deleting that conversation is the only way to clear it from view.';
   }
-  return ` ${String(held)} conversations still hold earlier answers from it. Deleting those conversations is the only way to clear them.`;
+  return ` ${String(held)} conversations still show earlier answers from it; the assistant will not use them again. Deleting those conversations is the only way to clear them from view.`;
 }
 
 export function forgetResultText(name: string, reply: ForgetReply): string {

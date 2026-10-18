@@ -22,6 +22,7 @@ import {
   type Legibility,
 } from '../files/limits.js';
 import type { ChunkablePage, DocumentChunk } from './chunk.js';
+import type { WithdrawnLookup } from './withdrawn.js';
 
 export type SourceStatus = 'pending' | 'learning' | 'ready' | 'failed' | 'forgotten';
 
@@ -83,7 +84,12 @@ type FilePageDbRow = {
   legibility: string;
 };
 
-type FileStatusDbRow = { id: string; status: string };
+type FileStatusDbRow = {
+  id: string;
+  conversation_id: string;
+  status: string;
+  removed_reason: string | null;
+};
 
 type MatchDbRow = {
   source_id: string;
@@ -1071,6 +1077,61 @@ export function supabaseKnowledgeStore(client: KnowledgeServiceClient): Knowledg
           .limit(1);
         if (error !== null) return err(mapPostgrest(error, op));
         return ok(data.length > 0);
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, op));
+      }
+    },
+  };
+}
+
+/**
+ * Which of the documents a conversation's replies drew on are gone for good (18 Oct 2026,
+ * knowledge/withdrawn.ts). Two reads, ids only, never a name or text:
+ *
+ *   1. this conversation's attachments a PERSON removed (`removed_reason = 'user'`; an expired
+ *      attachment keeps its learned copy and is not gone, D135) — the file ids, and whether
+ *      there were any, for the replies recorded before coverage existed;
+ *   2. the learned copies now `forgotten`, found by their own id (a reply that cited a learned
+ *      document) or by the attachment they were learned from (a reply that cited the attachment
+ *      alone — the whole file in front of the model — whose copy was forgotten later, after the
+ *      attachment had expired or from the settings page).
+ */
+export function supabaseWithdrawnLookup(client: KnowledgeServiceClient): WithdrawnLookup {
+  return {
+    forgotten: async ({ conversationId, sources, files }) => {
+      const op = 'knowledge.withdrawn';
+      try {
+        const removed = await client
+          .from('conversation_files')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('status', 'removed')
+          .eq('removed_reason', 'user');
+        if (removed.error !== null) return err(mapPostgrest(removed.error, op));
+        const gone = new Set<string>(removed.data.map((row) => row.id));
+        const anyRemovedHere = gone.size > 0;
+        const forgottenSources = new Set<string>();
+        if (sources.length > 0 || files.length > 0) {
+          const clauses = [
+            sources.length === 0 ? null : `id.in.(${sources.join(',')})`,
+            files.length === 0 ? null : `file_id.in.(${files.join(',')})`,
+          ].filter((clause): clause is string => clause !== null);
+          const learned = await client
+            .from('knowledge_sources')
+            .select('id, file_id')
+            .eq('status', 'forgotten')
+            .or(clauses.join(','));
+          if (learned.error !== null) return err(mapPostgrest(learned.error, op));
+          for (const row of learned.data) {
+            forgottenSources.add(row.id);
+            if (row.file_id !== null) gone.add(row.file_id);
+          }
+        }
+        return ok({
+          sources: new Set([...forgottenSources].filter((id) => sources.includes(id))),
+          files: new Set([...gone].filter((id) => files.includes(id))),
+          anyRemovedHere,
+        });
       } catch (caught: unknown) {
         return err(mapThrown(caught, op));
       }

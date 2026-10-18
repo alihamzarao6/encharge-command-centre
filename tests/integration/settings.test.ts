@@ -30,6 +30,11 @@ import { ok } from '../../src/lib/errors.js';
 import { createTurnDocuments } from '../../src/lib/files/context.js';
 import { createFilesServiceClient, supabaseFileStore } from '../../src/lib/files/store.js';
 import { KNOWLEDGE_DEFAULTS } from '../../src/lib/knowledge/config.js';
+import {
+  createKnowledgeServiceClient,
+  supabaseWithdrawnLookup,
+} from '../../src/lib/knowledge/store.js';
+import { WITHDRAWN_REPLY_STAND_IN } from '../../src/lib/knowledge/withdrawn.js';
 import { handleChatTurn, type ChatDeps } from '../../src/lib/llm/chat.js';
 import { supabaseConversationStore } from '../../src/lib/llm/store.js';
 import { createLogger } from '../../src/lib/logger.js';
@@ -71,7 +76,10 @@ describe.skipIf(env === null)('the settings page (requires a running Supabase st
       deps: {
         verify: supabaseVerifyDeps(service),
         claude,
-        conversations: supabaseConversationStore(service),
+        conversations: supabaseConversationStore(
+          service,
+          supabaseWithdrawnLookup(createKnowledgeServiceClient(cfg)),
+        ),
         log,
         documents: createTurnDocuments(
           supabaseFileStore(createFilesServiceClient(cfg)),
@@ -97,7 +105,8 @@ describe.skipIf(env === null)('the settings page (requires a running Supabase st
     };
   }
 
-  async function ask(conversationId: string | null, canary: string): Promise<boolean> {
+  /** One real turn; everything the model was sent, as text. */
+  async function sent(conversationId: string | null): Promise<string> {
     const t = turn();
     const result = await handleChatTurn(t.deps, {
       token: ross.token,
@@ -105,7 +114,11 @@ describe.skipIf(env === null)('the settings page (requires a running Supabase st
       ...(conversationId === null ? {} : { conversationId }),
     });
     expect(result.status).toBe(200);
-    return JSON.stringify(t.claude.calls).includes(canary);
+    return JSON.stringify(t.claude.calls);
+  }
+
+  async function ask(conversationId: string | null, canary: string): Promise<boolean> {
+    return (await sent(conversationId)).includes(canary);
   }
 
   describe('forgetting', () => {
@@ -148,6 +161,17 @@ describe.skipIf(env === null)('the settings page (requires a running Supabase st
           conversationsWithAnswers: 3,
         },
       });
+
+      // What it answered from the document in its own conversation now reaches the model as
+      // the stand-in, with the rules for it, not as said (knowledge/withdrawn.ts): the first
+      // turn after the forget, before any later reply joins the history.
+      const ownSent = await sent(own);
+      expect(ownSent).not.toContain('An answer.');
+      expect(ownSent).toContain(WITHDRAWN_REPLY_STAND_IN);
+      expect(ownSent).toContain('# Withdrawn replies');
+      const elsewhereSent = await sent(elsewhere);
+      expect(elsewhereSent).not.toContain('An answer.');
+      expect(elsewhereSent).toContain(WITHDRAWN_REPLY_STAND_IN);
 
       expect(await ask(null, canary)).toBe(false);
       expect(await ask(own, canary)).toBe(false);

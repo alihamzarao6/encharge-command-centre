@@ -4,10 +4,10 @@
  *
  * Forgetting removes what the assistant learned and every attachment's text, but not what it
  * already SAID: an assistant reply written with the document in front of the model stays in its
- * conversation, and a later turn there is given that history. Until the chat engine labels or
- * drops such turns (its own item, its own brief), the page tells him how many conversations hold
- * one — a count, never which, since some are private and an administrator must not learn what is
- * in them.
+ * conversation, on screen. Since 18 Oct the chat withholds such a reply from the model
+ * (knowledge/withdrawn.ts, the same ids read the same way); the page tells him how many
+ * conversations show one — a count, never which, since some are private and an administrator
+ * must not learn what is in them.
  *
  * An answer "holds" the document when its coverage record (`messages.document_coverage`,
  * knowledge/coverage.ts) names one of the document's ids — an attachment of those bytes (`file`)

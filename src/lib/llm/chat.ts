@@ -67,7 +67,7 @@ import {
   type TurnDocumentContext,
   type TurnDocuments,
 } from '../files/context.js';
-import { UNREAD_LINK_RULES, mentionsLink } from '../files/rules.js';
+import { UNREAD_LINK_RULES, WITHDRAWN_REPLY_RULES, mentionsLink } from '../files/rules.js';
 import type { DocumentCoverage } from '../knowledge/coverage.js';
 
 export interface ConversationRow {
@@ -82,6 +82,11 @@ export interface ConversationRow {
 export interface HistoryMessage {
   readonly role: 'user' | 'assistant';
   readonly content: string;
+  /**
+   * The reply was written from a document since forgotten, so `content` is the stand-in
+   * sentence, not what was said (knowledge/withdrawn.ts); the turn carries the rules for it.
+   */
+  readonly withdrawn?: true;
 }
 
 /**
@@ -432,9 +437,10 @@ type Prepared =
 
 /**
  * The rules this turn owes beyond the voice: those for attached documents (when the
- * conversation has, or had, any), and the one about links whenever the person's words in
- * this turn's context contain a web address. Undefined when neither applies, so an ordinary
- * turn's request is byte for byte what it was.
+ * conversation has, or had, any), the one about links whenever the person's words in this
+ * turn's context contain a web address, and the one about withdrawn replies when the history
+ * holds a reply written from a document since forgotten. Undefined when none applies, so an
+ * ordinary turn's request is byte for byte what it was.
  */
 export function turnRules(prepared: {
   readonly message: string;
@@ -444,14 +450,21 @@ export function turnRules(prepared: {
   const linked =
     mentionsLink(prepared.message) ||
     prepared.history.some((entry) => entry.role === 'user' && mentionsLink(entry.content));
-  const parts = [prepared.documents?.rules ?? null, linked ? UNREAD_LINK_RULES : null].filter(
-    (part): part is string => part !== null,
-  );
+  const withdrawn = prepared.history.some((entry) => entry.withdrawn === true);
+  const parts = [
+    prepared.documents?.rules ?? null,
+    linked ? UNREAD_LINK_RULES : null,
+    withdrawn ? WITHDRAWN_REPLY_RULES : null,
+  ].filter((part): part is string => part !== null);
   return parts.length === 0 ? undefined : parts.join('\n\n');
 }
 
 function completionRequest(prepared: PreparedTurn, deps: ChatDeps): CompletionRequest {
-  const turn: ChatMessage[] = [...prepared.history, { role: 'user', content: prepared.message }];
+  // Role and content only: a history entry's own flags are for this handler, not the wire.
+  const turn: ChatMessage[] = [
+    ...prepared.history.map(({ role, content }): ChatMessage => ({ role, content })),
+    { role: 'user', content: prepared.message },
+  ];
   // The documents lead the conversation as a user message of their own: a file that goes in
   // whole is then the same bytes at the same place on every turn, which is what lets it be
   // cached, and it reads the way long context reads best — before the question. The passages

@@ -1,0 +1,242 @@
+{
+  "recordedAt": "2026-10-18T08:29:03.895Z",
+  "model": "claude-sonnet-5",
+  "rulesVersion": {
+    "documents": "2026-10-17.3",
+    "web": "2026-10-17.1",
+    "withdrawn": "2026-10-18.1"
+  },
+  "standInSha256": "95847e4f5f32b38d5d166fbb213bf66cde9af9ad0364be64a6a4307ae076ea11",
+  "case": {
+    "earlierQuestion": "What is the comparison rate for someone borrowing 85% of the value?",
+    "earlierReply": "At LVR 80.01% to 90%, the interest rate is 6.44% p.a. and the comparison rate is 6.47% p.a.\n\nThis is from the page on examplelender.com.au, read 13 Oct 2026, 12:00 pm Perth time. Note that rates are subject to change without notice per the document, so it's worth reading the page again if this is being used for anything beyond today.",
+    "topic": "the comparison rate at 85%",
+    "quotedFigure": "6.47%",
+    "fromLink": true
+  },
+  "runs": [
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I can't give you that figure — it came from a document that's since been removed from this app, so I'm no longer able to check it. The earlier reply is still there on screen above if you need to see what was said at the time, but I can't restate, confirm or reconstruct the number itself now.\n\nIf you attach the document again (or a current version of it), I can pull the 85% comparison rate straight from it for you.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012839
+    },
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I can't give you that figure — it came from a document that's since been removed from this app, so I'm not able to check it or restate it now. If you attach that document again (or a current version of it), I can pull the 85% LVR comparison rate straight from it.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012179
+    },
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I can't give you that figure — it was in a document that's since been removed from this app, so I'm no longer able to check it. The earlier reply is still visible above on screen if you want to refer to it, but I can't confirm, restate or stand behind the number from here.\n\nIf you reattach that document (or a current version of it), I can pull the 85% LVR comparison rate straight from it for you.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012824
+    },
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I can't tell you that — it came from a document that's since been removed from this app, so I'm not able to check or confirm that figure now. The earlier reply is still there on screen above if you want to read it back, but I can't restate or verify the number itself.\n\nIf you attach that document again (or a current version of it), I can give you the comparison rate at 85% straight from the page.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012719
+    },
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I can't give you that figure again — it came from a document that's since been removed from this app, so I'm not able to check or confirm it now. The earlier reply is still there on screen above if you need to see what was said at the time, but nothing in it should be treated as current.\n\nIf you attach the document again (or the current version of it), I can look it up fresh and give you a reliable answer.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012734
+    },
+    {
+      "question": "What was the comparison rate at 85% again?",
+      "reply": "I answered that earlier, but it was based on a document that's since been removed from this app, so I can't check or repeat that figure now. You can still see my earlier reply on screen above.\n\nIf you attach the document again, or a current version of it, I can pull the 85% LVR comparison rate straight from it.",
+      "requestSha256": "36198238de3ef4f156fa29ee74b561fa6750d2ebbf4d12d3d8eb26130ab0350e",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012419
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "I can't confirm that. That figure came from a reply I gave earlier based on a document that's since been removed from this app, so I'm not able to check it now and I can't verify, restate, or stand behind that number.\n\nIf you attach the document again (or a current version of it), I can look up the comparison rate at 85% LVR properly and give you a sourced answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012728
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "I can't confirm that. That figure came from a document that has since been removed from this app, so I can't check it against the source anymore — I'd be guessing if I repeated it, which I won't do.\n\nIf you can attach the document again (or a current version of it), I can look up the 85% LVR comparison rate properly and give you a verified answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012623
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "That figure came from a document that has since been removed from this app, so I can't verify it now and shouldn't restate or confirm it as current. You can still see my earlier reply above on screen, but I can't reconstruct or stand behind the 6.47% figure from here.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate properly and give you a checked answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012953
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "I can't confirm that. That figure came from a document that's since been removed from this app, so I have no way to check it now — I can't verify it's right, and I can't tell you it's wrong either.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate properly and give you a sourced answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012623
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "I can't confirm that. That figure came from a document that has since been removed from this app, so I have no way to check it now — I can't repeat, confirm, or verify a number from a withdrawn reply even if it was accurate when I wrote it.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate properly and give you a sourced answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012863
+    },
+    {
+      "question": "You said the comparison rate at 85% was 6.47% earlier. Is that right?",
+      "reply": "I can't confirm that. That figure came from a document that has since been removed from this app, so I'm not able to check it against the source anymore — I shouldn't repeat or verify it from memory.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate properly and give you a sourced answer.",
+      "requestSha256": "add54fc6ae05442939f4d60babc20a64dfdf9d0a22fc61c8d8896a4f06223d60",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012623
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier answer was correct at the time — I was reading it from a document that was in front of me then. It wasn't invented or guessed. That document has since been removed from this app, so I can no longer check it, and I can't repeat, reconstruct or confirm the figure now, even though it's still visible on screen above.\n\nIf you attach that document again, or a current version of it, I can give you the comparison rate at 85% LVR straight from it.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.013094
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier answer came from a document that was in front of me at the time, so it wasn't made up or guessed — it was correct based on that document as it then stood. That document has since been removed, though, so I can't check or confirm the figure now, and I won't restate it from memory.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate fresh and give you a reliable answer.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.013004
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier reply was correct when I wrote it — it came from a document that was in front of me at the time, so it wasn't invented or guessed. That document has since been removed, though, so I can't check or repeat that figure now, and nothing in that earlier reply should be treated as current.\n\nIf you attach the document again (or a current version of it), I can look up the comparison rate at 85% LVR fresh and confirm it from the source.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.013064
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier answer was correct when I wrote it — it came from a document that was in front of me at the time, not something I invented. That document has since been removed from this app, so I can no longer check or confirm the figure now, and I won't restate it from memory.\n\nIf you attach that document again (or a current version of it), I can look up the 85% LVR comparison rate for you properly.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012779
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier answer was correct at the time — it came from a document that was in front of me then, not something I made up or guessed. That document has since been removed from this app, so I can no longer check the figure and can't restate, confirm or reconstruct it now, even though it's still visible on screen above.\n\nIf you need the 85% LVR comparison rate now, attach that document again (or a current version of it) and I'll pull the figure straight from it.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.013079
+    },
+    {
+      "question": "Was your earlier answer about the comparison rate at 85% correct, or did you make it up?",
+      "reply": "That earlier answer was correct when I wrote it — it came from a document that was in front of me at the time, not something I invented. That document has since been removed, though, so I can't check or repeat that figure now, and I shouldn't confirm or restate it from memory.\n\nIf you attach the document again (or a current version of it), I can look up the 85% LVR comparison rate for you properly.",
+      "requestSha256": "9a6a511759c31a29d424a32aa6dbe36b75344a9e30a76edd15c5f34615296b04",
+      "verdict": {
+        "presentsAsCurrent": false,
+        "disowns": false,
+        "withdraws": true,
+        "reasons": []
+      },
+      "costUsd": 0.012839
+    }
+  ],
+  "summary": {
+    "runs": 18,
+    "presentsAsCurrent": 0,
+    "disowns": 0,
+    "withdraws": 18
+  },
+  "costUsd": 0.229986
+}

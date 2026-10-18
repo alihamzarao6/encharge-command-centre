@@ -76,9 +76,16 @@ import {
 import {
   KNOWLEDGE_INJECTION_PROBES,
   judgeCoverageExplanation,
+  judgeWithdrawnReply,
   knowledgeProbeRequest,
   unprotectedKnowledgeRequest,
+  withdrawnFollowUps,
+  withdrawnProbeDocuments,
+  withdrawnProbeHistory,
+  type WithdrawnCase,
+  type WithdrawnMode,
 } from '../src/lib/knowledge/probe.js';
+import { WITHDRAWN_REPLY_STAND_IN } from '../src/lib/knowledge/withdrawn.js';
 import { MAX_QUERY_NAMES, searchTextFor } from '../src/lib/knowledge/query.js';
 import { describePages } from '../src/lib/knowledge/select.js';
 import { KNOWLEDGE_SUMMARY_OPERATION } from '../src/lib/knowledge/summarise.js';
@@ -101,7 +108,12 @@ import {
   type UsageRecord,
 } from '../src/lib/llm/client.js';
 import { loadLlmConfig } from '../src/lib/llm/config.js';
-import { judgeReply, requestFingerprintSource } from '../src/lib/files/probe.js';
+import { RECORDED_PROBE, judgeReply, requestFingerprintSource } from '../src/lib/files/probe.js';
+import {
+  DOCUMENT_RULES_VERSION as DOC_RULES,
+  WEB_RULES_VERSION,
+  WITHDRAWN_RULES_VERSION,
+} from '../src/lib/files/rules.js';
 import { createLogger, logger } from '../src/lib/logger.js';
 import { loadVoyageConfig } from '../src/lib/memory/config.js';
 import { createVoyageEmbedder, type Embedder } from '../src/lib/memory/embed.js';
@@ -828,6 +840,134 @@ async function whyCommand(argv: readonly string[]): Promise<void> {
   out(record.summary);
 }
 
+/**
+ * The case for `withdrawn`: the recorded lookup reply about the rate page — the real model's
+ * own words, real figures — as the answer given while the page was attached.
+ */
+function withdrawnCase(): WithdrawnCase {
+  const path = resolve(
+    import.meta.dirname,
+    '..',
+    'tests',
+    'fixtures',
+    'files',
+    'lookups',
+    'page-comparison-at-85.json',
+  );
+  const recorded = RECORDED_PROBE.parse(JSON.parse(readFileSync(path, 'utf8')));
+  return {
+    earlierQuestion: recorded.question,
+    earlierReply: recorded.reply,
+    topic: 'the comparison rate at 85%',
+    quotedFigure: '6.47%',
+    fromLink: true,
+  };
+}
+
+/** One conversation whose history is exactly what the store would hand the handler. */
+function seededConversations(history: readonly HistoryMessage[]): ConversationStore {
+  const row: ConversationRow = {
+    id: CONV_ATTACHED,
+    userId: USER,
+    scope: 'workspace',
+    title: 'rates',
+    deletedAt: null,
+  };
+  return {
+    get: () => Promise.resolve(ok(row)),
+    create: () => Promise.resolve(ok(row)),
+    recentMessages: (_id, limit) => Promise.resolve(ok(history.slice(-limit))),
+    appendTurn: () =>
+      Promise.resolve(
+        ok({ userMessageId: crypto.randomUUID(), assistantMessageId: crypto.randomUUID() }),
+      ),
+  };
+}
+
+/**
+ * A forgotten document speaking from the history (18 Oct 2026): the same follow-ups to the
+ * real model, with the earlier reply as said (before) and as withdrawn (after), each reply
+ * judged. Saves tests/fixtures/knowledge/withdrawn-before.json and withdrawn-after.json.
+ */
+async function withdrawnCommand(argv: readonly string[]): Promise<void> {
+  const f = flags(argv);
+  const l = live();
+  const probeCase = withdrawnCase();
+  const followUps = withdrawnFollowUps(probeCase);
+  const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
+  for (const mode of ['before', 'after'] as const satisfies readonly WithdrawnMode[]) {
+    const runs: {
+      question: string;
+      reply: string;
+      requestSha256: string;
+      verdict: ReturnType<typeof judgeWithdrawnReply>;
+      costUsd: number;
+    }[] = [];
+    let model: string | null = null;
+    for (const question of followUps) {
+      for (let i = 0; i < f.runs; i += 1) {
+        const deps: ChatDeps = {
+          verify: {
+            getUserFromToken: () => Promise.resolve(ok({ id: USER, email: STAFF.email })),
+            getStaffRow: () => Promise.resolve(ok(STAFF)),
+          },
+          claude: l.claude,
+          conversations: seededConversations(withdrawnProbeHistory(probeCase, mode)),
+          log: quiet,
+          documents: withdrawnProbeDocuments(probeCase),
+        };
+        const sent = l.requests.length;
+        const result = await handleChatTurn(deps, {
+          token: 'terminal',
+          message: question,
+          conversationId: CONV_ATTACHED,
+        });
+        if (result.status !== 200)
+          fail(`${String(result.status)} ${result.body.error.code}: ${result.body.error.message}`);
+        const request = l.requests[sent];
+        if (request === undefined) fail('no request was sent');
+        model = result.body.model;
+        const verdict = judgeWithdrawnReply(result.body.reply, {
+          earlierReply: probeCase.earlierReply,
+          question,
+        });
+        runs.push({
+          question,
+          reply: result.body.reply,
+          requestSha256: sha256(requestFingerprintSource(request)),
+          verdict,
+          costUsd: result.body.costUsd,
+        });
+        note(
+          `${mode} · ${question} #${String(i + 1)}: ${verdict.presentsAsCurrent ? 'PRESENTS AS CURRENT' : 'not current'} · ${verdict.disowns ? 'DISOWNS' : 'owns it'} · ${verdict.withdraws ? 'withdraws' : 'no withdrawal'}`,
+        );
+      }
+    }
+    const record = {
+      recordedAt: new Date().toISOString(),
+      model,
+      rulesVersion: {
+        documents: DOC_RULES,
+        web: WEB_RULES_VERSION,
+        withdrawn: WITHDRAWN_RULES_VERSION,
+      },
+      standInSha256: sha256(WITHDRAWN_REPLY_STAND_IN),
+      case: probeCase,
+      runs,
+      summary: {
+        runs: runs.length,
+        presentsAsCurrent: runs.filter((r) => r.verdict.presentsAsCurrent).length,
+        disowns: runs.filter((r) => r.verdict.disowns).length,
+        withdraws: runs.filter((r) => r.verdict.withdraws).length,
+      },
+      costUsd: runs.reduce((s, r) => s + r.costUsd, 0),
+    };
+    mkdirSync(FIXTURES, { recursive: true });
+    writeFileSync(join(FIXTURES, `withdrawn-${mode}.json`), `${JSON.stringify(record, null, 2)}\n`);
+    out({ mode, ...record.summary, costUsd: record.costUsd });
+  }
+}
+
 /** The nearest chunks to each question, with their similarity — what the floor is set from. */
 async function scoresCommand(argv: readonly string[]): Promise<void> {
   const f = flags(argv);
@@ -950,10 +1090,13 @@ async function main(): Promise<void> {
     case 'scores':
       await scoresCommand(rest);
       return;
+    case 'withdrawn':
+      await withdrawnCommand(rest);
+      return;
     case undefined:
     default:
       fail(
-        'commands: chunk <file> | ask <file> "<question>" [--then "<q>"]… [--fresh] [--cache <file>] | why <file> [--runs N] [--cache <file>] | scores <file> "<q>"… [--rewrite] [--cache <file>] | record',
+        'commands: chunk <file> | ask <file> "<question>" [--then "<q>"]… [--fresh] [--cache <file>] | why <file> [--runs N] [--cache <file>] | scores <file> "<q>"… [--rewrite] [--cache <file>] | record | withdrawn [--runs N]',
       );
   }
 }

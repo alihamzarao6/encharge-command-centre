@@ -283,7 +283,7 @@ describe('learned documents', () => {
       'Forget “Rate sheet October.pdf”? The assistant stops using it straight away, everywhere: what it learned from it and any summary of it are deleted, and so is its text in every conversation it is attached to.',
     );
     expect(text.at(-1)).toMatch(
-      /can't be undone\. Answers it has already given in existing conversations will still show what it said, and the assistant can read them there\. Deleting those conversations is the only way to clear them\.$/,
+      /can't be undone\. Answers it has already given in existing conversations stay on screen there, but the assistant will not use them again: asked, it says they came from a document since removed\. Deleting those conversations is the only way to clear them from view\.$/,
     );
     expect(text).toHaveLength(2);
 
@@ -341,13 +341,13 @@ describe('learned documents', () => {
       'Forgotten: “A.pdf”. The assistant can no longer use it. Its text was removed from 1 conversation. No conversation holds an earlier answer from it.',
     );
     expect(said(1)).toMatch(
-      / 1 conversation still holds an earlier answer from it\. Deleting that conversation is the only way to clear it\.$/,
+      / 1 conversation still shows an earlier answer from it; the assistant will not use it again\. Deleting that conversation is the only way to clear it from view\.$/,
     );
     expect(said(4)).toMatch(
-      / 4 conversations still hold earlier answers from it\. Deleting those conversations is the only way to clear them\.$/,
+      / 4 conversations still show earlier answers from it; the assistant will not use them again\. Deleting those conversations is the only way to clear them from view\.$/,
     );
     expect(said(null)).toMatch(
-      / Couldn't count the conversations that still hold earlier answers from it/,
+      / Couldn't count the conversations that still show earlier answers from it/,
     );
     // A server that does not send the count: nothing is claimed either way.
     expect(said(undefined)).toBe(

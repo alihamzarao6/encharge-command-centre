@@ -306,7 +306,7 @@ test.describe('the settings page', () => {
     await expect(confirm).toContainText("This can't be undone.");
     // What forgetting cannot take back, said before he presses: what was already answered.
     await expect(confirm).toContainText(
-      'Answers it has already given in existing conversations will still show what it said, and the assistant can read them there. Deleting those conversations is the only way to clear them.',
+      'Answers it has already given in existing conversations stay on screen there, but the assistant will not use them again: asked, it says they came from a document since removed. Deleting those conversations is the only way to clear them from view.',
     );
     // The safe choice has focus; Escape keeps it and returns to the row.
     await expect(page.getByRole('button', { name: 'Keep it' })).toBeFocused();
@@ -323,7 +323,7 @@ test.describe('the settings page', () => {
     await page.keyboard.press('Enter');
     const notice = page.getByTestId('documents-notice');
     await expect(notice).toHaveText(
-      `Forgotten: “${RATE_SHEET.name ?? ''}”. The assistant can no longer use it. Its text was removed from 1 conversation. 2 conversations still hold earlier answers from it. Deleting those conversations is the only way to clear them.`,
+      `Forgotten: “${RATE_SHEET.name ?? ''}”. The assistant can no longer use it. Its text was removed from 1 conversation. 2 conversations still show earlier answers from it; the assistant will not use them again. Deleting those conversations is the only way to clear them from view.`,
     );
     // Spoken from the section's own polite live region, which also takes focus.
     await expect(notice.locator('..')).toHaveAttribute('aria-live', 'polite');

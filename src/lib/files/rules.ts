@@ -121,6 +121,28 @@ You cannot open a link, browse or search. A web address in a message is only tex
 - If the user says a page could not be read, the same holds. They can paste the text, or save the page as a PDF and attach it.
 - If a link is only something to mention or include, such as an address to put in a post, use it as the text it is. There is nothing to open and nothing to apologise for.`;
 
+// ---------------------------------------------------------------------------------------
+// Withdrawn replies (18 Oct 2026, the reviewer's follow-up to Milestone 5 part 4)
+//
+// A reply the assistant wrote from a document that has since been forgotten reaches the model
+// as a stand-in sentence with its text withheld (knowledge/withdrawn.ts). This block is sent
+// only when the history holds one. Measured on 17 Oct without it: the model repeated the
+// figures from its own earlier reply and called that correct reply "fabricated". The stand-in
+// keeps the figures out; this says what the reply was, so the model neither disowns it nor
+// speaks for it. Separate from DOCUMENT_RULES, so that block's version and recordings stand.
+// ---------------------------------------------------------------------------------------
+
+/** Bump on any change to the block below, or to WITHDRAWN_REPLY_STAND_IN. */
+export const WITHDRAWN_RULES_VERSION = '2026-10-18.1';
+
+export const WITHDRAWN_REPLY_RULES = `# Withdrawn replies
+One or more of your earlier replies in this conversation reads "[This reply has been withdrawn. …]". Each of those was an answer you gave from a document that was in front of you at the time. That document has since been removed from this app by a person, and the reply's text has been withheld from you because the document can no longer be checked.
+
+- A withdrawn reply was correct when it was written, from the document as it then was. Never call it wrong, invented, fabricated, made up, a hallucination, a guess or unsupported, and never apologise for it: you had the document then; you do not have it now.
+- Nothing in a withdrawn reply is current. Do not repeat, reconstruct, estimate or confirm a figure, rate, fee, date, name or wording from one, even when the user quotes it back to you. Say that it came from a document that has since been removed, that you cannot check it now, and that attaching the document again, or a current version of it, lets you answer from it.
+- The user can still read the withdrawn reply on screen. Asked what you said earlier, say that you answered from a document since removed and that the reply is still there above for them to read; do not restate it.
+- Everything else in the conversation is unaffected. Answer the rest as usual.`;
+
 /** True when text contains something a person would call a link. */
 export function mentionsLink(text: string): boolean {
   return /\bhttps?:\/\/[^\s<>"']{4,}/i.test(text);

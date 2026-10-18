@@ -12,6 +12,14 @@ import type { PostgrestError } from '@supabase/supabase-js';
 
 import { AppError, NetworkError, ensureError, err, ok, type Result } from '../errors.js';
 import type { ServiceClient } from '../auth/clients.js';
+import {
+  NOTHING_FORGOTTEN,
+  citedDocuments,
+  needsLookup,
+  withdrawHistory,
+  type HistoryRow,
+  type WithdrawnLookup,
+} from '../knowledge/withdrawn.js';
 import type {
   AppendTurnInput,
   AppendedTurn,
@@ -115,9 +123,19 @@ export function titleFromMessage(message: string): string {
 }
 
 /** Declared wider than the query's inferred type on purpose: the filter is belt-and-braces. */
-function toHistoryMessage(row: { role: string; content: string | null }): HistoryMessage | null {
+function toHistoryRow(row: {
+  role: string;
+  content: string | null;
+  document_coverage: unknown;
+  document_context: boolean | null;
+}): HistoryRow | null {
   if ((row.role !== 'user' && row.role !== 'assistant') || row.content === null) return null;
-  return { role: row.role, content: row.content };
+  return {
+    role: row.role,
+    content: row.content,
+    documentCoverage: row.document_coverage ?? null,
+    documentContext: row.document_context === true,
+  };
 }
 
 function toConversationRow(row: {
@@ -143,7 +161,16 @@ function toConversationRow(row: {
   });
 }
 
-export function supabaseConversationStore(client: ServiceClient): ConversationStore {
+/**
+ * `withdrawn` (18 Oct 2026, knowledge/withdrawn.ts) is what tells a reply written from a
+ * since-forgotten document apart from one still backed by its document; without it, every
+ * reply is sent as said. The chat wiring always passes one. A lookup that fails fails the
+ * history read, and the turn is refused as any history failure is.
+ */
+export function supabaseConversationStore(
+  client: ServiceClient,
+  withdrawn?: WithdrawnLookup,
+): ConversationStore {
   return {
     get: async (conversationId) => {
       try {
@@ -182,7 +209,7 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
         // request reads oldest first, the order Claude expects.
         const { data, error } = await client
           .from('messages')
-          .select('role, content')
+          .select('role, content, document_coverage, document_context')
           .eq('conversation_id', conversationId)
           .in('role', ['user', 'assistant'])
           .not('content', 'is', null)
@@ -191,11 +218,24 @@ export function supabaseConversationStore(client: ServiceClient): ConversationSt
         if (error !== null) {
           return err(mapPostgrest(error, 'messages.recent'));
         }
-        const history: HistoryMessage[] = [];
+        const rows: HistoryRow[] = [];
         for (const row of data) {
-          const item = toHistoryMessage(row);
-          if (item !== null) history.unshift(item);
+          const item = toHistoryRow(row);
+          if (item !== null) rows.unshift(item);
         }
+        // Only a history with a reply written from a document costs the extra read.
+        const cited = citedDocuments(rows);
+        let forgotten = NOTHING_FORGOTTEN;
+        if (withdrawn !== undefined && needsLookup(cited)) {
+          const looked = await withdrawn.forgotten({
+            conversationId,
+            sources: cited.sources,
+            files: cited.files,
+          });
+          if (!looked.ok) return err(looked.error);
+          forgotten = looked.value;
+        }
+        const history: HistoryMessage[] = withdrawHistory(rows, forgotten);
         return ok(history);
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'messages.recent'));

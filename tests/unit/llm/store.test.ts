@@ -6,6 +6,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createServiceClient } from '../../../src/lib/auth/clients.js';
+import { NetworkError, err, ok, type Result } from '../../../src/lib/errors.js';
+import {
+  WITHDRAWN_REPLY_STAND_IN,
+  type ForgottenDocuments,
+  type WithdrawnLookup,
+} from '../../../src/lib/knowledge/withdrawn.js';
 import {
   TITLE_MAX_CHARS,
   supabaseConversationStore,
@@ -339,6 +345,37 @@ describe('supabaseConversationStore — history and titles (part 6)', () => {
     expect(query).toContain('limit=4');
   });
 
+  it('recentMessages asks for the coverage columns and, without a lookup, sends every reply as said', async () => {
+    stub((req) => {
+      if (req.path !== '/rest/v1/messages') return undefined;
+      return json([
+        {
+          role: 'assistant',
+          content: 'The comparison rate is 6.47% p.a.',
+          document_coverage: {
+            v: 1,
+            documents: [{ file: 'f1', origin: 'attached', mode: 'whole' }],
+          },
+          document_context: true,
+        },
+        { role: 'user', content: 'u1', document_coverage: null, document_context: false },
+      ]);
+    });
+    const store = supabaseConversationStore(createServiceClient(CONFIG));
+    const result = await store.recentMessages(CONV_ID, 4);
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { role: 'user', content: 'u1' },
+        { role: 'assistant', content: 'The comparison rate is 6.47% p.a.' },
+      ],
+    });
+    expect(seen[0]?.query ?? '').toContain(
+      'select=role%2Ccontent%2Cdocument_coverage%2Cdocument_context',
+    );
+    expect(seen).toHaveLength(1);
+  });
+
   it('recentMessages drops rows it cannot use and surfaces failures as typed errors', async () => {
     stub(() =>
       json([
@@ -356,6 +393,101 @@ describe('supabaseConversationStore — history and titles (part 6)', () => {
 
     vi.stubGlobal('fetch', () => Promise.reject(new Error('reset')));
     expect((await store.recentMessages(CONV_ID, 10)).ok).toBe(false);
+  });
+
+  describe('a reply written from a document since forgotten (18 Oct 2026)', () => {
+    const SOURCE = 'a0000000-0000-4000-8000-000000000001';
+    const FILE = 'f0000000-0000-4000-8000-000000000001';
+    const rows = [
+      {
+        role: 'assistant',
+        content: 'Week one covers the plan.',
+        document_coverage: {
+          v: 1,
+          documents: [{ source: SOURCE, origin: 'learned', mode: 'part' }],
+        },
+        document_context: true,
+      },
+      {
+        role: 'user',
+        content: 'break down week one',
+        document_coverage: null,
+        document_context: false,
+      },
+      {
+        role: 'assistant',
+        content: 'The comparison rate is 6.47% p.a.',
+        document_coverage: { v: 1, documents: [{ file: FILE, origin: 'attached', mode: 'whole' }] },
+        document_context: true,
+      },
+      {
+        role: 'user',
+        content: 'comparison rate at 85%?',
+        document_coverage: null,
+        document_context: false,
+      },
+    ];
+    const asked: unknown[] = [];
+    const lookup = (answer: Result<ForgottenDocuments>): WithdrawnLookup => ({
+      forgotten: (input) => {
+        asked.push(input);
+        return Promise.resolve(answer);
+      },
+    });
+
+    it('asks the lookup about every id the replies cite, and withholds the replies it says are gone', async () => {
+      asked.length = 0;
+      stub((req) => (req.path === '/rest/v1/messages' ? json(rows) : undefined));
+      const store = supabaseConversationStore(
+        createServiceClient(CONFIG),
+        lookup(ok({ sources: new Set<string>(), files: new Set([FILE]), anyRemovedHere: true })),
+      );
+      const result = await store.recentMessages(CONV_ID, 4);
+      expect(asked).toEqual([{ conversationId: CONV_ID, sources: [SOURCE], files: [FILE] }]);
+      expect(result).toEqual({
+        ok: true,
+        value: [
+          { role: 'user', content: 'comparison rate at 85%?' },
+          { role: 'assistant', content: WITHDRAWN_REPLY_STAND_IN, withdrawn: true },
+          { role: 'user', content: 'break down week one' },
+          { role: 'assistant', content: 'Week one covers the plan.' },
+        ],
+      });
+      expect(JSON.stringify(result)).not.toContain('6.47');
+    });
+
+    it('does not ask when no reply drew on a document', async () => {
+      asked.length = 0;
+      stub(() =>
+        json([
+          { role: 'assistant', content: 'a1', document_coverage: null, document_context: false },
+          { role: 'user', content: 'u1', document_coverage: null, document_context: false },
+        ]),
+      );
+      const store = supabaseConversationStore(
+        createServiceClient(CONFIG),
+        lookup(ok({ sources: new Set<string>(), files: new Set<string>(), anyRemovedHere: true })),
+      );
+      expect(await store.recentMessages(CONV_ID, 4)).toEqual({
+        ok: true,
+        value: [
+          { role: 'user', content: 'u1' },
+          { role: 'assistant', content: 'a1' },
+        ],
+      });
+      expect(asked).toEqual([]);
+    });
+
+    it('a lookup that fails fails the history read: the turn is refused rather than sent unlabelled', async () => {
+      stub(() => json(rows));
+      const store = supabaseConversationStore(
+        createServiceClient(CONFIG),
+        lookup(err(new NetworkError('knowledge.withdrawn: transport failure'))),
+      );
+      const result = await store.recentMessages(CONV_ID, 4);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('NETWORK');
+    });
   });
 
   it('appendTurn titles an untitled conversation from the first message, and never re-titles', async () => {
