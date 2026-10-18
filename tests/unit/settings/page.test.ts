@@ -16,6 +16,7 @@ import {
   type SettingsPageDeps,
   type SettingsPageResult,
 } from '../../../src/lib/settings/page.js';
+import type { DocumentIds } from '../../../src/lib/settings/answers.js';
 import type {
   ForgetOutcome,
   IssueOutcome,
@@ -26,6 +27,10 @@ import type {
 const ROSS = 'a0000000-0000-4000-8000-000000000001';
 const SOURCE = '5b4c3d2e-1f00-4a00-8b00-000000000abc';
 const NOW = new Date('2026-10-17T05:30:00.000Z');
+const COPIES: DocumentIds = {
+  sources: [SOURCE, '5b4c3d2e-1f00-4a00-8b00-000000000def'],
+  files: ['f1000000-0000-4000-8000-000000000001'],
+};
 
 function verify(
   row: { is_active: boolean; is_admin: boolean } | null = { is_active: true, is_admin: false },
@@ -45,6 +50,9 @@ function verify(
 }
 
 interface Calls {
+  /** Every store call in order, so "copies before the forget" can be asserted. */
+  order: string[];
+  counted: DocumentIds[];
   forgets: { sourceId: string; actor: string }[];
   issues: { userId: string; keyId: string; digestHex: string; label: string }[];
   revokes: { userId: string; keyId: string }[];
@@ -55,13 +63,27 @@ function store(
     forget?: ForgetOutcome | AppError;
     issue?: (IssueOutcome | AppError)[];
     revoke?: RevokeOutcome | AppError;
+    copies?: DocumentIds | null | AppError;
+    held?: number | AppError;
   } = {},
 ): SettingsStore & { calls: Calls } {
-  const calls: Calls = { forgets: [], issues: [], revokes: [] };
+  const calls: Calls = { order: [], counted: [], forgets: [], issues: [], revokes: [] };
   const issues = [...(over.issue ?? [])];
   return {
     calls,
+    copiesOf: () => {
+      calls.order.push('copiesOf');
+      const answer = over.copies === undefined ? COPIES : over.copies;
+      return Promise.resolve(answer instanceof AppError ? err(answer) : ok(answer));
+    },
+    conversationsWithAnswers: (ids) => {
+      calls.order.push('conversationsWithAnswers');
+      calls.counted.push(ids);
+      const answer = over.held ?? 3;
+      return Promise.resolve(answer instanceof AppError ? err(answer) : ok(answer));
+    },
     forgetDocument: (sourceId, actor) => {
+      calls.order.push('forgetDocument');
       calls.forgets.push({ sourceId, actor });
       const answer = over.forget ?? { kind: 'forgotten', sources: 2, files: 1, chunks: 14 };
       return Promise.resolve(answer instanceof AppError ? err(answer) : ok(answer));
@@ -229,9 +251,55 @@ describe('forget_document', () => {
         sources: 2,
         files: 1,
         chunks: 14,
+        conversationsWithAnswers: 3,
       },
     });
     expect(t.calls.forgets).toEqual([{ sourceId: SOURCE, actor: ROSS }]);
+  });
+
+  it('reads every copy BEFORE the forget (it clears the hash that finds them), and counts after', async () => {
+    const t = setup();
+    await handleSettingsRequest(t.deps, {
+      token: 'good',
+      body: { action: 'forget_document', sourceId: SOURCE },
+    });
+    expect(t.calls.order).toEqual(['copiesOf', 'forgetDocument', 'conversationsWithAnswers']);
+    expect(t.calls.counted).toEqual([COPIES]);
+  });
+
+  it('a count that cannot be made is null — the forget still succeeded, and says so', async () => {
+    for (const store_ of [
+      store({ copies: new NetworkError('reset') }),
+      store({ held: new NetworkError('reset') }),
+      store({ copies: null }),
+    ]) {
+      const t = setup({ store: store_ });
+      const result = await handleSettingsRequest(t.deps, {
+        token: 'good',
+        body: { action: 'forget_document', sourceId: SOURCE },
+      });
+      expect(result.status).toBe(200);
+      expect(bodyOf(result)).toMatchObject({
+        outcome: 'forgotten',
+        conversationsWithAnswers: null,
+      });
+    }
+  });
+
+  it('a refused forget counts nothing; the second tab is not given a count', async () => {
+    const refused = setup({ store: store({ forget: { kind: 'not_allowed' } }) });
+    await handleSettingsRequest(refused.deps, {
+      token: 'good',
+      body: { action: 'forget_document', sourceId: SOURCE },
+    });
+    expect(refused.calls.counted).toEqual([]);
+    const already = setup({ store: store({ forget: { kind: 'already' } }) });
+    const result = await handleSettingsRequest(already.deps, {
+      token: 'good',
+      body: { action: 'forget_document', sourceId: SOURCE },
+    });
+    expect(bodyOf(result)).toMatchObject({ outcome: 'already', conversationsWithAnswers: null });
+    expect(already.calls.counted).toEqual([]);
   });
 
   it('the second press — another tab got there first — is a calm 200 "already"', async () => {
@@ -305,6 +373,7 @@ describe('forget_document', () => {
     expect(Object.keys(parsed).sort()).toEqual(
       [
         'chunks',
+        'conversationsWithAnswers',
         'durationMs',
         'files',
         'level',

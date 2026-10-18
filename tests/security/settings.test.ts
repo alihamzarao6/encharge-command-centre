@@ -53,6 +53,7 @@ describe.skipIf(env === null)(
     let authors: SeededDocument;
     let shared: SeededDocument;
     let sharedPrivateCopy: SeededDocument;
+    let authorsPrivate = '';
 
     beforeAll(async () => {
       await stack.connect();
@@ -62,7 +63,7 @@ describe.skipIf(env === null)(
       outsider = await stack.user('outsider', null);
       switchedOff = await stack.user('off', { active: false, admin: false });
       const authorsShared = await stack.conversation(author, 'workspace');
-      const authorsPrivate = await stack.conversation(author, 'user');
+      authorsPrivate = await stack.conversation(author, 'user');
       const colleaguesShared = await stack.conversation(colleague, 'workspace');
       authors = await stack.attach(authorsShared, author, hashFor(RUN, 1), CANARY, 'ready', AXIS);
       // The colleague's document, and the author's copy of the same bytes in the author's
@@ -192,14 +193,46 @@ describe.skipIf(env === null)(
         pages: 0,
       });
 
+      // An answer the assistant gave from the copy, in the author's PRIVATE conversation.
+      await stack.db.query(
+        `insert into public.messages (conversation_id, user_id, scope, role, content, document_coverage)
+         values ($1, $2, 'user', 'assistant', 'An answer.', $3::jsonb)`,
+        [
+          authorsPrivate,
+          author.id,
+          JSON.stringify({
+            v: 1,
+            documents: [
+              {
+                file: sharedPrivateCopy.fileId,
+                origin: 'attached',
+                kind: 'pdf',
+                mode: 'whole',
+                pages: [1],
+                total: 1,
+              },
+            ],
+          }),
+        ],
+      );
       const admins = await stack.ask(admin, {
         action: 'forget_document',
         sourceId: shared.sourceId,
       });
+      // The administrator is told THAT one conversation still holds an answer from it — a
+      // number — and nothing of which, whose, or what it says.
       expect(admins).toMatchObject({
         status: 200,
-        body: { outcome: 'forgotten', sources: 2, files: 2, chunks: 6 },
+        body: {
+          outcome: 'forgotten',
+          sources: 2,
+          files: 2,
+          chunks: 6,
+          conversationsWithAnswers: 1,
+        },
       });
+      expect(JSON.stringify(admins.body)).not.toContain(authorsPrivate);
+      expect(stack.lines.join('\n')).not.toContain(authorsPrivate);
       expect(await stack.state(shared)).toEqual({
         source: 'forgotten',
         chunks: 0,

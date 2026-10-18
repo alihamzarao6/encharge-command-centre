@@ -294,7 +294,7 @@ test.describe('the settings page', () => {
   test('FORGET, by keyboard: asked once in plain words, Escape keeps it, then it goes and is said', async ({
     page,
   }) => {
-    const state = await open(page, { settings: { sources: DOCUMENTS } });
+    const state = await open(page, { settings: { sources: DOCUMENTS, answersHeldIn: 2 } });
     const button = page.getByRole('button', { name: `Forget ${RATE_SHEET.name ?? ''}` });
     await button.focus();
     await page.keyboard.press('Enter');
@@ -304,6 +304,10 @@ test.describe('the settings page', () => {
       `Forget “${RATE_SHEET.name ?? ''}”? The assistant stops using it straight away, everywhere`,
     );
     await expect(confirm).toContainText("This can't be undone.");
+    // What forgetting cannot take back, said before he presses: what was already answered.
+    await expect(confirm).toContainText(
+      'Answers it has already given in existing conversations will still show what it said, and the assistant can read them there. Deleting those conversations is the only way to clear them.',
+    );
     // The safe choice has focus; Escape keeps it and returns to the row.
     await expect(page.getByRole('button', { name: 'Keep it' })).toBeFocused();
     await shotOf(row(page, RATE_SHEET.name ?? ''), page, 'forget-confirm');
@@ -319,7 +323,7 @@ test.describe('the settings page', () => {
     await page.keyboard.press('Enter');
     const notice = page.getByTestId('documents-notice');
     await expect(notice).toHaveText(
-      `Forgotten: “${RATE_SHEET.name ?? ''}”. The assistant can no longer use it. Its text was removed from 1 conversation.`,
+      `Forgotten: “${RATE_SHEET.name ?? ''}”. The assistant can no longer use it. Its text was removed from 1 conversation. 2 conversations still hold earlier answers from it. Deleting those conversations is the only way to clear them.`,
     );
     // Spoken from the section's own polite live region, which also takes focus.
     await expect(notice.locator('..')).toHaveAttribute('aria-live', 'polite');

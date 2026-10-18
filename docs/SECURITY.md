@@ -1321,7 +1321,19 @@ revealed to them, and leaving it would leave the document answering there.
 conversation. An assistant reply written from the document stays in that conversation's history,
 and a later turn in THAT conversation is given its history. A new conversation is not. Memory
 summaries hold no document text (D89: a turn with a document in front of the model is never
-summarised). See the part 4 report for the decision this leaves open.
+summarised). Measured live on 17 Oct: in a conversation that had answered from a forgotten
+document, the model repeated the figures from its history and then called its own correct
+earlier answer "fabricated" — the fault part 5 removed, reachable again by this route. Until the
+chat engine labels or drops turns that cite a forgotten document (recorded in TASKS as its own
+item, its own brief — reviewer, 18 Oct), the page does two things: the confirmation says that
+answers already given in existing conversations will still show the old content and that
+deleting the conversation is the only way to clear them; and after a forget the result says HOW
+MANY conversations still hold such an answer. The count is made on the server across every
+conversation, private ones included (`copiesOf` before the forget, then `conversationsWithAnswers`
+over `messages.document_coverage`, `src/lib/settings/answers.ts`), and only the number leaves —
+never which conversations, whose, or what they say, so an administrator learns nothing of a
+private conversation but that it exists. A count that cannot be made is said to be unknown;
+it never turns a successful forget into an error.
 
 **A connector key is shown once.** Minted in the function from the platform's random source; only
 its SHA-256 is stored (`connector_key_secrets`, policy `false`); the key is in the one

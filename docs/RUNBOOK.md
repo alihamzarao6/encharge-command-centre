@@ -795,6 +795,11 @@ about seven seconds).
 
 **Common situations**
 
+- *After a forget he is told "N conversations still hold earlier answers from it".* That is what
+  the assistant already SAID, kept in those conversations' history; forgetting does not take it
+  back, and a later turn in such a conversation can repeat it. Deleting the conversation is the
+  only way to clear it today (the chat engine labelling those turns is a recorded item). The
+  number is counted across every conversation, private ones too; it never says which.
 - *Forget is not offered on a document.* The row says why: only the person who added it — every
   copy of it — or an administrator may forget it (the rule every removal follows, D52). A copy in
   a colleague's private conversation counts as a copy. An administrator can always forget it.

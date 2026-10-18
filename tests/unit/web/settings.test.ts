@@ -28,6 +28,7 @@ import {
   EMPTY_TEXT,
   forgetConfirmText,
   forgetResultText,
+  answersHeldText,
   formatUsd,
   pageCount,
   pageSummary,
@@ -282,7 +283,7 @@ describe('learned documents', () => {
       'Forget “Rate sheet October.pdf”? The assistant stops using it straight away, everywhere: what it learned from it and any summary of it are deleted, and so is its text in every conversation it is attached to.',
     );
     expect(text.at(-1)).toMatch(
-      /can't be undone\. Answers it already gave stay in their conversations/,
+      /can't be undone\. Answers it has already given in existing conversations will still show what it said, and the assistant can read them there\. Deleting those conversations is the only way to clear them\.$/,
     );
     expect(text).toHaveLength(2);
 
@@ -326,6 +327,33 @@ describe('learned documents', () => {
     expect(forgetResultText('A.pdf', { outcome: 'already' })).toBe(
       '“A.pdf” had already been forgotten.',
     );
+  });
+
+  it('then how many conversations still hold an answer from it — a number, never which — and what clears them', () => {
+    const said = (held: number | null | undefined): string =>
+      forgetResultText('A.pdf', {
+        outcome: 'forgotten',
+        files: 1,
+        sources: 1,
+        ...(held === undefined ? {} : { conversationsWithAnswers: held }),
+      });
+    expect(said(0)).toBe(
+      'Forgotten: “A.pdf”. The assistant can no longer use it. Its text was removed from 1 conversation. No conversation holds an earlier answer from it.',
+    );
+    expect(said(1)).toMatch(
+      / 1 conversation still holds an earlier answer from it\. Deleting that conversation is the only way to clear it\.$/,
+    );
+    expect(said(4)).toMatch(
+      / 4 conversations still hold earlier answers from it\. Deleting those conversations is the only way to clear them\.$/,
+    );
+    expect(said(null)).toMatch(
+      / Couldn't count the conversations that still hold earlier answers from it/,
+    );
+    // A server that does not send the count: nothing is claimed either way.
+    expect(said(undefined)).toBe(
+      'Forgotten: “A.pdf”. The assistant can no longer use it. Its text was removed from 1 conversation.',
+    );
+    expect(answersHeldText(2)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
   });
 });
 
@@ -559,6 +587,24 @@ describe('the endpoint client', () => {
         sources: 1,
       }),
     ).toBeNull();
+    const forgot = {
+      action: 'forget_document',
+      outcome: 'forgotten',
+      sourceId: 's',
+      sources: 1,
+      files: 1,
+      chunks: 4,
+    };
+    expect(readSettingsReply({ ...forgot, conversationsWithAnswers: 3 })).toEqual({
+      ...forgot,
+      conversationsWithAnswers: 3,
+    });
+    expect(readSettingsReply({ ...forgot, conversationsWithAnswers: null })).toEqual({
+      ...forgot,
+      conversationsWithAnswers: null,
+    });
+    expect(readSettingsReply({ ...forgot, conversationsWithAnswers: -1 })).toBeNull();
+    expect(readSettingsReply({ ...forgot, conversationsWithAnswers: '3' })).toBeNull();
     expect(
       readSettingsReply({
         action: 'revoke_key',

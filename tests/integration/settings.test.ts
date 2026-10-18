@@ -136,9 +136,17 @@ describe.skipIf(env === null)('the settings page (requires a running Supabase st
       expect(await ask(elsewhere, canary)).toBe(true);
 
       const forgot = await stack.ask(ross, { action: 'forget_document', sourceId: doc.sourceId });
+      // Three conversations answered from it — a new one (from the learned copy), its own and the
+      // copy's (each from its attachment) — and every one of them still holds that answer.
       expect(forgot).toMatchObject({
         status: 200,
-        body: { outcome: 'forgotten', sources: 2, files: 2, chunks: 6 },
+        body: {
+          outcome: 'forgotten',
+          sources: 2,
+          files: 2,
+          chunks: 6,
+          conversationsWithAnswers: 3,
+        },
       });
 
       expect(await ask(null, canary)).toBe(false);

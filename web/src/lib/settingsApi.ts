@@ -27,6 +27,11 @@ export type SettingsReply =
       readonly sources: number;
       readonly files: number;
       readonly chunks: number;
+      /**
+       * Conversations still holding an answer from it (a count, never which). Null: not counted.
+       * Absent from a server older than the count: undefined, and the page says nothing of it.
+       */
+      readonly conversationsWithAnswers?: number | null;
     }
   | {
       readonly action: 'create_key';
@@ -108,7 +113,11 @@ export function readSettingsReply(body: unknown): SettingsReply | null {
     const files = count(body['files']);
     const chunks = count(body['chunks']);
     if (sourceId === null || sources === null || files === null || chunks === null) return null;
-    return { action, outcome, sourceId, sources, files, chunks };
+    const held = body['conversationsWithAnswers'];
+    if (held === undefined) return { action, outcome, sourceId, sources, files, chunks };
+    const conversationsWithAnswers = held === null ? null : count(held);
+    if (held !== null && conversationsWithAnswers === null) return null;
+    return { action, outcome, sourceId, sources, files, chunks, conversationsWithAnswers };
   }
   if (action === 'create_key' && outcome === 'created') {
     const keyId = str('keyId');

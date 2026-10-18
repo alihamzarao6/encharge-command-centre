@@ -300,14 +300,40 @@ export function forgetConfirmText(doc: DocumentView): readonly string[] {
     );
   }
   lines.push(
-    "This can't be undone. Answers it already gave stay in their conversations — read them with that in mind.",
+    "This can't be undone. Answers it has already given in existing conversations will still show what it said, and the assistant can read them there. Deleting those conversations is the only way to clear them.",
   );
   return lines;
 }
 
 export type ForgetReply =
-  | { readonly outcome: 'forgotten'; readonly files: number; readonly sources: number }
+  | {
+      readonly outcome: 'forgotten';
+      readonly files: number;
+      readonly sources: number;
+      /**
+       * Conversations still holding an answer given from it — a number, never which (some are
+       * private). Null: it could not be counted. Undefined: the server did not say.
+       */
+      readonly conversationsWithAnswers?: number | null;
+    }
   | { readonly outcome: 'already' };
+
+/**
+ * What the assistant already said is not taken back by forgetting (the chat engine labelling
+ * those turns is its own, later item). So the result says how many conversations still hold an
+ * answer from it, and what clears them.
+ */
+export function answersHeldText(held: number | null | undefined): string {
+  if (held === undefined) return '';
+  if (held === null) {
+    return " Couldn't count the conversations that still hold earlier answers from it: answers already given stay in their conversations until those are deleted.";
+  }
+  if (held === 0) return ' No conversation holds an earlier answer from it.';
+  if (held === 1) {
+    return ' 1 conversation still holds an earlier answer from it. Deleting that conversation is the only way to clear it.';
+  }
+  return ` ${String(held)} conversations still hold earlier answers from it. Deleting those conversations is the only way to clear them.`;
+}
 
 export function forgetResultText(name: string, reply: ForgetReply): string {
   if (reply.outcome === 'already') return `“${name}” had already been forgotten.`;
@@ -315,7 +341,7 @@ export function forgetResultText(name: string, reply: ForgetReply): string {
     reply.files === 0
       ? ''
       : ` Its text was removed from ${String(reply.files)} conversation${reply.files === 1 ? '' : 's'}.`;
-  return `Forgotten: “${name}”. The assistant can no longer use it.${where}`;
+  return `Forgotten: “${name}”. The assistant can no longer use it.${where}${answersHeldText(reply.conversationsWithAnswers)}`;
 }
 
 // ---------------------------------------------------------------------------------------

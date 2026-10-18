@@ -69,6 +69,11 @@ export interface SettingsScript {
   unavailable?: boolean;
   /** How long a forget takes, so a test can act while one is in flight. */
   forgetDelayMs?: number;
+  /**
+   * How many conversations the server says still hold an answer from the document just
+   * forgotten (null: it could not count them). Default 0.
+   */
+  answersHeldIn?: number | null;
 }
 
 export interface SettingsMockState {
@@ -286,6 +291,7 @@ export async function routeSettings(
             sources: 0,
             files: 0,
             chunks: 0,
+            conversationsWithAnswers: null,
           });
           return;
         }
@@ -326,6 +332,7 @@ export async function routeSettings(
           sources: copies.length,
           files: copies.length,
           chunks,
+          conversationsWithAnswers: script.answersHeldIn === undefined ? 0 : script.answersHeldIn,
         });
         return;
       }

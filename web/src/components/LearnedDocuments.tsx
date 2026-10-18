@@ -134,7 +134,14 @@ export function LearnedDocuments({ session, actor, onSessionExpired }: Props): R
         text: forgetResultText(
           doc.name,
           outcome.reply.outcome === 'forgotten'
-            ? { outcome: 'forgotten', files: outcome.reply.files, sources: outcome.reply.sources }
+            ? {
+                outcome: 'forgotten',
+                files: outcome.reply.files,
+                sources: outcome.reply.sources,
+                ...(outcome.reply.conversationsWithAnswers === undefined
+                  ? {}
+                  : { conversationsWithAnswers: outcome.reply.conversationsWithAnswers }),
+              }
             : { outcome: 'already' },
         ),
       });

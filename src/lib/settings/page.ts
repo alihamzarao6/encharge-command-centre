@@ -10,6 +10,11 @@
  *                     passages and its summary. One database transaction (`forget_document`),
  *                     which also checks — under its locks — that the person added every copy or
  *                     is an administrator. Idempotent: the second tab is told it already went.
+ *                     With it, how many conversations still hold an answer given from the
+ *                     document (answers.ts) — a number, never which: the assistant's earlier
+ *                     replies stay in their conversations until the chat engine learns to
+ *                     label them (its own item). Counted after the forget succeeds; a count
+ *                     that cannot be made is null and never turns a forget into an error.
  *   create_key      — a connector key for the signed-in person, minted HERE from the platform's
  *                     random source. Its digest is stored; the key is in this one response body
  *                     and nowhere else, ever (decision 6) — not a log line, not a table, not a
@@ -40,6 +45,7 @@ import { roundUsd } from '../llm/pricing.js';
 import { utcDayStart, utcMonthStart, type SpendCaps } from '../llm/spend.js';
 import type { Logger } from '../logger.js';
 import { FORGET_REFUSED_MESSAGE, KEY_LABEL_MAX, MAX_LIVE_KEYS_PER_PERSON } from './access.js';
+import type { DocumentIds } from './answers.js';
 import type { SettingsStore } from './store.js';
 
 // ---------------------------------------------------------------------------------------
@@ -60,6 +66,11 @@ export type SettingsReply =
       readonly sources: number;
       readonly files: number;
       readonly chunks: number;
+      /**
+       * Conversations still holding an answer given from it; null when they could not be
+       * counted, or (outcome 'already') when another tab's forget already told its person.
+       */
+      readonly conversationsWithAnswers: number | null;
     }
   | {
       readonly action: 'create_key';
@@ -174,8 +185,29 @@ interface Ctx {
   readonly now: () => Date;
 }
 
+/** How many conversations hold an answer from it, or null — never an error a forget fails on. */
+async function answersHeld(ctx: Ctx, ids: DocumentIds | null): Promise<number | null> {
+  if (ids === null) return null;
+  const counted = await ctx.deps.store.conversationsWithAnswers(ids);
+  if (counted.ok) return counted.value;
+  ctx.log.warn('settings: conversations with answers could not be counted', {
+    userId: ctx.userId,
+    error: counted.error,
+  });
+  return null;
+}
+
 async function forgetDocument(ctx: Ctx, sourceId: string): Promise<SettingsPageResult> {
   const started = ctx.now().getTime();
+  // Before the forget: it clears the content hash, the only thing that finds the other copies.
+  const copies = await ctx.deps.store.copiesOf(sourceId);
+  if (!copies.ok) {
+    ctx.log.warn('settings: copies could not be read before the forget', {
+      userId: ctx.userId,
+      sourceId,
+      error: copies.error,
+    });
+  }
   const result = await ctx.deps.store.forgetDocument(sourceId, ctx.userId);
   const durationMs = Math.max(0, ctx.now().getTime() - started);
   if (!result.ok) {
@@ -188,12 +220,19 @@ async function forgetDocument(ctx: Ctx, sourceId: string): Promise<SettingsPageR
     return storeFailure(result.error, SETTINGS_MESSAGES.forgetUnconfirmed);
   }
   const outcome = result.value;
+  const held =
+    outcome.kind === 'forgotten' ? await answersHeld(ctx, copies.ok ? copies.value : null) : null;
   ctx.log.info('settings: forget', {
     userId: ctx.userId,
     sourceId,
     outcome: outcome.kind,
     ...(outcome.kind === 'forgotten'
-      ? { sources: outcome.sources, files: outcome.files, chunks: outcome.chunks }
+      ? {
+          sources: outcome.sources,
+          files: outcome.files,
+          chunks: outcome.chunks,
+          conversationsWithAnswers: held,
+        }
       : {}),
     durationMs,
   });
@@ -208,6 +247,7 @@ async function forgetDocument(ctx: Ctx, sourceId: string): Promise<SettingsPageR
           sources: outcome.sources,
           files: outcome.files,
           chunks: outcome.chunks,
+          conversationsWithAnswers: held,
         },
       };
     case 'already':
@@ -220,6 +260,7 @@ async function forgetDocument(ctx: Ctx, sourceId: string): Promise<SettingsPageR
           sources: 0,
           files: 0,
           chunks: 0,
+          conversationsWithAnswers: null,
         },
       };
     case 'not_found':

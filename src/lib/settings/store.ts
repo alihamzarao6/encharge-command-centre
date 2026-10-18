@@ -7,17 +7,22 @@
  *   issue_connector_key   (20261013010000) — the digest of a key minted HERE, never the key;
  *   revoke_connector_key  (20261013010000) — given the person's own id, only their own key.
  *
- * READS ARE NOT HERE. The browser selects `knowledge_sources`, `connector_keys`, `audit_log`
- * and the staff roster directly under row-level security, as the memory and users pages do.
- * The one read the server makes for the page is the spend (page.ts), because the cap it is
- * measured against is server configuration and the browser must see the same number the cap
- * enforces.
+ * LISTS ARE NOT READ HERE. The browser selects `knowledge_sources`, `connector_keys`,
+ * `audit_log` and the staff roster directly under row-level security, as the memory and users
+ * pages do. The server reads for the page only what the browser must not or cannot:
+ *
+ *   the spend (page.ts) — the cap it is measured against is server configuration;
+ *   how many conversations hold an answer from a document being forgotten — counted across
+ *   EVERY conversation, private ones included, so it is the server's and only the number leaves
+ *   (answers.ts). First every id the document goes by (`copiesOf`, read BEFORE the forget, which
+ *   clears the content hash that finds the copies), then the answers that name one of them.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { fetchWithTimeout, type SupabaseAuthConfig } from '../auth/clients.js';
 import { byteaHex, mapPostgrest, mapThrown } from '../connector/store.js';
 import { AppError, err, ok, type Result } from '../errors.js';
+import { conversationsHolding, type CitingAnswer, type DocumentIds } from './answers.js';
 
 export type ForgetOutcome =
   | {
@@ -55,15 +60,47 @@ export interface SettingsStore {
   }): Promise<Result<IssueOutcome>>;
   /** Only the person's own key: another person's key id answers `not_found`. */
   revokeKey(userId: string, keyId: string): Promise<Result<RevokeOutcome>>;
+  /**
+   * Every id the document goes by — this learned copy, every other learned copy of the same
+   * bytes, and every attachment of them — or null when there is no such source. A copy already
+   * forgotten has no hash left, so it stands for itself alone.
+   */
+  copiesOf(sourceId: string): Promise<Result<DocumentIds | null>>;
+  /** Conversations still there with an answer that had the document in front of the model. */
+  conversationsWithAnswers(ids: DocumentIds): Promise<Result<number>>;
 }
+
+/** Rows read per request, and how many requests one id may take before the count gives up. */
+export const ANSWERS_PAGE_ROWS = 1000;
+export const ANSWERS_MAX_PAGES = 10;
 
 /* eslint-disable @typescript-eslint/consistent-type-definitions,
    @typescript-eslint/consistent-indexed-object-style --
    Type aliases and mapped types, not interfaces: supabase-js matches a schema structurally
    against Record<string, unknown>, which an interface fails (the same reason as clients.ts). */
+type SourceRow = {
+  id: string;
+  content_hash: string | null;
+  file_id: string | null;
+  status: string;
+};
+type FileRow = { id: string; content_hash: string | null; status: string };
+type MessageRow = {
+  id: string;
+  conversation_id: string;
+  role: string;
+  document_coverage: unknown;
+};
+type ConversationRow = { id: string; deleted_at: string | null };
+
 type SettingsDatabase = {
   public: {
-    Tables: { [_ in never]: never };
+    Tables: {
+      knowledge_sources: { Row: SourceRow; Insert: never; Update: never; Relationships: [] };
+      conversation_files: { Row: FileRow; Insert: never; Update: never; Relationships: [] };
+      messages: { Row: MessageRow; Insert: never; Update: never; Relationships: [] };
+      conversations: { Row: ConversationRow; Insert: never; Update: never; Relationships: [] };
+    };
     Views: { [_ in never]: never };
     Functions: {
       forget_document: {
@@ -193,6 +230,97 @@ export function supabaseSettingsStore(client: SettingsClient): SettingsStore {
         });
       } catch (caught: unknown) {
         return err(mapThrown(caught, 'revoke_connector_key'));
+      }
+    },
+    copiesOf: async (sourceId) => {
+      try {
+        const own = await client
+          .from('knowledge_sources')
+          .select('id, content_hash, file_id, status')
+          .eq('id', sourceId)
+          .limit(1);
+        if (own.error !== null) return err(mapPostgrest(own.error, 'knowledge_sources.copiesOf'));
+        const source = own.data[0];
+        if (source === undefined) return ok(null);
+        const sources = new Set([source.id]);
+        const files = new Set(source.file_id === null ? [] : [source.file_id]);
+        const hash = source.status === 'forgotten' ? null : source.content_hash;
+        if (hash !== null) {
+          const copies = await client
+            .from('knowledge_sources')
+            .select('id, content_hash, file_id, status')
+            .eq('content_hash', hash)
+            .neq('status', 'forgotten')
+            .limit(ANSWERS_PAGE_ROWS);
+          if (copies.error !== null) {
+            return err(mapPostgrest(copies.error, 'knowledge_sources.copiesOf'));
+          }
+          for (const copy of copies.data) {
+            sources.add(copy.id);
+            if (copy.file_id !== null) files.add(copy.file_id);
+          }
+          const attached = await client
+            .from('conversation_files')
+            .select('id, content_hash, status')
+            .eq('content_hash', hash)
+            .limit(ANSWERS_PAGE_ROWS);
+          if (attached.error !== null) {
+            return err(mapPostgrest(attached.error, 'conversation_files.copiesOf'));
+          }
+          for (const file of attached.data) files.add(file.id);
+        }
+        return ok({ sources: [...sources], files: [...files] });
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, 'knowledge_sources.copiesOf'));
+      }
+    },
+    conversationsWithAnswers: async (ids) => {
+      const op = 'messages.conversationsWithAnswers';
+      try {
+        const answers: CitingAnswer[] = [];
+        const names = [
+          ...ids.sources.map((id) => ({ source: id })),
+          ...ids.files.map((id) => ({ file: id })),
+        ];
+        for (const name of names) {
+          for (let page = 0; ; page += 1) {
+            // A count that stopped short would tell him fewer conversations than there are.
+            if (page === ANSWERS_MAX_PAGES) {
+              return err(new AppError('INTERNAL', `${op}: too many answers to count`));
+            }
+            const from = page * ANSWERS_PAGE_ROWS;
+            const { data, error } = await client
+              .from('messages')
+              .select('conversation_id, role, document_coverage')
+              .eq('role', 'assistant')
+              .contains('document_coverage', { documents: [name] })
+              // A unique order, so a page boundary never skips or repeats a row.
+              .order('id')
+              .range(from, from + ANSWERS_PAGE_ROWS - 1);
+            if (error !== null) return err(mapPostgrest(error, op));
+            for (const row of data) {
+              answers.push({
+                conversationId: row.conversation_id,
+                coverage: row.document_coverage,
+              });
+            }
+            if (data.length < ANSWERS_PAGE_ROWS) break;
+          }
+        }
+        const conversationIds = [...new Set(answers.map((a) => a.conversationId))];
+        const alive = new Set<string>();
+        for (let i = 0; i < conversationIds.length; i += 100) {
+          const { data, error } = await client
+            .from('conversations')
+            .select('id, deleted_at')
+            .in('id', conversationIds.slice(i, i + 100))
+            .is('deleted_at', null);
+          if (error !== null) return err(mapPostgrest(error, op));
+          for (const row of data) alive.add(row.id);
+        }
+        return ok(conversationsHolding(answers, ids, alive));
+      } catch (caught: unknown) {
+        return err(mapThrown(caught, op));
       }
     },
   };

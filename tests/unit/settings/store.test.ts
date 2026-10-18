@@ -7,6 +7,8 @@ import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ANSWERS_MAX_PAGES,
+  ANSWERS_PAGE_ROWS,
   createSettingsClient,
   readForgetRow,
   supabaseSettingsStore,
@@ -249,5 +251,193 @@ describe('createSettingsClient', () => {
       serviceRoleKey: 'service',
     });
     expect(typeof made.rpc).toBe('function');
+  });
+});
+
+describe('copiesOf — every id the document goes by, read before the forget', () => {
+  const HASH = 'c'.repeat(64);
+
+  it('this copy, every other learned copy of the same bytes, and every attachment of them', async () => {
+    const t = client((url) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/knowledge_sources') && u.searchParams.has('id')) {
+        return {
+          status: 200,
+          body: [{ id: SOURCE, content_hash: HASH, file_id: 'f1', status: 'ready' }],
+        };
+      }
+      if (u.pathname.endsWith('/knowledge_sources')) {
+        return {
+          status: 200,
+          body: [
+            { id: SOURCE, content_hash: HASH, file_id: 'f1', status: 'ready' },
+            { id: 'copy', content_hash: HASH, file_id: null, status: 'ready' },
+          ],
+        };
+      }
+      return {
+        status: 200,
+        body: [
+          { id: 'f1', content_hash: HASH, status: 'ready' },
+          { id: 'f2', content_hash: HASH, status: 'ready' },
+        ],
+      };
+    });
+    const result = await supabaseSettingsStore(t.client).copiesOf(SOURCE);
+    expect(result).toEqual({
+      ok: true,
+      value: { sources: [SOURCE, 'copy'], files: ['f1', 'f2'] },
+    });
+    const copies = new URL(t.seen[1]?.url ?? '');
+    expect(copies.searchParams.get('content_hash')).toBe(`eq.${HASH}`);
+    expect(copies.searchParams.get('status')).toBe('neq.forgotten');
+    expect(new URL(t.seen[2]?.url ?? '').pathname).toBe('/rest/v1/conversation_files');
+  });
+
+  it('a copy already forgotten has no hash left: it stands for itself; no such source is null', async () => {
+    const gone = client(() => ({
+      status: 200,
+      body: [{ id: SOURCE, content_hash: null, file_id: 'f1', status: 'forgotten' }],
+    }));
+    expect(await supabaseSettingsStore(gone.client).copiesOf(SOURCE)).toEqual({
+      ok: true,
+      value: { sources: [SOURCE], files: ['f1'] },
+    });
+    expect(gone.seen).toHaveLength(1);
+    const none = client(() => ({ status: 200, body: [] }));
+    expect(await supabaseSettingsStore(none.client).copiesOf(SOURCE)).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
+  it('any read that fails is an error, so the count is said to be unknown rather than guessed', async () => {
+    const refusal = {
+      status: 500,
+      body: { code: 'XX000', message: 'x', details: null, hint: null },
+    };
+    for (const failAt of [0, 1, 2]) {
+      let n = 0;
+      const t = client(() => {
+        const at = n;
+        n += 1;
+        if (at === failAt) return refusal;
+        return at === 0
+          ? {
+              status: 200,
+              body: [{ id: SOURCE, content_hash: HASH, file_id: null, status: 'ready' }],
+            }
+          : { status: 200, body: [] };
+      });
+      expect((await supabaseSettingsStore(t.client).copiesOf(SOURCE)).ok).toBe(false);
+    }
+    const dropped = client(() => 'throw');
+    expect((await supabaseSettingsStore(dropped.client).copiesOf(SOURCE)).ok).toBe(false);
+  });
+});
+
+describe('conversationsWithAnswers — answers that name the document, in conversations still there', () => {
+  const answer = (id: string, conversationId: string, entry: Record<string, unknown>) => ({
+    id,
+    conversation_id: conversationId,
+    role: 'assistant',
+    document_coverage: { v: 1, documents: [entry] },
+  });
+
+  it('asks for assistant answers whose record names each id, then which of their conversations remain', async () => {
+    const t = client((url) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/conversations')) {
+        return { status: 200, body: [{ id: 'c1', deleted_at: null }] };
+      }
+      const named = u.searchParams.get('document_coverage') ?? '';
+      return {
+        status: 200,
+        body: named.includes('src-a')
+          ? [
+              answer('m1', 'c1', { source: 'src-a', mode: 'part' }),
+              answer('m2', 'c-deleted', { source: 'src-a', mode: 'part' }),
+            ]
+          : [answer('m3', 'c1', { file: 'file-a', mode: 'whole' })],
+      };
+    });
+    const ids = { sources: ['src-a'], files: ['file-a'] };
+    expect(await supabaseSettingsStore(t.client).conversationsWithAnswers(ids)).toEqual({
+      ok: true,
+      value: 1,
+    });
+    const first = new URL(t.seen[0]?.url ?? '');
+    expect(first.pathname).toBe('/rest/v1/messages');
+    expect(first.searchParams.get('role')).toBe('eq.assistant');
+    expect(first.searchParams.get('document_coverage')).toBe(
+      'cs.{"documents":[{"source":"src-a"}]}',
+    );
+    expect(first.searchParams.get('order')).toBe('id.asc');
+    expect(new URL(t.seen[1]?.url ?? '').searchParams.get('document_coverage')).toBe(
+      'cs.{"documents":[{"file":"file-a"}]}',
+    );
+    const alive = new URL(t.seen[2]?.url ?? '');
+    expect(alive.pathname).toBe('/rest/v1/conversations');
+    expect(alive.searchParams.get('deleted_at')).toBe('is.null');
+  });
+
+  it('reads page after page while pages come back full; at the cap it says it cannot count', async () => {
+    const row = answer('m', 'c1', { source: 'src-a', mode: 'part' });
+    const full = Array.from({ length: ANSWERS_PAGE_ROWS }, () => row);
+    let pages = 0;
+    const twoPages = client((url) => {
+      if (new URL(url).pathname.endsWith('/conversations')) {
+        return { status: 200, body: [{ id: 'c1', deleted_at: null }] };
+      }
+      pages += 1;
+      return { status: 200, body: pages === 1 ? full : [row] };
+    });
+    const ids = { sources: ['src-a'], files: [] };
+    expect(await supabaseSettingsStore(twoPages.client).conversationsWithAnswers(ids)).toEqual({
+      ok: true,
+      value: 1,
+    });
+    expect(pages).toBe(2);
+    const endless = client(() => ({ status: 200, body: full }));
+    const capped = await supabaseSettingsStore(endless.client).conversationsWithAnswers(ids);
+    expect(capped.ok).toBe(false);
+    expect(endless.seen).toHaveLength(ANSWERS_MAX_PAGES);
+  });
+
+  it('nothing names it: zero, and no conversation is asked about', async () => {
+    const t = client(() => ({ status: 200, body: [] }));
+    expect(
+      await supabaseSettingsStore(t.client).conversationsWithAnswers({ sources: ['s'], files: [] }),
+    ).toEqual({ ok: true, value: 0 });
+    expect(t.seen).toHaveLength(1);
+  });
+
+  it('a refused or dropped read is an error, never a smaller number', async () => {
+    const ids = { sources: ['s'], files: [] };
+    const refusal = {
+      status: 500,
+      body: { code: 'XX000', message: 'x', details: null, hint: null },
+    };
+    const refused = client(() => refusal);
+    expect((await supabaseSettingsStore(refused.client).conversationsWithAnswers(ids)).ok).toBe(
+      false,
+    );
+    let n = 0;
+    const aliveFails = client(() => {
+      n += 1;
+      return n === 1
+        ? {
+            status: 200,
+            body: [{ id: 'm', conversation_id: 'c1', role: 'assistant', document_coverage: null }],
+          }
+        : refusal;
+    });
+    expect((await supabaseSettingsStore(aliveFails.client).conversationsWithAnswers(ids)).ok).toBe(
+      false,
+    );
+    const dropped = client(() => 'throw');
+    expect((await supabaseSettingsStore(dropped.client).conversationsWithAnswers(ids)).ok).toBe(
+      false,
+    );
   });
 });
